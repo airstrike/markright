@@ -1,5 +1,5 @@
-use iced::widget::{center, column, container, text};
-use iced::{Element, Length, Padding};
+use iced::widget::{column, container, text};
+use iced::{Color, Element, Fill, Length, Padding};
 
 use markright::Content;
 
@@ -77,7 +77,9 @@ Try editing this text! You can use:
 
     fn view(&self) -> Element<'_, Message> {
         let (cursor_line, cursor_col) = self.content.cursor();
-        let status = text(format!("Ln {}, Col {}", cursor_line + 1, cursor_col + 1)).size(12);
+        let status = text(format!("Ln {}, Col {}", cursor_line + 1, cursor_col + 1))
+            .size(12)
+            .color(Color::from_rgb(0.5, 0.5, 0.5));
 
         let editor = markright::editor(&self.content)
             .on_action(Message::Edit)
@@ -85,12 +87,18 @@ Try editing this text! You can use:
             .size(16);
 
         let content = column![
-            container(editor).width(Length::Fill).padding(Padding::ZERO),
+            editor,
             container(status)
-                .width(Length::Fill)
+                .width(Fill)
                 .padding(Padding::ZERO.vertical(4).horizontal(20)),
-        ];
+        ]
+        .width(Fill)
+        .height(Fill);
 
-        center(content).width(720).into()
+        container(content)
+            .center_x(Length::Fill)
+            .max_width(720)
+            .height(Fill)
+            .into()
     }
 }
