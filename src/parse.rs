@@ -97,15 +97,35 @@ impl OffsetMap {
             return display;
         }
 
-        // Find the segment containing this display offset
-        for window in self.entries.windows(2) {
-            let (r0, d0) = window[0];
-            let (r1, d1) = window[1];
+        // Find the best segment containing this display offset.
+        // Prefer text regions (non-zero display delta) over marker regions
+        // (zero display delta). Among text regions, prefer the last one
+        // that contains the display offset, so that boundary values map
+        // to the text side rather than the marker side.
+        let mut best_text: Option<usize> = None;
+        let mut best_any: Option<usize> = None;
+        for (i, window) in self.entries.windows(2).enumerate() {
+            let (_r0, d0) = window[0];
+            let (_r1, d1) = window[1];
             if display >= d0 && display <= d1 {
-                let delta = display - d0;
-                let max_delta = r1 - r0;
-                return r0 + delta.min(max_delta);
+                if best_any.is_none() {
+                    best_any = Some(i);
+                }
+                // Text region: display range is non-zero
+                if d1 > d0 {
+                    best_text = Some(i);
+                }
             }
+        }
+
+        let best = best_text.or(best_any);
+
+        if let Some(i) = best {
+            let (r0, d0) = self.entries[i];
+            let (r1, _d1) = self.entries[i + 1];
+            let delta = display - d0;
+            let max_delta = r1 - r0;
+            return r0 + delta.min(max_delta);
         }
 
         // Past the last entry — extrapolate 1:1 from the last entry
@@ -268,6 +288,7 @@ fn parse_inline(content: &str) -> (String, Vec<Span>, Vec<(usize, usize)>) {
         if bytes[raw_pos] == b'*' {
             // Count consecutive asterisks
             let star_count = count_chars(bytes, raw_pos, b'*');
+            let mut matched = false;
 
             if star_count >= 3 {
                 // Try bold+italic: ***text***
@@ -293,11 +314,11 @@ fn parse_inline(content: &str) -> (String, Vec<Span>, Vec<(usize, usize)>) {
                     });
 
                     raw_pos = close + 3;
-                    continue;
+                    matched = true;
                 }
             }
 
-            if star_count >= 2 {
+            if !matched && star_count >= 2 {
                 // Try bold: **text**
                 if let Some(close) = find_closing_delimiter(bytes, raw_pos + 2, b'*', 2) {
                     let inner = &content[raw_pos + 2..close];
@@ -305,8 +326,6 @@ fn parse_inline(content: &str) -> (String, Vec<Span>, Vec<(usize, usize)>) {
                     entries.push((raw_pos, display_start));
                     entries.push((raw_pos + 2, display_start));
 
-                    // Parse inner text for nested formatting? No — keep it simple
-                    // for now. Just append the inner text as bold.
                     display.push_str(inner);
                     let display_end = display.len();
 
@@ -322,12 +341,12 @@ fn parse_inline(content: &str) -> (String, Vec<Span>, Vec<(usize, usize)>) {
                     });
 
                     raw_pos = close + 2;
-                    continue;
+                    matched = true;
                 }
             }
 
-            if star_count >= 1 {
-                // Try italic: *text*
+            if !matched && star_count == 1 {
+                // Try italic: *text* — only when exactly 1 star
                 if let Some(close) = find_closing_delimiter(bytes, raw_pos + 1, b'*', 1) {
                     let inner = &content[raw_pos + 1..close];
                     let display_start = display.len();
@@ -349,9 +368,20 @@ fn parse_inline(content: &str) -> (String, Vec<Span>, Vec<(usize, usize)>) {
                     });
 
                     raw_pos = close + 1;
-                    continue;
+                    matched = true;
                 }
             }
+
+            if matched {
+                continue;
+            }
+
+            // Unmatched — treat all consecutive stars as literal text
+            for _ in 0..star_count {
+                display.push('*');
+            }
+            raw_pos += star_count;
+            continue;
         }
 
         // Regular character — copy to display, handling multi-byte UTF-8
@@ -413,4 +443,377 @@ fn find_closing_delimiter(bytes: &[u8], start: usize, ch: u8, count: usize) -> O
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- Plain text ---
+
+    #[test]
+    fn plain_text_display_equals_raw() {
+        let mut in_code = false;
+        let line = parse_line("hello world", &mut in_code);
+        assert_eq!(line.display, "hello world");
+        assert!(line.spans.is_empty());
+    }
+
+    #[test]
+    fn plain_text_identity_offset_map() {
+        let mut in_code = false;
+        let line = parse_line("hello", &mut in_code);
+        for i in 0..=5 {
+            assert_eq!(line.offset_map.raw_to_display(i), i);
+            assert_eq!(line.offset_map.display_to_raw(i), i);
+        }
+    }
+
+    #[test]
+    fn empty_line() {
+        let mut in_code = false;
+        let line = parse_line("", &mut in_code);
+        assert_eq!(line.display, "");
+        assert!(line.spans.is_empty());
+    }
+
+    // --- Headings ---
+
+    #[test]
+    fn heading_1_strips_prefix() {
+        let mut in_code = false;
+        let line = parse_line("# Title", &mut in_code);
+        assert_eq!(line.display, "Title");
+        assert_eq!(line.spans.len(), 0);
+    }
+
+    #[test]
+    fn heading_1_with_inline_formatting() {
+        let mut in_code = false;
+        let line = parse_line("# **Bold Title**", &mut in_code);
+        assert_eq!(line.display, "Bold Title");
+        assert_eq!(line.spans.len(), 1);
+        assert!(line.spans[0].style.bold);
+        assert_eq!(line.spans[0].style.heading, Some(1));
+    }
+
+    #[test]
+    fn heading_levels_1_through_6() {
+        for level in 1..=6u8 {
+            let mut in_code = false;
+            let prefix = "#".repeat(level as usize);
+            let raw = format!("{prefix} Heading");
+            let line = parse_line(&raw, &mut in_code);
+            assert_eq!(line.display, "Heading");
+        }
+    }
+
+    #[test]
+    fn seven_hashes_is_not_a_heading() {
+        let mut in_code = false;
+        let line = parse_line("####### Not a heading", &mut in_code);
+        assert_eq!(line.display, "####### Not a heading");
+    }
+
+    #[test]
+    fn hash_without_space_is_not_a_heading() {
+        let mut in_code = false;
+        let line = parse_line("#NoSpace", &mut in_code);
+        assert_eq!(line.display, "#NoSpace");
+    }
+
+    #[test]
+    fn heading_offset_map_accounts_for_prefix() {
+        let mut in_code = false;
+        // raw: "# Hello"  (# = 0, space = 1, H = 2, e = 3, ...)
+        // display: "Hello" (H = 0, e = 1, ...)
+        let line = parse_line("# Hello", &mut in_code);
+        assert_eq!(line.display, "Hello");
+        // raw offset 2 ("H") -> display offset 0
+        assert_eq!(line.offset_map.raw_to_display(2), 0);
+        // display offset 0 ("H") -> raw offset 2
+        assert_eq!(line.offset_map.display_to_raw(0), 2);
+        // raw offset 7 (end) -> display offset 5 (end)
+        assert_eq!(line.offset_map.raw_to_display(7), 5);
+    }
+
+    // --- Bold ---
+
+    #[test]
+    fn bold_markers_stripped() {
+        let mut in_code = false;
+        let line = parse_line("**bold**", &mut in_code);
+        assert_eq!(line.display, "bold");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].range, 0..4);
+        assert!(line.spans[0].style.bold);
+        assert!(!line.spans[0].style.italic);
+    }
+
+    #[test]
+    fn bold_with_surrounding_text() {
+        let mut in_code = false;
+        let line = parse_line("a **b** c", &mut in_code);
+        assert_eq!(line.display, "a b c");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].range, 2..3); // "b" in display
+        assert!(line.spans[0].style.bold);
+    }
+
+    // --- Italic ---
+
+    #[test]
+    fn italic_markers_stripped() {
+        let mut in_code = false;
+        let line = parse_line("*italic*", &mut in_code);
+        assert_eq!(line.display, "italic");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].range, 0..6);
+        assert!(line.spans[0].style.italic);
+        assert!(!line.spans[0].style.bold);
+    }
+
+    // --- Bold+Italic ---
+
+    #[test]
+    fn bold_italic_markers_stripped() {
+        let mut in_code = false;
+        let line = parse_line("***both***", &mut in_code);
+        assert_eq!(line.display, "both");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].range, 0..4);
+        assert!(line.spans[0].style.bold);
+        assert!(line.spans[0].style.italic);
+    }
+
+    // --- Inline code ---
+
+    #[test]
+    fn inline_code_markers_stripped() {
+        let mut in_code = false;
+        let line = parse_line("`code`", &mut in_code);
+        assert_eq!(line.display, "code");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].range, 0..4);
+        assert!(line.spans[0].style.code);
+    }
+
+    #[test]
+    fn inline_code_no_nested_formatting() {
+        let mut in_code = false;
+        // Stars inside backticks should not be parsed as bold
+        let line = parse_line("`**not bold**`", &mut in_code);
+        assert_eq!(line.display, "**not bold**");
+        assert_eq!(line.spans.len(), 1);
+        assert!(line.spans[0].style.code);
+        assert!(!line.spans[0].style.bold);
+    }
+
+    // --- Mixed formatting ---
+
+    #[test]
+    fn mixed_bold_and_italic() {
+        let mut in_code = false;
+        let line = parse_line("hello **world** and *more*", &mut in_code);
+        assert_eq!(line.display, "hello world and more");
+        assert_eq!(line.spans.len(), 2);
+
+        // "world" bold
+        assert_eq!(line.spans[0].range, 6..11);
+        assert!(line.spans[0].style.bold);
+
+        // "more" italic
+        assert_eq!(line.spans[1].range, 16..20);
+        assert!(line.spans[1].style.italic);
+    }
+
+    #[test]
+    fn multiple_code_spans() {
+        let mut in_code = false;
+        let line = parse_line("`a` and `b`", &mut in_code);
+        assert_eq!(line.display, "a and b");
+        assert_eq!(line.spans.len(), 2);
+        assert!(line.spans[0].style.code);
+        assert!(line.spans[1].style.code);
+        assert_eq!(line.spans[0].range, 0..1); // "a"
+        assert_eq!(line.spans[1].range, 6..7); // "b"
+    }
+
+    // --- Unmatched delimiters ---
+
+    #[test]
+    fn unmatched_bold_treated_as_literal() {
+        let mut in_code = false;
+        let line = parse_line("**no close", &mut in_code);
+        assert_eq!(line.display, "**no close");
+        assert!(line.spans.is_empty());
+    }
+
+    #[test]
+    fn unmatched_italic_treated_as_literal() {
+        let mut in_code = false;
+        let line = parse_line("*no close", &mut in_code);
+        assert_eq!(line.display, "*no close");
+        assert!(line.spans.is_empty());
+    }
+
+    #[test]
+    fn unmatched_backtick_treated_as_literal() {
+        let mut in_code = false;
+        let line = parse_line("`no close", &mut in_code);
+        assert_eq!(line.display, "`no close");
+        assert!(line.spans.is_empty());
+    }
+
+    // --- Code fences ---
+
+    #[test]
+    fn code_fence_toggles_state() {
+        let mut in_code = false;
+        let _line = parse_line("```", &mut in_code);
+        assert!(in_code);
+        let _line = parse_line("```", &mut in_code);
+        assert!(!in_code);
+    }
+
+    #[test]
+    fn code_fence_with_language_tag() {
+        let mut in_code = false;
+        let line = parse_line("```rust", &mut in_code);
+        assert!(in_code);
+        assert_eq!(line.display, "```rust");
+        assert!(line.spans[0].style.code);
+    }
+
+    #[test]
+    fn lines_inside_code_block_get_code_style() {
+        let mut in_code = true;
+        let line = parse_line("let x = **not bold**;", &mut in_code);
+        assert_eq!(line.display, "let x = **not bold**;");
+        assert_eq!(line.spans.len(), 1);
+        assert!(line.spans[0].style.code);
+        assert!(!line.spans[0].style.bold);
+    }
+
+    #[test]
+    fn code_block_no_inline_parsing() {
+        let mut in_code = false;
+
+        // Open fence
+        let _ = parse_line("```", &mut in_code);
+        assert!(in_code);
+
+        // Line inside - should not parse inline formatting
+        let line = parse_line("**bold** *italic* `code`", &mut in_code);
+        assert_eq!(line.display, "**bold** *italic* `code`");
+        assert_eq!(line.spans.len(), 1);
+        assert!(line.spans[0].style.code);
+
+        // Close fence
+        let _ = parse_line("```", &mut in_code);
+        assert!(!in_code);
+
+        // After close, inline parsing resumes
+        let line = parse_line("**bold**", &mut in_code);
+        assert_eq!(line.display, "bold");
+        assert!(line.spans[0].style.bold);
+    }
+
+    // --- Offset map round-tripping ---
+
+    #[test]
+    fn offset_map_round_trip_bold() {
+        let mut in_code = false;
+        // raw: "**bold**"  (8 bytes)
+        // display: "bold"  (4 bytes)
+        let line = parse_line("**bold**", &mut in_code);
+
+        // raw 0 (first *) -> display 0
+        assert_eq!(line.offset_map.raw_to_display(0), 0);
+        // raw 2 (b) -> display 0
+        assert_eq!(line.offset_map.raw_to_display(2), 0);
+        // raw 3 (o) -> display 1
+        assert_eq!(line.offset_map.raw_to_display(3), 1);
+        // raw 6 (closing **) -> display 4
+        assert_eq!(line.offset_map.raw_to_display(6), 4);
+        // raw 8 (end) -> display 4
+        assert_eq!(line.offset_map.raw_to_display(8), 4);
+
+        // display 0 (b) -> raw 2
+        assert_eq!(line.offset_map.display_to_raw(0), 2);
+        // display 4 (end) -> raw 6
+        assert_eq!(line.offset_map.display_to_raw(4), 6);
+    }
+
+    #[test]
+    fn offset_map_round_trip_mixed() {
+        let mut in_code = false;
+        // raw:     "a **b** c"  (a=0, space=1, *=2, *=3, b=4, *=5, *=6, space=7, c=8)
+        // display: "a b c"      (a=0, space=1, b=2, space=3, c=4)
+        let line = parse_line("a **b** c", &mut in_code);
+
+        // Characters before the bold marker
+        assert_eq!(line.offset_map.raw_to_display(0), 0); // "a"
+        assert_eq!(line.offset_map.raw_to_display(1), 1); // " "
+
+        // The bold content
+        assert_eq!(line.offset_map.raw_to_display(4), 2); // "b"
+
+        // After bold closing marker
+        assert_eq!(line.offset_map.raw_to_display(7), 3); // " "
+        assert_eq!(line.offset_map.raw_to_display(8), 4); // "c"
+
+        // Round-trip: display -> raw
+        assert_eq!(line.offset_map.display_to_raw(0), 0); // "a"
+        assert_eq!(line.offset_map.display_to_raw(2), 4); // "b"
+        assert_eq!(line.offset_map.display_to_raw(4), 8); // "c"
+    }
+
+    #[test]
+    fn offset_map_identity_for_plain_text() {
+        let map = OffsetMap::identity(10);
+        for i in 0..=10 {
+            assert_eq!(map.raw_to_display(i), i);
+            assert_eq!(map.display_to_raw(i), i);
+        }
+    }
+
+    // --- UTF-8 handling ---
+
+    #[test]
+    fn unicode_plain_text() {
+        let mut in_code = false;
+        let line = parse_line("cafe\u{0301}", &mut in_code); // "café" with combining accent
+        assert_eq!(line.display, "cafe\u{0301}");
+    }
+
+    #[test]
+    fn unicode_with_bold() {
+        let mut in_code = false;
+        let line = parse_line("**caf\u{00e9}**", &mut in_code);
+        assert_eq!(line.display, "caf\u{00e9}");
+        assert!(line.spans[0].style.bold);
+    }
+
+    // --- Edge cases ---
+
+    #[test]
+    fn adjacent_bold_spans() {
+        let mut in_code = false;
+        // **a****b** is ambiguous. Our parser matches the outermost **...**
+        // and treats the inner **** as literal since it can't find exactly 2
+        // closing stars at the 4-star boundary.
+        let line = parse_line("**a****b**", &mut in_code);
+        assert_eq!(line.display, "a****b");
+        assert_eq!(line.spans.len(), 1);
+        assert!(line.spans[0].style.bold);
+    }
+
+    #[test]
+    fn fence_line_gets_code_style() {
+        let mut in_code = false;
+        let line = parse_line("```", &mut in_code);
+        assert_eq!(line.spans.len(), 1);
+        assert!(line.spans[0].style.code);
+    }
 }
