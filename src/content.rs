@@ -228,3 +228,417 @@ impl Default for Content {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- Construction ---
+
+    #[test]
+    fn new_has_one_empty_line() {
+        let c = Content::new();
+        assert_eq!(c.line_count(), 1);
+        assert_eq!(c.line(0), Some(""));
+    }
+
+    #[test]
+    fn new_cursor_at_origin() {
+        let c = Content::new();
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 0 });
+    }
+
+    #[test]
+    fn with_text_splits_on_newlines() {
+        let c = Content::with_text("hello\nworld\nfoo");
+        assert_eq!(c.line_count(), 3);
+        assert_eq!(c.line(0), Some("hello"));
+        assert_eq!(c.line(1), Some("world"));
+        assert_eq!(c.line(2), Some("foo"));
+    }
+
+    #[test]
+    fn with_text_trailing_newline() {
+        let c = Content::with_text("hello\n");
+        assert_eq!(c.line_count(), 2);
+        assert_eq!(c.line(0), Some("hello"));
+        assert_eq!(c.line(1), Some(""));
+    }
+
+    #[test]
+    fn with_text_empty_string() {
+        let c = Content::with_text("");
+        assert_eq!(c.line_count(), 1);
+        assert_eq!(c.line(0), Some(""));
+    }
+
+    // --- Insert ---
+
+    #[test]
+    fn insert_char_advances_cursor() {
+        let mut c = Content::new();
+        c.perform(Action::Insert('a'));
+        assert_eq!(c.line(0), Some("a"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 1 });
+    }
+
+    #[test]
+    fn insert_multiple_chars() {
+        let mut c = Content::new();
+        c.perform(Action::Insert('h'));
+        c.perform(Action::Insert('i'));
+        assert_eq!(c.line(0), Some("hi"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 2 });
+    }
+
+    #[test]
+    fn insert_at_middle_of_line() {
+        let mut c = Content::with_text("ac");
+        c.perform(Action::Click { line: 0, offset: 1 });
+        c.perform(Action::Insert('b'));
+        assert_eq!(c.line(0), Some("abc"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 2 });
+    }
+
+    #[test]
+    fn insert_newline_acts_as_enter() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Click { line: 0, offset: 5 });
+        c.perform(Action::Insert('\n'));
+        assert_eq!(c.line_count(), 2);
+        assert_eq!(c.line(0), Some("hello"));
+        assert_eq!(c.line(1), Some(""));
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 0 });
+    }
+
+    #[test]
+    fn insert_unicode_char() {
+        let mut c = Content::new();
+        c.perform(Action::Insert('\u{00e9}')); // e-acute (2 bytes)
+        assert_eq!(c.line(0), Some("\u{00e9}"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 2 });
+    }
+
+    // --- Delete ---
+
+    #[test]
+    fn delete_at_middle_of_line() {
+        let mut c = Content::with_text("abc");
+        c.perform(Action::Click { line: 0, offset: 1 });
+        c.perform(Action::Delete);
+        assert_eq!(c.line(0), Some("ac"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 1 });
+    }
+
+    #[test]
+    fn delete_at_end_of_line_joins_lines() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click { line: 0, offset: 5 });
+        c.perform(Action::Delete);
+        assert_eq!(c.line_count(), 1);
+        assert_eq!(c.line(0), Some("helloworld"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 5 });
+    }
+
+    #[test]
+    fn delete_at_end_of_last_line_is_noop() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Click { line: 0, offset: 5 });
+        c.perform(Action::Delete);
+        assert_eq!(c.line(0), Some("hello"));
+    }
+
+    // --- Backspace ---
+
+    #[test]
+    fn backspace_at_middle_of_line() {
+        let mut c = Content::with_text("abc");
+        c.perform(Action::Click { line: 0, offset: 2 });
+        c.perform(Action::Backspace);
+        assert_eq!(c.line(0), Some("ac"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 1 });
+    }
+
+    #[test]
+    fn backspace_at_start_of_line_joins_with_previous() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click { line: 1, offset: 0 });
+        c.perform(Action::Backspace);
+        assert_eq!(c.line_count(), 1);
+        assert_eq!(c.line(0), Some("helloworld"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 5 });
+    }
+
+    #[test]
+    fn backspace_at_start_of_first_line_is_noop() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Backspace);
+        assert_eq!(c.line(0), Some("hello"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 0 });
+    }
+
+    #[test]
+    fn backspace_unicode_char() {
+        let mut c = Content::with_text("caf\u{00e9}");
+        c.perform(Action::Click { line: 0, offset: 5 }); // after the e-acute (2 bytes)
+        c.perform(Action::Backspace);
+        assert_eq!(c.line(0), Some("caf"));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 3 });
+    }
+
+    // --- Enter ---
+
+    #[test]
+    fn enter_splits_line_at_cursor() {
+        let mut c = Content::with_text("helloworld");
+        c.perform(Action::Click { line: 0, offset: 5 });
+        c.perform(Action::Enter);
+        assert_eq!(c.line_count(), 2);
+        assert_eq!(c.line(0), Some("hello"));
+        assert_eq!(c.line(1), Some("world"));
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 0 });
+    }
+
+    #[test]
+    fn enter_at_start_of_line() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Enter);
+        assert_eq!(c.line_count(), 2);
+        assert_eq!(c.line(0), Some(""));
+        assert_eq!(c.line(1), Some("hello"));
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 0 });
+    }
+
+    #[test]
+    fn enter_at_end_of_line() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Click { line: 0, offset: 5 });
+        c.perform(Action::Enter);
+        assert_eq!(c.line_count(), 2);
+        assert_eq!(c.line(0), Some("hello"));
+        assert_eq!(c.line(1), Some(""));
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 0 });
+    }
+
+    // --- Move Left ---
+
+    #[test]
+    fn move_left_within_line() {
+        let mut c = Content::with_text("abc");
+        c.perform(Action::Click { line: 0, offset: 2 });
+        c.perform(Action::Move(Motion::Left));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 1 });
+    }
+
+    #[test]
+    fn move_left_wraps_to_previous_line() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click { line: 1, offset: 0 });
+        c.perform(Action::Move(Motion::Left));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 5 });
+    }
+
+    #[test]
+    fn move_left_at_document_start_is_noop() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Move(Motion::Left));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 0 });
+    }
+
+    // --- Move Right ---
+
+    #[test]
+    fn move_right_within_line() {
+        let mut c = Content::with_text("abc");
+        c.perform(Action::Move(Motion::Right));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 1 });
+    }
+
+    #[test]
+    fn move_right_wraps_to_next_line() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click { line: 0, offset: 5 });
+        c.perform(Action::Move(Motion::Right));
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 0 });
+    }
+
+    #[test]
+    fn move_right_at_document_end_is_noop() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Click { line: 0, offset: 5 });
+        c.perform(Action::Move(Motion::Right));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 5 });
+    }
+
+    // --- Move Up ---
+
+    #[test]
+    fn move_up_preserves_offset() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click { line: 1, offset: 3 });
+        c.perform(Action::Move(Motion::Up));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 3 });
+    }
+
+    #[test]
+    fn move_up_clamps_offset_to_shorter_line() {
+        let mut c = Content::with_text("hi\nhello");
+        c.perform(Action::Click { line: 1, offset: 4 });
+        c.perform(Action::Move(Motion::Up));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 2 }); // "hi" has len 2
+    }
+
+    #[test]
+    fn move_up_at_first_line_is_noop() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click { line: 0, offset: 3 });
+        c.perform(Action::Move(Motion::Up));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 3 });
+    }
+
+    // --- Move Down ---
+
+    #[test]
+    fn move_down_preserves_offset() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click { line: 0, offset: 3 });
+        c.perform(Action::Move(Motion::Down));
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 3 });
+    }
+
+    #[test]
+    fn move_down_clamps_offset_to_shorter_line() {
+        let mut c = Content::with_text("hello\nhi");
+        c.perform(Action::Click { line: 0, offset: 4 });
+        c.perform(Action::Move(Motion::Down));
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 2 }); // "hi" has len 2
+    }
+
+    #[test]
+    fn move_down_at_last_line_is_noop() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click { line: 1, offset: 3 });
+        c.perform(Action::Move(Motion::Down));
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 3 });
+    }
+
+    // --- Home / End ---
+
+    #[test]
+    fn home_moves_to_start_of_line() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Click { line: 0, offset: 3 });
+        c.perform(Action::Move(Motion::Home));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 0 });
+    }
+
+    #[test]
+    fn end_moves_to_end_of_line() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Move(Motion::End));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 5 });
+    }
+
+    // --- Click ---
+
+    #[test]
+    fn click_sets_cursor() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click { line: 1, offset: 3 });
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 3 });
+    }
+
+    #[test]
+    fn click_clamps_line_to_last() {
+        let mut c = Content::with_text("hello\nworld");
+        c.perform(Action::Click {
+            line: 99,
+            offset: 0,
+        });
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 0 });
+    }
+
+    #[test]
+    fn click_clamps_offset_to_line_length() {
+        let mut c = Content::with_text("hi");
+        c.perform(Action::Click {
+            line: 0,
+            offset: 99,
+        });
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 2 });
+    }
+
+    #[test]
+    fn click_clamps_both_line_and_offset() {
+        let mut c = Content::with_text("ab\ncd");
+        c.perform(Action::Click {
+            line: 99,
+            offset: 99,
+        });
+        assert_eq!(c.cursor(), Cursor { line: 1, offset: 2 });
+    }
+
+    // --- text() round-trip ---
+
+    #[test]
+    fn text_round_trips_single_line() {
+        let c = Content::with_text("hello");
+        assert_eq!(c.text(), "hello");
+    }
+
+    #[test]
+    fn text_round_trips_multi_line() {
+        let input = "hello\nworld\nfoo";
+        let c = Content::with_text(input);
+        assert_eq!(c.text(), input);
+    }
+
+    #[test]
+    fn text_after_edits() {
+        let mut c = Content::with_text("hello");
+        c.perform(Action::Click { line: 0, offset: 5 });
+        c.perform(Action::Enter);
+        c.perform(Action::Insert('w'));
+        c.perform(Action::Insert('o'));
+        c.perform(Action::Insert('r'));
+        c.perform(Action::Insert('l'));
+        c.perform(Action::Insert('d'));
+        assert_eq!(c.text(), "hello\nworld");
+    }
+
+    // --- line() out of bounds ---
+
+    #[test]
+    fn line_out_of_bounds_returns_none() {
+        let c = Content::with_text("hello");
+        assert_eq!(c.line(1), None);
+    }
+
+    // --- Default trait ---
+
+    #[test]
+    fn default_is_same_as_new() {
+        let c: Content = Content::default();
+        assert_eq!(c.line_count(), 1);
+        assert_eq!(c.line(0), Some(""));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 0 });
+    }
+
+    // --- Unicode movement ---
+
+    #[test]
+    fn move_right_over_multibyte_char() {
+        let mut c = Content::with_text("caf\u{00e9}!");
+        c.perform(Action::Click { line: 0, offset: 3 }); // before e-acute
+        c.perform(Action::Move(Motion::Right));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 5 }); // e-acute is 2 bytes
+    }
+
+    #[test]
+    fn move_left_over_multibyte_char() {
+        let mut c = Content::with_text("caf\u{00e9}!");
+        c.perform(Action::Click { line: 0, offset: 5 }); // after e-acute
+        c.perform(Action::Move(Motion::Left));
+        assert_eq!(c.cursor(), Cursor { line: 0, offset: 3 }); // before e-acute
+    }
+}
