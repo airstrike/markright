@@ -157,7 +157,7 @@ where
     fn build_paragraphs(&self, renderer: &Renderer, bounds_width: f32) -> Vec<Renderer::Paragraph> {
         let template = self.text_template(renderer, bounds_width);
         let base_font = self.effective_font(renderer);
-        let active_line = self.content.cursor().line;
+        let active_line = self.content.cursor().0;
 
         let mut in_code_block = false;
         let mut paragraphs = Vec::with_capacity(self.content.line_count());
@@ -311,7 +311,7 @@ where
 
             // Build paragraphs for all lines
             state.paragraphs = self.build_paragraphs(renderer, content_width);
-            state.last_active_line = Some(self.content.cursor().line);
+            state.last_active_line = Some(self.content.cursor().0);
 
             // Sum up paragraph heights for total content height
             let total_height: f32 = state.paragraphs.iter().map(|p| p.min_bounds().height).sum();
@@ -340,7 +340,7 @@ where
         renderer.start_layer(bounds);
 
         let text_color = style.text_color;
-        let cursor_pos = self.content.cursor();
+        let (cursor_line, cursor_offset) = self.content.cursor();
         let text_size = self.effective_size(renderer);
         let line_height_px = self.line_height.to_absolute(text_size).0;
 
@@ -354,9 +354,7 @@ where
             renderer.fill_paragraph(paragraph, position, text_color, *viewport);
 
             // Draw cursor on active line when focused
-            if state.focus && i == cursor_pos.line {
-                let cursor_offset = cursor_pos.offset;
-
+            if state.focus && i == cursor_line {
                 // Active line shows raw text, so cursor_offset is a raw byte offset.
                 if let Some(grapheme_point) = paragraph.grapheme_position(0, cursor_offset) {
                     let cursor_x = position.x + grapheme_point.x;
@@ -415,7 +413,7 @@ where
                     // Find which line was clicked by walking paragraph heights
                     let mut y_acc = self.padding.top;
                     let mut target_line = state.paragraphs.len().saturating_sub(1);
-                    let cursor_line = self.content.cursor().line;
+                    let cursor_line = self.content.cursor().0;
 
                     for (i, paragraph) in state.paragraphs.iter().enumerate() {
                         let para_height = paragraph.min_bounds().height;

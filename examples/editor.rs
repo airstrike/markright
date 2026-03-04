@@ -76,8 +76,8 @@ Try editing this text! You can use:
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let cursor = self.content.cursor();
-        let status = text(format!("Ln {}, Col {}", cursor.line + 1, cursor.offset + 1)).size(12);
+        let (cursor_line, cursor_col) = self.content.cursor();
+        let status = text(format!("Ln {}, Col {}", cursor_line + 1, cursor_col + 1)).size(12);
 
         let editor = markright::editor(&self.content)
             .on_action(Message::Edit)
