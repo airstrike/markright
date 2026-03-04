@@ -40,6 +40,7 @@ struct State<P: text::Paragraph> {
     paragraphs: Vec<P>,
     focus: bool,
     last_active_line: Option<usize>,
+    scroll_offset: f32,
 }
 
 impl<P: text::Paragraph> Default for State<P> {
@@ -48,6 +49,7 @@ impl<P: text::Paragraph> Default for State<P> {
             paragraphs: Vec::new(),
             focus: false,
             last_active_line: None,
+            scroll_offset: 0.0,
         }
     }
 }
@@ -75,7 +77,7 @@ where
             size: None,
             line_height: text::LineHeight::default(),
             width: Length::Fill,
-            height: Length::Shrink,
+            height: Length::Fill,
             padding: Padding::new(5.0),
             _theme: std::marker::PhantomData,
         }
@@ -183,7 +185,8 @@ where
                     );
                     paragraphs.push(para);
                 } else {
-                    let iced_spans = build_iced_spans(&parsed, base_font);
+                    let effective_size = self.effective_size(renderer);
+                    let iced_spans = build_iced_spans(&parsed, base_font, effective_size);
                     let para = Renderer::Paragraph::with_spans(
                         template.with_content(iced_spans.as_slice()),
                     );
@@ -199,8 +202,13 @@ where
 /// Convert a parsed line into a vec of iced text spans.
 ///
 /// Gaps between parse spans get default styling. Each parse span
-/// gets font/color adjusted based on its style.
-fn build_iced_spans<'a>(parsed: &'a parse::Line, base_font: Font) -> Vec<text::Span<'a, (), Font>> {
+/// gets font/color adjusted based on its style. `effective_size` is
+/// the widget's resolved text size, used to scale heading spans.
+fn build_iced_spans<'a>(
+    parsed: &'a parse::Line,
+    base_font: Font,
+    effective_size: Pixels,
+) -> Vec<text::Span<'a, (), Font>> {
     let display = &parsed.display;
     let mut spans = Vec::new();
     let mut pos = 0;
@@ -239,7 +247,7 @@ fn build_iced_spans<'a>(parsed: &'a parse::Line, base_font: Font) -> Vec<text::S
                 _ => 1.0,
             };
             if scale > 1.0 {
-                iced_span = iced_span.size(Pixels(16.0 * scale));
+                iced_span = iced_span.size(Pixels(effective_size.0 * scale));
             }
         }
 
@@ -316,10 +324,30 @@ where
             // Sum up paragraph heights for total content height
             let total_height: f32 = state.paragraphs.iter().map(|p| p.min_bounds().height).sum();
 
-            Size::new(
-                max_width,
-                total_height + self.padding.top + self.padding.bottom,
-            )
+            // Use the height allocated by the layout system. When height is
+            // Length::Fill the max height is the available space; when
+            // Length::Shrink the max is unconstrained and we use content height.
+            let allocated_height = limits
+                .max()
+                .height
+                .min(total_height + self.padding.top + self.padding.bottom);
+
+            // Clamp scroll offset to valid range
+            let visible_height = allocated_height - self.padding.top - self.padding.bottom;
+            let max_scroll = (total_height - visible_height).max(0.0);
+            state.scroll_offset = state.scroll_offset.clamp(0.0, max_scroll);
+
+            // Auto-scroll to keep the cursor line visible
+            let cursor_line = self.content.cursor().0;
+            let layout_bounds = Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width: max_width,
+                height: allocated_height,
+            };
+            scroll_cursor_into_view(state, cursor_line, layout_bounds, self.padding);
+
+            Size::new(max_width, allocated_height)
         })
     }
 
@@ -344,10 +372,26 @@ where
         let text_size = self.effective_size(renderer);
         let line_height_px = self.line_height.to_absolute(text_size).0;
 
-        let mut y = bounds.y + self.padding.top;
+        let visible_top = bounds.y + self.padding.top;
+        let visible_bottom = bounds.y + bounds.height - self.padding.bottom;
+
+        // Start Y at the content origin, offset by scroll position
+        let mut y = bounds.y + self.padding.top - state.scroll_offset;
 
         for (i, paragraph) in state.paragraphs.iter().enumerate() {
             let para_height = paragraph.min_bounds().height;
+
+            // Skip paragraphs entirely above the visible area
+            if y + para_height < visible_top {
+                y += para_height;
+                continue;
+            }
+
+            // Stop once we're entirely below the visible area
+            if y > visible_bottom {
+                break;
+            }
+
             let position = Point::new(bounds.x + self.padding.left, y);
 
             // Draw the paragraph text
@@ -405,10 +449,31 @@ where
         };
 
         match event {
+            // --- Mouse wheel: scroll content ---
+            Event::Mouse(mouse::Event::WheelScrolled { delta }) if cursor.is_over(bounds) => {
+                let scroll_amount = match delta {
+                    mouse::ScrollDelta::Lines { y, .. } => -y * 20.0,
+                    mouse::ScrollDelta::Pixels { y, .. } => -y,
+                };
+
+                let total_height: f32 =
+                    state.paragraphs.iter().map(|p| p.min_bounds().height).sum();
+                let visible_height = bounds.height - self.padding.top - self.padding.bottom;
+                let max_scroll = (total_height - visible_height).max(0.0);
+
+                state.scroll_offset = (state.scroll_offset + scroll_amount).clamp(0.0, max_scroll);
+
+                shell.capture_event();
+                shell.request_redraw();
+            }
+
             // --- Mouse click: focus + position cursor ---
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 if let Some(click_pos) = cursor.position_in(bounds) {
                     state.focus = true;
+
+                    // Account for scroll offset when determining which line was clicked
+                    let scrolled_y = click_pos.y + state.scroll_offset;
 
                     // Find which line was clicked by walking paragraph heights
                     let mut y_acc = self.padding.top;
@@ -417,7 +482,7 @@ where
 
                     for (i, paragraph) in state.paragraphs.iter().enumerate() {
                         let para_height = paragraph.min_bounds().height;
-                        if click_pos.y < y_acc + para_height {
+                        if scrolled_y < y_acc + para_height {
                             target_line = i;
                             break;
                         }
@@ -426,7 +491,7 @@ where
 
                     // Determine character offset via hit_test
                     let local_point =
-                        Point::new(click_pos.x - self.padding.left, click_pos.y - y_acc);
+                        Point::new(click_pos.x - self.padding.left, scrolled_y - y_acc);
 
                     let raw_offset = if let Some(paragraph) = state.paragraphs.get(target_line) {
                         if let Some(hit) = paragraph.hit_test(local_point) {
@@ -538,6 +603,51 @@ where
             mouse::Interaction::None
         }
     }
+}
+
+/// Adjust scroll offset so the cursor line is visible within the viewport.
+///
+/// Computes the Y range of the cursor's paragraph and scrolls up or down
+/// as needed to keep it fully on screen.
+fn scroll_cursor_into_view<P: text::Paragraph>(
+    state: &mut State<P>,
+    cursor_line: usize,
+    bounds: Rectangle,
+    padding: Padding,
+) {
+    let visible_height = bounds.height - padding.top - padding.bottom;
+    if visible_height <= 0.0 {
+        return;
+    }
+
+    // Compute Y position of the cursor line's paragraph
+    let mut cursor_y = 0.0_f32;
+    let mut cursor_para_height = 0.0_f32;
+    for (i, paragraph) in state.paragraphs.iter().enumerate() {
+        let h = paragraph.min_bounds().height;
+        if i == cursor_line {
+            cursor_para_height = h;
+            break;
+        }
+        cursor_y += h;
+    }
+
+    let cursor_bottom = cursor_y + cursor_para_height;
+
+    // If cursor is above the visible area, scroll up
+    if cursor_y < state.scroll_offset {
+        state.scroll_offset = cursor_y;
+    }
+
+    // If cursor is below the visible area, scroll down
+    if cursor_bottom > state.scroll_offset + visible_height {
+        state.scroll_offset = cursor_bottom - visible_height;
+    }
+
+    // Clamp to valid range
+    let total_height: f32 = state.paragraphs.iter().map(|p| p.min_bounds().height).sum();
+    let max_scroll = (total_height - visible_height).max(0.0);
+    state.scroll_offset = state.scroll_offset.clamp(0.0, max_scroll);
 }
 
 /// Convert a display-text byte offset to a raw-text byte offset for a given line.
