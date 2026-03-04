@@ -2,6 +2,8 @@
 
 use std::ops::Range;
 
+use iced_graphics::text::cosmic_text;
+
 /// Result of parsing a single markdown line.
 #[derive(Debug, Clone)]
 pub struct Line {
@@ -443,6 +445,109 @@ fn find_closing_delimiter(bytes: &[u8], start: usize, ch: u8, count: usize) -> O
         }
     }
     None
+}
+
+/// Convert parsed spans to cosmic-text `AttrsList` for display text rendering.
+///
+/// Applies bold, italic, monospace, color, and heading-scaled font size
+/// based on span styles. The returned list covers the display string
+/// produced by `parse_line`.
+pub fn to_display_attrs(spans: &[Span], base_size: f32) -> cosmic_text::AttrsList {
+    let base = cosmic_text::Attrs::new();
+    let mut list = cosmic_text::AttrsList::new(&base);
+
+    for span in spans {
+        let mut attrs = base.clone();
+
+        if span.style.bold || span.style.heading.is_some() {
+            attrs = attrs.weight(cosmic_text::Weight::BOLD);
+        }
+        if span.style.italic {
+            attrs = attrs.style(cosmic_text::Style::Italic);
+        }
+        if span.style.code {
+            attrs = attrs
+                .family(cosmic_text::Family::Monospace)
+                .color(cosmic_text::Color::rgb(153, 77, 77));
+        }
+        if let Some(level) = span.style.heading {
+            attrs = attrs.color(cosmic_text::Color::rgb(26, 26, 128));
+            let scale = match level {
+                1 => 2.0_f32,
+                2 => 1.5,
+                3 => 1.25,
+                4 => 1.1,
+                _ => 1.0,
+            };
+            if scale > 1.0 {
+                attrs = attrs.metrics(cosmic_text::Metrics::new(
+                    base_size * scale,
+                    base_size * scale * 1.2,
+                ));
+            }
+        }
+
+        list.add_span(span.range.clone(), &attrs);
+    }
+
+    list
+}
+
+/// Create syntax-highlight colored `AttrsList` for raw text display on the active line.
+///
+/// Uses the offset map to locate markdown markers in the raw text and
+/// colors them differently from content text, giving the user a visual
+/// cue about which characters are syntax vs. content.
+pub fn to_syntax_attrs(raw: &str, spans: &[Span], offsets: &OffsetMap) -> cosmic_text::AttrsList {
+    let base = cosmic_text::Attrs::new();
+    let mut list = cosmic_text::AttrsList::new(&base);
+
+    // Color for markdown syntax markers (dimmed gray)
+    let marker_color = cosmic_text::Color::rgb(140, 140, 140);
+
+    // We look at the offset map entries to find marker regions.
+    // Marker regions are where raw bytes are consumed but no display bytes
+    // are produced (i.e. consecutive entries with the same display offset
+    // but advancing raw offset).
+    let entries = &offsets.entries;
+    for window in entries.windows(2) {
+        let (r0, d0) = window[0];
+        let (r1, d1) = window[1];
+        // A marker region: raw advances but display does not
+        if r1 > r0 && d1 == d0 && r1 <= raw.len() {
+            list.add_span(r0..r1, &base.clone().color(marker_color));
+        }
+    }
+
+    // Color content regions based on their style
+    for span in spans {
+        // Convert display range to raw range
+        let raw_start = offsets.display_to_raw(span.range.start);
+        let raw_end = offsets.display_to_raw(span.range.end);
+        if raw_start >= raw_end || raw_end > raw.len() {
+            continue;
+        }
+
+        let mut attrs = base.clone();
+        if span.style.bold || span.style.heading.is_some() {
+            attrs = attrs.weight(cosmic_text::Weight::BOLD);
+        }
+        if span.style.italic {
+            attrs = attrs.style(cosmic_text::Style::Italic);
+        }
+        if span.style.code {
+            attrs = attrs
+                .family(cosmic_text::Family::Monospace)
+                .color(cosmic_text::Color::rgb(153, 77, 77));
+        }
+        if span.style.heading.is_some() {
+            attrs = attrs.color(cosmic_text::Color::rgb(26, 26, 128));
+        }
+
+        list.add_span(raw_start..raw_end, &attrs);
+    }
+
+    list
 }
 
 #[cfg(test)]
