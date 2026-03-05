@@ -1,7 +1,6 @@
-// WYSIWYG markdown editor widget for iced.
+// WYSIWYG block-based markdown editor widget for iced.
 
-use crate::content;
-use crate::parse;
+use crate::document::{self, BlockKind, SpanStyle};
 
 use iced_core::alignment;
 use iced_core::keyboard;
@@ -12,21 +11,46 @@ use iced_core::text;
 use iced_core::text::Paragraph as _;
 use iced_core::widget::tree;
 use iced_core::{
-    Background, Color, Element, Event, Font, Layout, Length, Padding, Pixels, Point, Rectangle,
-    Shadow, Shell, Size, Widget,
+    Background, Border, Color, Element, Event, Font, Layout, Length, Padding, Pixels, Point,
+    Rectangle, Shadow, Shell, Size, Widget,
 };
 
-/// A WYSIWYG markdown editor widget.
+/// Action that can be performed on the document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Action {
+    Insert(char),
+    Delete,
+    Backspace,
+    Enter,
+    Move(Motion),
+    Click { block: usize, offset: usize },
+}
+
+/// Cursor motion direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Motion {
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+}
+
+/// A WYSIWYG block-based markdown editor widget.
 ///
-/// The active line (where the cursor sits) shows raw markdown text.
-/// All other lines show formatted display text with markers hidden.
+/// The active block (where the cursor sits) shows raw markdown text.
+/// All other blocks show formatted display text with markers hidden.
 pub struct Editor<'a, Message, Theme, Renderer>
 where
     Renderer: text::Renderer,
 {
-    content: &'a content::Content,
-    on_action: Option<Box<dyn Fn(content::Action) -> Message + 'a>>,
+    document: &'a document::Document,
+    on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
     font: Option<Renderer::Font>,
+    monospace_font: Option<Renderer::Font>,
     size: Option<Pixels>,
     line_height: text::LineHeight,
     width: Length,
@@ -37,10 +61,17 @@ where
 
 /// Internal widget state, stored in the iced widget tree.
 struct State<P: text::Paragraph> {
-    paragraphs: Vec<P>,
+    paragraphs: Vec<BlockLayout<P>>,
     focus: bool,
-    last_active_line: Option<usize>,
     scroll_offset: f32,
+}
+
+/// Layout information for a single block.
+struct BlockLayout<P: text::Paragraph> {
+    paragraph: P,
+    kind: BlockKind,
+    y_offset: f32,
+    height: f32,
 }
 
 impl<P: text::Paragraph> Default for State<P> {
@@ -48,32 +79,32 @@ impl<P: text::Paragraph> Default for State<P> {
         Self {
             paragraphs: Vec::new(),
             focus: false,
-            last_active_line: None,
             scroll_offset: 0.0,
         }
     }
 }
 
-/// Create an [`Editor`] widget for the given content.
+/// Create an [`Editor`] widget for the given document.
 pub fn editor<'a, Message, Theme, Renderer>(
-    content: &'a content::Content,
+    document: &'a document::Document,
 ) -> Editor<'a, Message, Theme, Renderer>
 where
     Renderer: text::Renderer<Font = Font>,
 {
-    Editor::new(content)
+    Editor::new(document)
 }
 
 impl<'a, Message, Theme, Renderer> Editor<'a, Message, Theme, Renderer>
 where
     Renderer: text::Renderer<Font = Font>,
 {
-    /// Create a new editor widget referencing the given content.
-    pub fn new(content: &'a content::Content) -> Self {
+    /// Create a new editor widget referencing the given document.
+    pub fn new(document: &'a document::Document) -> Self {
         Self {
-            content,
+            document,
             on_action: None,
             font: None,
+            monospace_font: None,
             size: None,
             line_height: text::LineHeight::default(),
             width: Length::Fill,
@@ -84,7 +115,7 @@ where
     }
 
     /// Set the callback for editor actions.
-    pub fn on_action(mut self, f: impl Fn(content::Action) -> Message + 'a) -> Self {
+    pub fn on_action(mut self, f: impl Fn(Action) -> Message + 'a) -> Self {
         self.on_action = Some(Box::new(f));
         self
     }
@@ -92,6 +123,12 @@ where
     /// Set the font used for text rendering.
     pub fn font(mut self, font: impl Into<Renderer::Font>) -> Self {
         self.font = Some(font.into());
+        self
+    }
+
+    /// Set the monospace font used for code blocks and inline code.
+    pub fn monospace_font(mut self, font: impl Into<Renderer::Font>) -> Self {
+        self.monospace_font = Some(font.into());
         self
     }
 
@@ -130,6 +167,15 @@ where
         self.font.unwrap_or_else(|| renderer.default_font())
     }
 
+    /// Resolve the effective monospace font.
+    fn effective_monospace_font(&self, renderer: &Renderer) -> Font {
+        self.monospace_font.unwrap_or_else(|| {
+            let mut font = renderer.default_font();
+            font.family = iced_core::font::Family::Monospace;
+            font
+        })
+    }
+
     /// Resolve the effective text size for this widget.
     fn effective_size(&self, renderer: &Renderer) -> Pixels {
         self.size.unwrap_or_else(|| renderer.default_size())
@@ -152,115 +198,369 @@ where
         }
     }
 
-    /// Build paragraphs for all lines in the content.
+    /// Build paragraphs for all blocks in the document.
     ///
-    /// The active line (cursor line) is rendered as raw text.
-    /// Other lines are rendered as formatted spans with markers hidden.
-    fn build_paragraphs(&self, renderer: &Renderer, bounds_width: f32) -> Vec<Renderer::Paragraph> {
+    /// The active block is rendered as raw text (plain, no formatting).
+    /// Inactive blocks use their display cache for WYSIWYG formatting.
+    fn build_paragraphs(
+        &self,
+        renderer: &Renderer,
+        bounds_width: f32,
+    ) -> Vec<BlockLayout<Renderer::Paragraph>> {
         let template = self.text_template(renderer, bounds_width);
         let base_font = self.effective_font(renderer);
-        let active_line = self.content.cursor().0;
+        let mono_font = self.effective_monospace_font(renderer);
+        let effective_size = self.effective_size(renderer);
+        let active_block = self.document.active_block();
 
-        let mut in_code_block = false;
-        let mut paragraphs = Vec::with_capacity(self.content.line_count());
+        let mut layouts = Vec::with_capacity(self.document.block_count());
+        let mut y_offset = 0.0_f32;
 
-        for i in 0..self.content.line_count() {
-            let raw = self.content.line(i).unwrap_or("");
+        for i in 0..self.document.block_count() {
+            let Some(block) = self.document.block(i) else {
+                continue;
+            };
 
-            if i == active_line {
-                // Active line: show raw markdown text.
-                // Still track code block state for subsequent lines.
-                parse::parse_line(raw, &mut in_code_block);
+            if i == active_block {
+                // Active block: show raw markdown text, no formatting.
+                let para =
+                    Renderer::Paragraph::with_text(template.with_content(block.raw.as_str()));
+                let height = para.min_bounds().height;
 
-                let para = Renderer::Paragraph::with_text(template.with_content(raw));
-                paragraphs.push(para);
+                layouts.push(BlockLayout {
+                    paragraph: para,
+                    kind: block.kind.clone(),
+                    y_offset,
+                    height,
+                });
+
+                y_offset += height;
             } else {
-                // Non-active line: show formatted display text.
-                let parsed = parse::parse_line(raw, &mut in_code_block);
+                match &block.kind {
+                    BlockKind::ThematicBreak => {
+                        // ThematicBreak: render an empty paragraph, draw the line in draw().
+                        let para = Renderer::Paragraph::with_text(template.with_content(""));
+                        let height = 20.0; // Fixed height for thematic breaks.
 
-                if parsed.spans.is_empty() {
-                    // Plain text, no formatting
-                    let para = Renderer::Paragraph::with_text(
-                        template.with_content(parsed.display.as_str()),
-                    );
-                    paragraphs.push(para);
-                } else {
-                    let effective_size = self.effective_size(renderer);
-                    let iced_spans = build_iced_spans(&parsed, base_font, effective_size);
-                    let para = Renderer::Paragraph::with_spans(
-                        template.with_content(iced_spans.as_slice()),
-                    );
-                    paragraphs.push(para);
+                        layouts.push(BlockLayout {
+                            paragraph: para,
+                            kind: block.kind.clone(),
+                            y_offset,
+                            height,
+                        });
+
+                        y_offset += height;
+                    }
+                    BlockKind::CodeBlock(_) => {
+                        // CodeBlock: use display_cache content with monospace font.
+                        let display_text = block
+                            .display_cache
+                            .as_ref()
+                            .map(|c| c.display_text.as_str())
+                            .unwrap_or(block.raw.as_str());
+
+                        let code_size = Pixels(effective_size.0 * 0.9);
+                        let code_template = text::Text {
+                            font: mono_font,
+                            size: code_size,
+                            ..template
+                        };
+
+                        let para = Renderer::Paragraph::with_text(
+                            code_template.with_content(display_text),
+                        );
+                        // Add padding around the code block content.
+                        let content_height = para.min_bounds().height;
+                        let height = content_height + 16.0; // 8px top + 8px bottom padding
+
+                        layouts.push(BlockLayout {
+                            paragraph: para,
+                            kind: block.kind.clone(),
+                            y_offset,
+                            height,
+                        });
+
+                        y_offset += height;
+                    }
+                    BlockKind::Heading(level) => {
+                        let scale = heading_scale(*level);
+                        let heading_size = Pixels(effective_size.0 * scale);
+
+                        if let Some(cache) = &block.display_cache {
+                            if cache.spans.is_empty() {
+                                // No inline formatting, just bold heading text.
+                                let heading_font = Font {
+                                    weight: iced_core::font::Weight::Bold,
+                                    ..base_font
+                                };
+                                let heading_template = text::Text {
+                                    font: heading_font,
+                                    size: heading_size,
+                                    ..template
+                                };
+                                let para = Renderer::Paragraph::with_text(
+                                    heading_template.with_content(cache.display_text.as_str()),
+                                );
+                                let mut height = para.min_bounds().height;
+                                // H1 gets a bottom border, add space for it.
+                                if *level == 1 {
+                                    height += 4.0;
+                                }
+
+                                layouts.push(BlockLayout {
+                                    paragraph: para,
+                                    kind: block.kind.clone(),
+                                    y_offset,
+                                    height,
+                                });
+                                y_offset += height;
+                            } else {
+                                let iced_spans = build_heading_spans(
+                                    cache,
+                                    base_font,
+                                    mono_font,
+                                    heading_size,
+                                    *level,
+                                );
+                                let heading_template = text::Text {
+                                    size: heading_size,
+                                    ..template
+                                };
+                                let para = Renderer::Paragraph::with_spans(
+                                    heading_template.with_content(iced_spans.as_slice()),
+                                );
+                                let mut height = para.min_bounds().height;
+                                if *level == 1 {
+                                    height += 4.0;
+                                }
+
+                                layouts.push(BlockLayout {
+                                    paragraph: para,
+                                    kind: block.kind.clone(),
+                                    y_offset,
+                                    height,
+                                });
+                                y_offset += height;
+                            }
+                        } else {
+                            // No display cache, fall back to raw text.
+                            let heading_font = Font {
+                                weight: iced_core::font::Weight::Bold,
+                                ..base_font
+                            };
+                            let heading_template = text::Text {
+                                font: heading_font,
+                                size: heading_size,
+                                ..template
+                            };
+                            let para = Renderer::Paragraph::with_text(
+                                heading_template.with_content(block.raw.as_str()),
+                            );
+                            let mut height = para.min_bounds().height;
+                            if *level == 1 {
+                                height += 4.0;
+                            }
+
+                            layouts.push(BlockLayout {
+                                paragraph: para,
+                                kind: block.kind.clone(),
+                                y_offset,
+                                height,
+                            });
+                            y_offset += height;
+                        }
+                    }
+                    BlockKind::Paragraph => {
+                        if let Some(cache) = &block.display_cache {
+                            if cache.spans.is_empty() {
+                                let para = Renderer::Paragraph::with_text(
+                                    template.with_content(cache.display_text.as_str()),
+                                );
+                                let height = para.min_bounds().height;
+
+                                layouts.push(BlockLayout {
+                                    paragraph: para,
+                                    kind: block.kind.clone(),
+                                    y_offset,
+                                    height,
+                                });
+                                y_offset += height;
+                            } else {
+                                let iced_spans = build_paragraph_spans(
+                                    cache,
+                                    base_font,
+                                    mono_font,
+                                    effective_size,
+                                );
+                                let para = Renderer::Paragraph::with_spans(
+                                    template.with_content(iced_spans.as_slice()),
+                                );
+                                let height = para.min_bounds().height;
+
+                                layouts.push(BlockLayout {
+                                    paragraph: para,
+                                    kind: block.kind.clone(),
+                                    y_offset,
+                                    height,
+                                });
+                                y_offset += height;
+                            }
+                        } else {
+                            // No display cache, fall back to raw text.
+                            let para = Renderer::Paragraph::with_text(
+                                template.with_content(block.raw.as_str()),
+                            );
+                            let height = para.min_bounds().height;
+
+                            layouts.push(BlockLayout {
+                                paragraph: para,
+                                kind: block.kind.clone(),
+                                y_offset,
+                                height,
+                            });
+                            y_offset += height;
+                        }
+                    }
                 }
             }
         }
 
-        paragraphs
+        layouts
     }
 }
 
-/// Convert a parsed line into a vec of iced text spans.
-///
-/// Gaps between parse spans get default styling. Each parse span
-/// gets font/color adjusted based on its style. `effective_size` is
-/// the widget's resolved text size, used to scale heading spans.
-fn build_iced_spans<'a>(
-    parsed: &'a parse::Line,
+/// Return the font size scale factor for a heading level.
+fn heading_scale(level: u8) -> f32 {
+    match level {
+        1 => 2.0,
+        2 => 1.5,
+        3 => 1.25,
+        4..=6 => 1.1,
+        _ => 1.0,
+    }
+}
+
+/// Build iced text spans for a paragraph block's display cache.
+fn build_paragraph_spans<'a>(
+    cache: &'a document::DisplayCache,
     base_font: Font,
+    mono_font: Font,
     effective_size: Pixels,
 ) -> Vec<text::Span<'a, (), Font>> {
-    let display = &parsed.display;
+    build_inline_spans(cache, base_font, mono_font, effective_size, false)
+}
+
+/// Build iced text spans for a heading block's display cache.
+///
+/// All text in a heading gets bold weight. The size is set at the paragraph
+/// level via the template, so we only need to apply additional inline styles.
+fn build_heading_spans<'a>(
+    cache: &'a document::DisplayCache,
+    base_font: Font,
+    mono_font: Font,
+    _heading_size: Pixels,
+    _level: u8,
+) -> Vec<text::Span<'a, (), Font>> {
+    // For headings, the base font is always bold.
+    let heading_base = Font {
+        weight: iced_core::font::Weight::Bold,
+        ..base_font
+    };
+    let display = &cache.display_text;
     let mut spans = Vec::new();
     let mut pos = 0;
 
-    for parse_span in &parsed.spans {
-        // Gap before this span: unstyled text
-        if parse_span.range.start > pos {
-            spans.push(text::Span::new(&display[pos..parse_span.range.start]));
+    for inline_span in &cache.spans {
+        // Gap before this span: heading-styled (bold) text.
+        if inline_span.range.start > pos {
+            spans.push(text::Span::new(&display[pos..inline_span.range.start]).font(heading_base));
         }
 
-        let style = &parse_span.style;
-        let text_slice = &display[parse_span.range.clone()];
+        let style = &inline_span.style;
+        let text_slice = &display[inline_span.range.clone()];
 
         let mut iced_span = text::Span::new(text_slice);
 
-        // Build font based on style
-        let font = font_for_style(style, base_font);
+        // Build font: heading is always bold, inline styles add italic/monospace.
+        let font = font_for_heading_style(style, heading_base, mono_font);
+        iced_span = iced_span.font(font);
+
+        // Set color for code spans.
+        if style.code {
+            iced_span = iced_span.color(Color::from_rgb(0.6, 0.3, 0.3));
+        }
+
+        if style.strikethrough {
+            iced_span = iced_span.strikethrough(true);
+        }
+
+        spans.push(iced_span);
+        pos = inline_span.range.end;
+    }
+
+    // Trailing text.
+    if pos < display.len() {
+        spans.push(text::Span::new(&display[pos..]).font(heading_base));
+    }
+
+    // Ensure at least one span for paragraph height.
+    if display.is_empty() && spans.is_empty() {
+        spans.push(text::Span::new("").font(heading_base));
+    }
+
+    spans
+}
+
+/// Build iced text spans from a display cache's inline spans.
+///
+/// Used for paragraphs (and headings when `is_heading` is false).
+fn build_inline_spans<'a>(
+    cache: &'a document::DisplayCache,
+    base_font: Font,
+    mono_font: Font,
+    _effective_size: Pixels,
+    _is_heading: bool,
+) -> Vec<text::Span<'a, (), Font>> {
+    let display = &cache.display_text;
+    let mut spans = Vec::new();
+    let mut pos = 0;
+
+    for inline_span in &cache.spans {
+        // Gap before this span: unstyled text.
+        if inline_span.range.start > pos {
+            spans.push(text::Span::new(&display[pos..inline_span.range.start]));
+        }
+
+        let style = &inline_span.style;
+        let text_slice = &display[inline_span.range.clone()];
+
+        let mut iced_span = text::Span::new(text_slice);
+
+        // Build font based on style.
+        let font = font_for_style(style, base_font, mono_font);
         if font != base_font {
             iced_span = iced_span.font(font);
         }
 
-        // Set color based on style
+        // Set color for code spans.
         if style.code {
             iced_span = iced_span.color(Color::from_rgb(0.6, 0.3, 0.3));
-        } else if style.heading.is_some() {
-            iced_span = iced_span.color(Color::from_rgb(0.1, 0.1, 0.5));
         }
 
-        // Headings get larger size
-        if let Some(level) = style.heading {
-            let scale = match level {
-                1 => 2.0_f32,
-                2 => 1.5,
-                3 => 1.25,
-                4 => 1.1,
-                _ => 1.0,
-            };
-            if scale > 1.0 {
-                iced_span = iced_span.size(Pixels(effective_size.0 * scale));
-            }
+        if style.strikethrough {
+            iced_span = iced_span.strikethrough(true);
         }
 
         spans.push(iced_span);
-        pos = parse_span.range.end;
+        pos = inline_span.range.end;
     }
 
-    // Trailing unstyled text
+    // Trailing unstyled text.
     if pos < display.len() {
         spans.push(text::Span::new(&display[pos..]));
     }
 
-    // If display is empty, push at least one empty span so the paragraph has height
+    // Ensure at least one span for paragraph height.
     if display.is_empty() && spans.is_empty() {
         spans.push(text::Span::new(""));
     }
@@ -268,23 +568,39 @@ fn build_iced_spans<'a>(
     spans
 }
 
-/// Determine the font for a given parse style.
-fn font_for_style(style: &parse::Style, base: Font) -> Font {
-    let mut font = base;
+/// Determine the font for a given inline style in a paragraph.
+fn font_for_style(style: &SpanStyle, base: Font, mono: Font) -> Font {
+    if style.code {
+        return mono;
+    }
 
+    let mut font = base;
     if style.bold {
         font.weight = iced_core::font::Weight::Bold;
     }
     if style.italic {
         font.style = iced_core::font::Style::Italic;
     }
+    font
+}
+
+/// Determine the font for a given inline style within a heading.
+///
+/// Headings are always bold, so we start from a bold base. Inline bold is
+/// redundant but harmless; inline italic adds italic on top.
+fn font_for_heading_style(style: &SpanStyle, heading_base: Font, mono: Font) -> Font {
     if style.code {
-        font.family = iced_core::font::Family::Monospace;
-    }
-    if style.heading.is_some() {
-        font.weight = iced_core::font::Weight::Bold;
+        // Code in a heading: monospace but keep bold weight.
+        return Font {
+            weight: iced_core::font::Weight::Bold,
+            ..mono
+        };
     }
 
+    let mut font = heading_base;
+    if style.italic {
+        font.style = iced_core::font::Style::Italic;
+    }
     font
 }
 
@@ -317,35 +633,32 @@ where
             let max_width = limits.max().width;
             let content_width = max_width - self.padding.left - self.padding.right;
 
-            // Build paragraphs for all lines
+            // Build paragraphs for all blocks.
             state.paragraphs = self.build_paragraphs(renderer, content_width);
-            state.last_active_line = Some(self.content.cursor().0);
 
-            // Sum up paragraph heights for total content height
-            let total_height: f32 = state.paragraphs.iter().map(|p| p.min_bounds().height).sum();
+            // Sum up paragraph heights for total content height.
+            let total_height: f32 = state.paragraphs.iter().map(|bl| bl.height).sum();
 
-            // Use the height allocated by the layout system. When height is
-            // Length::Fill the max height is the available space; when
-            // Length::Shrink the max is unconstrained and we use content height.
+            // Use the height allocated by the layout system.
             let allocated_height = limits
                 .max()
                 .height
                 .min(total_height + self.padding.top + self.padding.bottom);
 
-            // Clamp scroll offset to valid range
+            // Clamp scroll offset to valid range.
             let visible_height = allocated_height - self.padding.top - self.padding.bottom;
             let max_scroll = (total_height - visible_height).max(0.0);
             state.scroll_offset = state.scroll_offset.clamp(0.0, max_scroll);
 
-            // Auto-scroll to keep the cursor line visible
-            let cursor_line = self.content.cursor().0;
+            // Auto-scroll to keep the cursor block visible.
+            let cursor_block = self.document.active_block();
             let layout_bounds = Rectangle {
                 x: 0.0,
                 y: 0.0,
                 width: max_width,
                 height: allocated_height,
             };
-            scroll_cursor_into_view(state, cursor_line, layout_bounds, self.padding);
+            scroll_cursor_into_view(state, cursor_block, layout_bounds, self.padding);
 
             Size::new(max_width, allocated_height)
         })
@@ -364,68 +677,139 @@ where
         let state = tree.state.downcast_ref::<State<Renderer::Paragraph>>();
         let bounds = layout.bounds();
 
-        // Clip drawing to widget bounds
+        // Clip drawing to widget bounds.
         renderer.start_layer(bounds);
 
         let text_color = style.text_color;
-        let (cursor_line, cursor_offset) = self.content.cursor();
+        let (cursor_block_idx, cursor_offset) = self.document.cursor();
         let text_size = self.effective_size(renderer);
         let line_height_px = self.line_height.to_absolute(text_size).0;
 
         let visible_top = bounds.y + self.padding.top;
         let visible_bottom = bounds.y + bounds.height - self.padding.bottom;
 
-        // Start Y at the content origin, offset by scroll position
-        let mut y = bounds.y + self.padding.top - state.scroll_offset;
+        for (i, bl) in state.paragraphs.iter().enumerate() {
+            // Y position of this block in widget coordinates.
+            let y = bounds.y + self.padding.top - state.scroll_offset + bl.y_offset;
 
-        for (i, paragraph) in state.paragraphs.iter().enumerate() {
-            let para_height = paragraph.min_bounds().height;
-
-            // Skip paragraphs entirely above the visible area
-            if y + para_height < visible_top {
-                y += para_height;
+            // Skip blocks entirely above the visible area.
+            if y + bl.height < visible_top {
                 continue;
             }
 
-            // Stop once we're entirely below the visible area
+            // Stop once we're entirely below the visible area.
             if y > visible_bottom {
                 break;
             }
 
-            let position = Point::new(bounds.x + self.padding.left, y);
+            let is_active = i == cursor_block_idx && state.focus;
 
-            // Draw the paragraph text
-            renderer.fill_paragraph(paragraph, position, text_color, *viewport);
-
-            // Draw cursor on active line when focused
-            if state.focus && i == cursor_line {
-                // Active line shows raw text, so cursor_offset is a raw byte offset.
-                if let Some(grapheme_point) = paragraph.grapheme_position(0, cursor_offset) {
-                    let cursor_x = position.x + grapheme_point.x;
-                    let cursor_y = position.y + grapheme_point.y;
-
-                    let cursor_height = line_height_px.max(text_size.0);
-
-                    let cursor_rect = Rectangle {
-                        x: cursor_x,
-                        y: cursor_y,
-                        width: 2.0,
-                        height: cursor_height,
+            match &bl.kind {
+                BlockKind::ThematicBreak if i != self.document.active_block() => {
+                    // Draw a horizontal rule line.
+                    let line_y = y + bl.height / 2.0;
+                    let line_rect = Rectangle {
+                        x: bounds.x + self.padding.left,
+                        y: line_y,
+                        width: bounds.width - self.padding.left - self.padding.right,
+                        height: 1.0,
                     };
-
                     renderer.fill_quad(
                         renderer::Quad {
-                            bounds: cursor_rect,
-                            border: iced_core::Border::default(),
+                            bounds: line_rect,
+                            border: Border::default(),
                             shadow: Shadow::default(),
                             snap: true,
                         },
-                        Background::Color(text_color),
+                        Background::Color(Color::from_rgb(0.8, 0.8, 0.8)),
                     );
+                }
+                BlockKind::CodeBlock(_) if i != self.document.active_block() => {
+                    // Draw code block background rectangle.
+                    let bg_rect = Rectangle {
+                        x: bounds.x + self.padding.left,
+                        y,
+                        width: bounds.width - self.padding.left - self.padding.right,
+                        height: bl.height,
+                    };
+                    renderer.fill_quad(
+                        renderer::Quad {
+                            bounds: bg_rect,
+                            border: Border {
+                                radius: 4.0.into(),
+                                ..Border::default()
+                            },
+                            shadow: Shadow::default(),
+                            snap: true,
+                        },
+                        Background::Color(Color::from_rgb(
+                            0xF5 as f32 / 255.0,
+                            0xF5 as f32 / 255.0,
+                            0xF5 as f32 / 255.0,
+                        )),
+                    );
+
+                    // Draw the code text with 8px internal padding.
+                    let text_position = Point::new(bounds.x + self.padding.left + 8.0, y + 8.0);
+                    renderer.fill_paragraph(&bl.paragraph, text_position, text_color, *viewport);
+                }
+                BlockKind::Heading(1) if i != self.document.active_block() => {
+                    // Draw heading text.
+                    let position = Point::new(bounds.x + self.padding.left, y);
+                    renderer.fill_paragraph(&bl.paragraph, position, text_color, *viewport);
+
+                    // Draw H1 bottom border line.
+                    let border_y = y + bl.height - 2.0;
+                    let border_rect = Rectangle {
+                        x: bounds.x + self.padding.left,
+                        y: border_y,
+                        width: bounds.width - self.padding.left - self.padding.right,
+                        height: 1.0,
+                    };
+                    renderer.fill_quad(
+                        renderer::Quad {
+                            bounds: border_rect,
+                            border: Border::default(),
+                            shadow: Shadow::default(),
+                            snap: true,
+                        },
+                        Background::Color(Color::from_rgb(0.85, 0.85, 0.85)),
+                    );
+                }
+                _ => {
+                    // Standard text rendering for paragraphs, headings, and active blocks.
+                    let position = Point::new(bounds.x + self.padding.left, y);
+                    renderer.fill_paragraph(&bl.paragraph, position, text_color, *viewport);
                 }
             }
 
-            y += para_height;
+            // Draw cursor on the active block when focused.
+            if is_active
+                && let Some(grapheme_point) = bl.paragraph.grapheme_position(0, cursor_offset)
+            {
+                let position = Point::new(bounds.x + self.padding.left, y);
+                let cursor_x = position.x + grapheme_point.x;
+                let cursor_y = position.y + grapheme_point.y;
+
+                let cursor_height = line_height_px.max(text_size.0);
+
+                let cursor_rect = Rectangle {
+                    x: cursor_x,
+                    y: cursor_y,
+                    width: 2.0,
+                    height: cursor_height,
+                };
+
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: cursor_rect,
+                        border: Border::default(),
+                        shadow: Shadow::default(),
+                        snap: true,
+                    },
+                    Background::Color(text_color),
+                );
+            }
         }
 
         renderer.end_layer();
@@ -449,15 +833,14 @@ where
         };
 
         match event {
-            // --- Mouse wheel: scroll content ---
+            // Mouse wheel: scroll content.
             Event::Mouse(mouse::Event::WheelScrolled { delta }) if cursor.is_over(bounds) => {
                 let scroll_amount = match delta {
                     mouse::ScrollDelta::Lines { y, .. } => -y * 20.0,
                     mouse::ScrollDelta::Pixels { y, .. } => -y,
                 };
 
-                let total_height: f32 =
-                    state.paragraphs.iter().map(|p| p.min_bounds().height).sum();
+                let total_height: f32 = state.paragraphs.iter().map(|bl| bl.height).sum();
                 let visible_height = bounds.height - self.padding.top - self.padding.bottom;
                 let max_scroll = (total_height - visible_height).max(0.0);
 
@@ -467,64 +850,75 @@ where
                 shell.request_redraw();
             }
 
-            // --- Mouse click: focus + position cursor ---
+            // Mouse click: focus + position cursor.
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 if let Some(click_pos) = cursor.position_in(bounds) {
                     state.focus = true;
 
-                    // Account for scroll offset when determining which line was clicked
-                    let scrolled_y = click_pos.y + state.scroll_offset;
+                    // Account for scroll offset when determining which block was clicked.
+                    let scrolled_y = click_pos.y - self.padding.top + state.scroll_offset;
 
-                    // Find which line was clicked by walking paragraph heights
-                    let mut y_acc = self.padding.top;
-                    let mut target_line = state.paragraphs.len().saturating_sub(1);
-                    let cursor_line = self.content.cursor().0;
+                    // Find which block was clicked by checking y_offset ranges.
+                    let mut target_block = state.paragraphs.len().saturating_sub(1);
 
-                    for (i, paragraph) in state.paragraphs.iter().enumerate() {
-                        let para_height = paragraph.min_bounds().height;
-                        if scrolled_y < y_acc + para_height {
-                            target_line = i;
+                    for (i, bl) in state.paragraphs.iter().enumerate() {
+                        if scrolled_y < bl.y_offset + bl.height {
+                            target_block = i;
                             break;
                         }
-                        y_acc += para_height;
                     }
 
-                    // Determine character offset via hit_test
-                    let local_point =
-                        Point::new(click_pos.x - self.padding.left, scrolled_y - y_acc);
+                    // Determine character offset via hit_test.
+                    let bl = &state.paragraphs[target_block];
 
-                    let raw_offset = if let Some(paragraph) = state.paragraphs.get(target_line) {
-                        if let Some(hit) = paragraph.hit_test(local_point) {
-                            let char_offset = hit.cursor();
+                    // Compute the local point relative to where the paragraph is drawn.
+                    let local_x = click_pos.x - self.padding.left;
+                    let local_y = scrolled_y - bl.y_offset;
 
-                            if target_line == cursor_line {
-                                // Active line shows raw text; offset is already raw
-                                char_offset
-                            } else {
-                                // Non-active line shows display text; convert to raw
-                                convert_display_to_raw(self.content, target_line, char_offset)
-                            }
-                        } else {
-                            // Click outside text; place at end of line
-                            self.content.line(target_line).unwrap_or("").len()
-                        }
+                    // Adjust for code block padding.
+                    let (adj_x, adj_y) = if matches!(bl.kind, BlockKind::CodeBlock(_))
+                        && target_block != self.document.active_block()
+                    {
+                        (local_x - 8.0, local_y - 8.0)
                     } else {
-                        0
+                        (local_x, local_y)
                     };
 
-                    shell.publish(on_action(content::Action::Click {
-                        line: target_line,
-                        offset: raw_offset,
+                    let local_point = Point::new(adj_x.max(0.0), adj_y.max(0.0));
+
+                    let offset = if let Some(hit) = bl.paragraph.hit_test(local_point) {
+                        hit.cursor()
+                    } else {
+                        // Click outside text; for active block use raw length,
+                        // for inactive we approximate with display text length.
+                        if target_block == self.document.active_block() {
+                            self.document
+                                .block(target_block)
+                                .map(|b| b.raw.len())
+                                .unwrap_or(0)
+                        } else {
+                            // When clicking an inactive block, offset will be within raw text
+                            // after the block becomes active. Place at end.
+                            self.document
+                                .block(target_block)
+                                .map(|b| b.raw.len())
+                                .unwrap_or(0)
+                        }
+                    };
+
+                    shell.publish(on_action(Action::Click {
+                        block: target_block,
+                        offset,
                     }));
                     shell.capture_event();
                     shell.request_redraw();
                 } else {
-                    // Click outside widget: lose focus
+                    // Click outside widget: lose focus.
                     state.focus = false;
                 }
             }
 
-            // --- Keyboard events when focused ---
+            // Keyboard events when focused.
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key,
                 text: key_text,
@@ -532,35 +926,23 @@ where
                 ..
             }) if state.focus => {
                 let action = match key {
-                    keyboard::Key::Named(Named::Backspace) => Some(content::Action::Backspace),
-                    keyboard::Key::Named(Named::Delete) => Some(content::Action::Delete),
-                    keyboard::Key::Named(Named::Enter) => Some(content::Action::Enter),
-                    keyboard::Key::Named(Named::ArrowLeft) => {
-                        Some(content::Action::Move(content::Motion::Left))
-                    }
-                    keyboard::Key::Named(Named::ArrowRight) => {
-                        Some(content::Action::Move(content::Motion::Right))
-                    }
-                    keyboard::Key::Named(Named::ArrowUp) => {
-                        Some(content::Action::Move(content::Motion::Up))
-                    }
-                    keyboard::Key::Named(Named::ArrowDown) => {
-                        Some(content::Action::Move(content::Motion::Down))
-                    }
-                    keyboard::Key::Named(Named::Home) => {
-                        Some(content::Action::Move(content::Motion::Home))
-                    }
-                    keyboard::Key::Named(Named::End) => {
-                        Some(content::Action::Move(content::Motion::End))
-                    }
+                    keyboard::Key::Named(Named::Backspace) => Some(Action::Backspace),
+                    keyboard::Key::Named(Named::Delete) => Some(Action::Delete),
+                    keyboard::Key::Named(Named::Enter) => Some(Action::Enter),
+                    keyboard::Key::Named(Named::ArrowLeft) => Some(Action::Move(Motion::Left)),
+                    keyboard::Key::Named(Named::ArrowRight) => Some(Action::Move(Motion::Right)),
+                    keyboard::Key::Named(Named::ArrowUp) => Some(Action::Move(Motion::Up)),
+                    keyboard::Key::Named(Named::ArrowDown) => Some(Action::Move(Motion::Down)),
+                    keyboard::Key::Named(Named::Home) => Some(Action::Move(Motion::Home)),
+                    keyboard::Key::Named(Named::End) => Some(Action::Move(Motion::End)),
                     _ => {
-                        // Text input: insert each character from the text field
+                        // Text input: insert each character from the text field.
                         if !modifiers.command() {
                             if let Some(txt) = key_text {
                                 let mut first_action = None;
                                 for ch in txt.chars() {
                                     if !ch.is_control() || ch == '\n' {
-                                        let a = content::Action::Insert(ch);
+                                        let a = Action::Insert(ch);
                                         if first_action.is_none() {
                                             first_action = Some(a);
                                         } else {
@@ -605,13 +987,10 @@ where
     }
 }
 
-/// Adjust scroll offset so the cursor line is visible within the viewport.
-///
-/// Computes the Y range of the cursor's paragraph and scrolls up or down
-/// as needed to keep it fully on screen.
+/// Adjust scroll offset so the cursor's block is visible within the viewport.
 fn scroll_cursor_into_view<P: text::Paragraph>(
     state: &mut State<P>,
-    cursor_line: usize,
+    cursor_block: usize,
     bounds: Rectangle,
     padding: Padding,
 ) {
@@ -620,53 +999,28 @@ fn scroll_cursor_into_view<P: text::Paragraph>(
         return;
     }
 
-    // Compute Y position of the cursor line's paragraph
-    let mut cursor_y = 0.0_f32;
-    let mut cursor_para_height = 0.0_f32;
-    for (i, paragraph) in state.paragraphs.iter().enumerate() {
-        let h = paragraph.min_bounds().height;
-        if i == cursor_line {
-            cursor_para_height = h;
-            break;
-        }
-        cursor_y += h;
-    }
+    // Find the cursor block's layout.
+    let Some(bl) = state.paragraphs.get(cursor_block) else {
+        return;
+    };
 
-    let cursor_bottom = cursor_y + cursor_para_height;
+    let cursor_y = bl.y_offset;
+    let cursor_bottom = cursor_y + bl.height;
 
-    // If cursor is above the visible area, scroll up
+    // If cursor block is above the visible area, scroll up.
     if cursor_y < state.scroll_offset {
         state.scroll_offset = cursor_y;
     }
 
-    // If cursor is below the visible area, scroll down
+    // If cursor block is below the visible area, scroll down.
     if cursor_bottom > state.scroll_offset + visible_height {
         state.scroll_offset = cursor_bottom - visible_height;
     }
 
-    // Clamp to valid range
-    let total_height: f32 = state.paragraphs.iter().map(|p| p.min_bounds().height).sum();
+    // Clamp to valid range.
+    let total_height: f32 = state.paragraphs.iter().map(|bl| bl.height).sum();
     let max_scroll = (total_height - visible_height).max(0.0);
     state.scroll_offset = state.scroll_offset.clamp(0.0, max_scroll);
-}
-
-/// Convert a display-text byte offset to a raw-text byte offset for a given line.
-///
-/// This re-parses all lines up to and including the target line to track
-/// code-block state, then uses the resulting offset map for conversion.
-fn convert_display_to_raw(
-    content: &content::Content,
-    target_line: usize,
-    display_offset: usize,
-) -> usize {
-    let mut in_code_block = false;
-    for j in 0..target_line {
-        let line_raw = content.line(j).unwrap_or("");
-        parse::parse_line(line_raw, &mut in_code_block);
-    }
-    let raw_line = content.line(target_line).unwrap_or("");
-    let parsed = parse::parse_line(raw_line, &mut in_code_block);
-    parsed.offset_map.display_to_raw(display_offset)
 }
 
 impl<'a, Message, Theme, Renderer> From<Editor<'a, Message, Theme, Renderer>>
