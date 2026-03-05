@@ -199,6 +199,64 @@ impl Document {
         self.cursor = 0;
     }
 
+    /// Move cursor left by one character within the active block.
+    /// If at the start of a block, move to end of previous block.
+    pub fn move_left(&mut self) {
+        if self.cursor > 0 {
+            let raw = &self.blocks[self.active_block].raw;
+            self.cursor = prev_char_boundary(raw, self.cursor);
+        } else if self.active_block > 0 {
+            let new_block = self.active_block - 1;
+            let end_offset = self.blocks[new_block].raw.len();
+            self.set_active_block(new_block);
+            self.cursor = end_offset;
+        }
+    }
+
+    /// Move cursor right by one character within the active block.
+    /// If at the end of a block, move to start of next block.
+    pub fn move_right(&mut self) {
+        let raw_len = self.blocks[self.active_block].raw.len();
+        if self.cursor < raw_len {
+            let raw = &self.blocks[self.active_block].raw;
+            self.cursor = next_char_boundary(raw, self.cursor);
+        } else if self.active_block + 1 < self.blocks.len() {
+            let new_block = self.active_block + 1;
+            self.set_active_block(new_block);
+            self.cursor = 0;
+        }
+    }
+
+    /// Move cursor to the start of the active block.
+    pub fn move_home(&mut self) {
+        self.cursor = 0;
+    }
+
+    /// Move cursor to the end of the active block.
+    pub fn move_end(&mut self) {
+        self.cursor = self.blocks[self.active_block].raw.len();
+    }
+
+    /// Move cursor up. For now, moves to the previous block (same offset clamped).
+    pub fn move_up(&mut self) {
+        if self.active_block > 0 {
+            let new_block = self.active_block - 1;
+            let offset = self.cursor.min(self.blocks[new_block].raw.len());
+            self.set_active_block(new_block);
+            self.cursor = offset;
+        }
+    }
+
+    /// Move cursor down. For now, moves to the next block (same offset clamped).
+    pub fn move_down(&mut self) {
+        if self.active_block + 1 < self.blocks.len() {
+            let new_block = self.active_block + 1;
+            let offset = self.cursor.min(self.blocks[new_block].raw.len());
+            self.set_active_block(new_block);
+            self.cursor = offset;
+        }
+    }
+
     /// Merge the next block into the current active block.
     fn merge_next_block(&mut self) {
         let next_index = self.active_block + 1;
@@ -670,6 +728,177 @@ mod tests {
         let mut doc = Document::from_markdown("Hi");
         doc.set_cursor(100);
         assert_eq!(doc.cursor(), (0, 2));
+    }
+
+    // --- move_left tests ---
+
+    #[test]
+    fn move_left_within_block() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(3);
+        doc.move_left();
+        assert_eq!(doc.cursor(), (0, 2));
+    }
+
+    #[test]
+    fn move_left_at_start_of_block_moves_to_previous() {
+        let mut doc = Document::from_markdown("Hello\n\nWorld");
+        doc.set_active_block(1);
+        doc.set_cursor(0);
+        doc.move_left();
+        assert_eq!(doc.active_block(), 0);
+        assert_eq!(doc.cursor(), (0, 5)); // end of "Hello"
+    }
+
+    #[test]
+    fn move_left_at_start_of_first_block_is_noop() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(0);
+        doc.move_left();
+        assert_eq!(doc.cursor(), (0, 0));
+    }
+
+    #[test]
+    fn move_left_with_multibyte_char() {
+        let mut doc = Document::from_markdown("a\u{00e9}b"); // a + e-acute(2 bytes) + b
+        doc.set_cursor(4); // after 'b'
+        doc.move_left();
+        assert_eq!(doc.cursor(), (0, 3)); // after e-acute
+        doc.move_left();
+        assert_eq!(doc.cursor(), (0, 1)); // after 'a'
+    }
+
+    // --- move_right tests ---
+
+    #[test]
+    fn move_right_within_block() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(0);
+        doc.move_right();
+        assert_eq!(doc.cursor(), (0, 1));
+    }
+
+    #[test]
+    fn move_right_at_end_of_block_moves_to_next() {
+        let mut doc = Document::from_markdown("Hello\n\nWorld");
+        doc.set_cursor(5); // end of "Hello"
+        doc.move_right();
+        assert_eq!(doc.active_block(), 1);
+        assert_eq!(doc.cursor(), (1, 0)); // start of "World"
+    }
+
+    #[test]
+    fn move_right_at_end_of_last_block_is_noop() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(5);
+        doc.move_right();
+        assert_eq!(doc.cursor(), (0, 5));
+    }
+
+    #[test]
+    fn move_right_with_multibyte_char() {
+        let mut doc = Document::from_markdown("a\u{00e9}b");
+        doc.set_cursor(0);
+        doc.move_right();
+        assert_eq!(doc.cursor(), (0, 1)); // after 'a'
+        doc.move_right();
+        assert_eq!(doc.cursor(), (0, 3)); // after e-acute (2 bytes)
+    }
+
+    // --- move_home tests ---
+
+    #[test]
+    fn move_home_goes_to_start() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(3);
+        doc.move_home();
+        assert_eq!(doc.cursor(), (0, 0));
+    }
+
+    #[test]
+    fn move_home_at_start_is_noop() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(0);
+        doc.move_home();
+        assert_eq!(doc.cursor(), (0, 0));
+    }
+
+    // --- move_end tests ---
+
+    #[test]
+    fn move_end_goes_to_end() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(0);
+        doc.move_end();
+        assert_eq!(doc.cursor(), (0, 5));
+    }
+
+    #[test]
+    fn move_end_at_end_is_noop() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(5);
+        doc.move_end();
+        assert_eq!(doc.cursor(), (0, 5));
+    }
+
+    // --- move_up tests ---
+
+    #[test]
+    fn move_up_to_previous_block() {
+        let mut doc = Document::from_markdown("Hello\n\nWorld");
+        doc.set_active_block(1);
+        doc.set_cursor(3);
+        doc.move_up();
+        assert_eq!(doc.active_block(), 0);
+        assert_eq!(doc.cursor(), (0, 3)); // same offset, within "Hello"
+    }
+
+    #[test]
+    fn move_up_clamps_offset() {
+        let mut doc = Document::from_markdown("Hi\n\nLonger text");
+        doc.set_active_block(1);
+        doc.set_cursor(10);
+        doc.move_up();
+        assert_eq!(doc.active_block(), 0);
+        assert_eq!(doc.cursor(), (0, 2)); // clamped to len of "Hi"
+    }
+
+    #[test]
+    fn move_up_at_first_block_is_noop() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(3);
+        doc.move_up();
+        assert_eq!(doc.active_block(), 0);
+        assert_eq!(doc.cursor(), (0, 3));
+    }
+
+    // --- move_down tests ---
+
+    #[test]
+    fn move_down_to_next_block() {
+        let mut doc = Document::from_markdown("Hello\n\nWorld");
+        doc.set_cursor(3);
+        doc.move_down();
+        assert_eq!(doc.active_block(), 1);
+        assert_eq!(doc.cursor(), (1, 3)); // same offset, within "World"
+    }
+
+    #[test]
+    fn move_down_clamps_offset() {
+        let mut doc = Document::from_markdown("Longer text\n\nHi");
+        doc.set_cursor(10);
+        doc.move_down();
+        assert_eq!(doc.active_block(), 1);
+        assert_eq!(doc.cursor(), (1, 2)); // clamped to len of "Hi"
+    }
+
+    #[test]
+    fn move_down_at_last_block_is_noop() {
+        let mut doc = Document::from_markdown("Hello");
+        doc.set_cursor(3);
+        doc.move_down();
+        assert_eq!(doc.active_block(), 0);
+        assert_eq!(doc.cursor(), (0, 3));
     }
 
     // --- insert tests ---
