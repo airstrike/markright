@@ -10,6 +10,7 @@ pulldown-cmark = "0.13"
 
 [dev-dependencies]
 iced = { version = "0.15.0-dev", features = ["advanced"] }
+reqwest = { version = "0.12", features = ["rustls-tls"] }
 
 [patch.crates-io]
 iced = { git = "https://github.com/iced-rs/iced.git", branch = "master" }
