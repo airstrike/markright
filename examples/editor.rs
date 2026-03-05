@@ -1,7 +1,7 @@
 use iced::widget::{column, container, text};
 use iced::{Color, Element, Fill, Length, Padding};
 
-use markright::Content;
+use markright::Document;
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
@@ -10,7 +10,7 @@ fn main() -> iced::Result {
 }
 
 struct App {
-    content: Content,
+    document: Document,
 }
 
 #[derive(Debug, Clone)]
@@ -27,14 +27,12 @@ This is a **WYSIWYG** markdown editor built as a custom *iced* widget.
 
 ## Features
 
-The editor hides **markdown syntax** when the cursor is away from a line.
-Move your cursor to this line to see the `**` markers appear.
+The editor hides **markdown syntax** when the cursor is away from a block.
+Move your cursor to any block to see the raw markdown.
 
 ### How It Works
 
-- The active line shows ***raw markdown*** with markers visible
-- Other lines display **formatted text** with markers hidden
-- Click any line to reveal its raw source
+The active block shows raw markdown with markers visible. Other blocks display formatted text with markers hidden. Click any block to reveal its raw source.
 
 ## Code Example
 
@@ -44,11 +42,9 @@ fn main() {
 }
 ```
 
-Try editing this text! You can use:
-- **Bold** with `**double asterisks**`
-- *Italic* with `*single asterisks*`
-- ***Bold italic*** with `***triple asterisks***`
-- `Inline code` with backticks
+Try editing this text! You can use **bold**, *italic*, ***bold italic***, and `inline code`.
+
+---
 
 #### Heading Levels
 
@@ -61,7 +57,7 @@ Try editing this text! You can use:
 
         (
             Self {
-                content: Content::with_text(sample),
+                document: Document::from_markdown(sample),
             },
             iced::Task::none(),
         )
@@ -69,19 +65,34 @@ Try editing this text! You can use:
 
     fn update(&mut self, message: Message) {
         match message {
-            Message::Edit(action) => {
-                self.content.perform(action);
-            }
+            Message::Edit(action) => match &action {
+                markright::Action::Insert(ch) => self.document.insert(*ch),
+                markright::Action::Delete => self.document.delete(),
+                markright::Action::Backspace => self.document.backspace(),
+                markright::Action::Enter => self.document.enter(),
+                markright::Action::Move(_motion) => {
+                    // TODO: implement cursor movement in document model
+                }
+                markright::Action::Click { block, offset } => {
+                    self.document.set_active_block(*block);
+                    self.document.set_cursor(*offset);
+                }
+                _ => {}
+            },
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let (cursor_line, cursor_col) = self.content.cursor();
-        let status = text(format!("Ln {}, Col {}", cursor_line + 1, cursor_col + 1))
-            .size(12)
-            .color(Color::from_rgb(0.5, 0.5, 0.5));
+        let (cursor_block, cursor_col) = self.document.cursor();
+        let status = text(format!(
+            "Block {}, Col {}",
+            cursor_block + 1,
+            cursor_col + 1
+        ))
+        .size(12)
+        .color(Color::from_rgb(0.5, 0.5, 0.5));
 
-        let editor = markright::editor(&self.content)
+        let editor = markright::editor(&self.document)
             .on_action(Message::Edit)
             .padding(20)
             .size(16);
