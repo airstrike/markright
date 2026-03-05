@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 iced_core = "0.15.0-dev"
 iced_graphics = "0.15.0-dev"
+pulldown-cmark = "0.13"
 
 [dev-dependencies]
 iced = { version = "0.15.0-dev", features = ["advanced"] }
