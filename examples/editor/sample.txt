@@ -1,0 +1,14 @@
+Welcome to Markright
+
+This is a WYSIWYG rich text editor built with iced.
+
+Features
+
+The editor reads formatting from a RichDocument model.
+Bold, italic, and heading formatting are applied via the document API.
+
+How It Works
+
+A RichTextHighlighter reads formatting spans from the RichDocument and converts them into visual formatting in real-time.
+
+Try editing this text!

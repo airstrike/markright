@@ -1,0 +1,14 @@
+[package]
+name = "editor"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "editor"
+path = "main.rs"
+
+[dependencies]
+markright = { path = "../.." }
+iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
+reqwest = { version = "0.12", features = ["rustls-tls"] }
