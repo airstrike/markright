@@ -131,11 +131,6 @@ impl<R: text::Renderer> Content<R> {
     pub fn is_empty(&self) -> bool {
         self.0.borrow().editor.is_empty()
     }
-
-    /// Returns the current document version (bumped on formatting changes).
-    pub fn doc_version(&self) -> u64 {
-        self.0.borrow().doc_version
-    }
 }
 
 impl<R: text::Renderer> Clone for Content<R> {
