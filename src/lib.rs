@@ -1,5 +1,3 @@
-pub mod document;
-pub mod editor;
+pub mod highlight;
 
-pub use document::Document;
-pub use editor::{Action, Editor, Motion, editor};
+pub use highlight::{Highlight, MarkdownHighlighter, Settings as HighlightSettings};

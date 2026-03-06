@@ -1,7 +1,7 @@
-use iced::widget::{column, container, text};
+use iced::widget::{column, container, text, text_editor};
 use iced::{Color, Element, Fill, Font, Length, Padding, Task};
 
-use markright::Document;
+use markright::{HighlightSettings, MarkdownHighlighter};
 
 /// IBM Plex Sans Regular
 const PLEX_SANS_REGULAR: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Regular.ttf";
@@ -14,6 +14,8 @@ const PLEX_SANS_BOLD_ITALIC: &str = "https://raw.githubusercontent.com/IBM/plex/
 /// IBM Plex Mono Regular
 const PLEX_MONO_REGULAR: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-mono/fonts/complete/ttf/IBMPlexMono-Regular.ttf";
 
+const BASE_SIZE: f32 = 16.0;
+
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
         .title("Markright")
@@ -22,12 +24,12 @@ fn main() -> iced::Result {
 }
 
 struct App {
-    document: Document,
+    content: text_editor::Content,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
-    Edit(markright::Action),
+    Edit(text_editor::Action),
     FontLoaded(Result<(), iced::font::Error>),
 }
 
@@ -36,16 +38,16 @@ impl App {
         let sample = "\
 # Welcome to Markright
 
-This is a **WYSIWYG** markdown editor built as a custom *iced* widget.
+This is a **WYSIWYG** markdown editor built with *iced*.
 
 ## Features
 
-The editor hides **markdown syntax** when the cursor is away from a block.
-Move your cursor to any block to see the raw markdown.
+The editor hides **markdown syntax** when it forms valid constructs.
+Type `# Heading` and it becomes a heading. Type `**bold**` and it becomes bold.
 
 ### How It Works
 
-The active block shows raw markdown with markers visible. Other blocks display formatted text with markers hidden. Click any block to reveal its raw source.
+A custom `MarkdownHighlighter` parses each line and applies formatting in real-time. Markers like `#`, `**`, and backticks are hidden by coloring them to match the background.
 
 ## Code Example
 
@@ -86,7 +88,7 @@ Try editing this text! You can use **bold**, *italic*, ***bold italic***, and `i
 
         (
             Self {
-                document: Document::from_markdown(sample),
+                content: text_editor::Content::with_text(sample),
             },
             font_tasks,
         )
@@ -94,47 +96,37 @@ Try editing this text! You can use **bold**, *italic*, ***bold italic***, and `i
 
     fn update(&mut self, message: Message) {
         match message {
-            Message::Edit(action) => match &action {
-                markright::Action::Insert(ch) => self.document.insert(*ch),
-                markright::Action::Delete => self.document.delete(),
-                markright::Action::Backspace => self.document.backspace(),
-                markright::Action::Enter => self.document.enter(),
-                markright::Action::Move(motion) => match motion {
-                    markright::Motion::Left => self.document.move_left(),
-                    markright::Motion::Right => self.document.move_right(),
-                    markright::Motion::Up => self.document.move_up(),
-                    markright::Motion::Down => self.document.move_down(),
-                    markright::Motion::Home => self.document.move_home(),
-                    markright::Motion::End => self.document.move_end(),
-                    _ => {}
-                },
-                markright::Action::Click { block, offset } => {
-                    self.document.set_active_block(*block);
-                    self.document.set_cursor(*offset);
-                }
-                _ => {}
-            },
-            Message::FontLoaded(_) => {
-                // Fonts are loaded into the global font system automatically.
+            Message::Edit(action) => {
+                self.content.perform(action);
             }
+            Message::FontLoaded(_) => {}
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let (cursor_block, cursor_col) = self.document.cursor();
+        let highlight_settings = HighlightSettings {
+            font: Font::with_name("IBM Plex Sans"),
+            mono_font: Font::with_name("IBM Plex Mono"),
+            base_size: BASE_SIZE,
+            background_color: Color::WHITE,
+        };
+
+        let editor = text_editor(&self.content)
+            .on_action(Message::Edit)
+            .highlight_with::<MarkdownHighlighter>(highlight_settings, |highlight, _theme| {
+                highlight.to_format()
+            })
+            .padding(20)
+            .size(BASE_SIZE);
+
+        let cursor = self.content.cursor();
         let status = text(format!(
-            "Block {}, Col {}",
-            cursor_block + 1,
-            cursor_col + 1
+            "Line {}, Col {}",
+            cursor.position.line + 1,
+            cursor.position.column + 1,
         ))
         .size(12)
         .color(Color::from_rgb(0.5, 0.5, 0.5));
-
-        let editor = markright::editor(&self.document)
-            .on_action(Message::Edit)
-            .padding(20)
-            .size(16)
-            .monospace_font(Font::with_name("IBM Plex Mono"));
 
         let content = column![
             editor,

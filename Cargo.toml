@@ -5,14 +5,12 @@ edition = "2024"
 
 [dependencies]
 iced_core = "0.15.0-dev"
-iced_graphics = "0.15.0-dev"
-pulldown-cmark = "0.13"
 
 [dev-dependencies]
-iced = { version = "0.15.0-dev", features = ["advanced"] }
+iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 
 [patch.crates-io]
-iced = { git = "https://github.com/iced-rs/iced.git", branch = "master" }
-iced_core = { git = "https://github.com/iced-rs/iced.git", branch = "master" }
-iced_graphics = { git = "https://github.com/iced-rs/iced.git", branch = "master" }
+iced = { git = "https://github.com/airstrike/iced.git", branch = "markright/format-size" }
+iced_core = { git = "https://github.com/airstrike/iced.git", branch = "markright/format-size" }
+iced_graphics = { git = "https://github.com/airstrike/iced.git", branch = "markright/format-size" }
