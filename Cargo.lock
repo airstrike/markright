@@ -1328,7 +1328,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "iced_core",
  "iced_debug",
@@ -1343,7 +1343,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "bitflags 2.11.0",
  "bytes",
@@ -1360,7 +1360,7 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -1370,7 +1370,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "futures",
  "iced_core",
@@ -1384,7 +1384,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1402,7 +1402,7 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -1411,7 +1411,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -1423,7 +1423,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "bytes",
  "iced_core",
@@ -1435,7 +1435,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -1451,7 +1451,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1470,7 +1470,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "iced_renderer",
  "log",
@@ -1483,7 +1483,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#97465766d66518582df8025ec1179a9dd26f2270"
+source = "git+https://github.com/airstrike/iced.git?branch=markright%2Fformat-size#204bac7c48f88aadd35e06c085e4be3bfdd40720"
 dependencies = [
  "arboard",
  "iced_debug",
