@@ -1,0 +1,157 @@
+// FIXME: change this example into a workspace package to avoid this
+#[allow(dead_code)]
+#[path = "../../src/icon.rs"]
+mod icon;
+
+use iced::widget::{column, container, text};
+use iced::{Color, Element, Fill, Font, Length, Padding, Task};
+
+use markright::rich_editor::{self, Action, Content};
+
+mod theme;
+mod toolbar;
+
+use theme::ThemeChoice;
+
+// FIXME: move this to a fonts.rs and implement lazy loading from google fonts.
+/// IBM Plex Sans Regular
+const PLEX_SANS_REGULAR: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Regular.ttf";
+/// IBM Plex Sans Bold
+const PLEX_SANS_BOLD: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Bold.ttf";
+/// IBM Plex Sans Italic
+const PLEX_SANS_ITALIC: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Italic.ttf";
+/// IBM Plex Sans Bold Italic
+const PLEX_SANS_BOLD_ITALIC: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-BoldItalic.ttf";
+/// IBM Plex Mono Regular
+const PLEX_MONO_REGULAR: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-mono/fonts/complete/ttf/IBMPlexMono-Regular.ttf";
+
+const BASE_SIZE: f32 = 16.0;
+
+fn main() -> iced::Result {
+    iced::application(App::new, App::update, App::view)
+        .title("Markright")
+        .theme(App::theme)
+        .font(icon::FONT)
+        .default_font(Font::with_name("IBM Plex Sans"))
+        .run()
+}
+
+struct App {
+    content: Content<iced::Renderer>,
+    theme_choice: ThemeChoice,
+}
+
+#[derive(Debug, Clone)]
+enum Message {
+    EditorAction(Action),
+    FontLoaded(Result<(), iced::font::Error>),
+    ToggleTheme,
+}
+
+impl App {
+    // FIXME: move this to a .txt and include_! it
+    fn new() -> (Self, Task<Message>) {
+        let sample = "\
+Welcome to Markright
+
+This is a WYSIWYG rich text editor built with iced.
+
+Features
+
+The editor reads formatting from a RichDocument model.
+Bold, italic, and heading formatting are applied via the document API.
+
+How It Works
+
+A RichTextHighlighter reads formatting spans from the RichDocument and converts them into visual formatting in real-time.
+
+Try editing this text!";
+
+        let font_tasks = Task::batch(
+            [
+                PLEX_SANS_REGULAR,
+                PLEX_SANS_BOLD,
+                PLEX_SANS_ITALIC,
+                PLEX_SANS_BOLD_ITALIC,
+                PLEX_MONO_REGULAR,
+            ]
+            .into_iter()
+            .map(|url| {
+                Task::future(fetch_font(url.to_owned()))
+                    .then(iced::font::load)
+                    .map(Message::FontLoaded)
+            }),
+        );
+
+        (
+            Self {
+                content: Content::with_text(sample),
+                theme_choice: ThemeChoice::default(),
+            },
+            font_tasks,
+        )
+    }
+
+    fn theme(&self) -> iced::Theme {
+        self.theme_choice.to_theme()
+    }
+
+    fn update(&mut self, message: Message) {
+        match message {
+            Message::EditorAction(action) => self.content.perform(action),
+            Message::ToggleTheme => self.theme_choice = self.theme_choice.toggle(),
+            Message::FontLoaded(_) => {}
+        }
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        let ctx = self.content.cursor_context();
+        let tools = toolbar::view(
+            &ctx,
+            self.theme_choice.is_dark(),
+            Message::EditorAction,
+            Message::ToggleTheme,
+        );
+
+        let editor = rich_editor::rich_editor(&self.content)
+            .on_action(Message::EditorAction)
+            .style(theme::text_editor::borderless)
+            .padding(20)
+            .size(BASE_SIZE);
+
+        let status = text(format!(
+            "Line {}, Col {}",
+            ctx.position.line + 1,
+            ctx.position.column + 1,
+        ))
+        .size(12)
+        // FIXME: this should be handled by .style() in theme.rs
+        .color(Color::from_rgb(0.5, 0.5, 0.5));
+
+        let content = column![
+            tools,
+            editor,
+            container(status)
+                .width(Fill)
+                .padding(Padding::ZERO.vertical(4).horizontal(20)),
+        ]
+        .width(Fill)
+        .height(Fill);
+
+        container(content)
+            .center_x(Length::Fill)
+            .height(Fill)
+            .into()
+    }
+}
+
+/// Fetch font bytes from a URL.
+async fn fetch_font(url: String) -> Vec<u8> {
+    reqwest::get(&url)
+        .await
+        .expect("font fetch failed")
+        .bytes()
+        .await
+        .expect("font bytes failed")
+        .to_vec()
+}

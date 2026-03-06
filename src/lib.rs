@@ -1,11 +1,8 @@
 pub mod document;
-pub mod highlight;
-pub mod markdown;
-#[cfg(feature = "toolbar")]
+pub mod rich_editor;
+pub mod shortcuts;
 pub mod toolbar;
 
 pub use document::{Alignment, LineFormat, RichDocument, SpanFormat};
-pub use highlight::{Highlight, RichTextHighlighter, Settings as HighlightSettings};
-pub use markdown::MarkdownAction;
-#[cfg(feature = "toolbar")]
-pub use toolbar::{ToolbarAction, ToolbarState, toolbar};
+pub use shortcuts::MarkdownAction;
+pub use toolbar::HeadingOption;
