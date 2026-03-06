@@ -3,14 +3,23 @@ name = "markright"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+toolbar = ["dep:iced_widget"]
+
 [dependencies]
 iced_core = "0.15.0-dev"
+iced_widget = { version = "0.15.0-dev", optional = true }
 
 [dev-dependencies]
 iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 
+[[example]]
+name = "editor"
+required-features = ["toolbar"]
+
 [patch.crates-io]
 iced = { git = "https://github.com/airstrike/iced.git", branch = "markright/format-size" }
 iced_core = { git = "https://github.com/airstrike/iced.git", branch = "markright/format-size" }
 iced_graphics = { git = "https://github.com/airstrike/iced.git", branch = "markright/format-size" }
+iced_widget = { git = "https://github.com/airstrike/iced.git", branch = "markright/format-size" }
