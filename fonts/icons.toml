@@ -1,0 +1,13 @@
+module = "icon"
+
+[icons]
+bold               = "bold"
+italic             = "italic"
+underline          = "underline"
+text_align_start   = "text-align-start"
+text_align_center  = "text-align-center"
+text_align_end     = "text-align-end"
+text_align_justify = "text-align-justify"
+sun                = "sun"
+moon               = "moon"
+heading            = "heading"

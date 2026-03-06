@@ -204,18 +204,21 @@ impl<R: text::Renderer> Internal<R> {
         let cursor = self.editor.cursor();
         match fmt {
             FormatAction::ToggleBold => {
+                let is_bold = self.format_at_selection_start(&cursor).bold;
                 self.apply_span_formatting(|doc, line, range| {
-                    doc.toggle_bold(line, range);
+                    doc.set_format_property(line, range, |f| f.bold = !is_bold);
                 });
             }
             FormatAction::ToggleItalic => {
+                let is_italic = self.format_at_selection_start(&cursor).italic;
                 self.apply_span_formatting(|doc, line, range| {
-                    doc.toggle_italic(line, range);
+                    doc.set_format_property(line, range, |f| f.italic = !is_italic);
                 });
             }
             FormatAction::ToggleUnderline => {
+                let is_underline = self.format_at_selection_start(&cursor).underline;
                 self.apply_span_formatting(|doc, line, range| {
-                    doc.toggle_underline(line, range);
+                    doc.set_format_property(line, range, |f| f.underline = !is_underline);
                 });
             }
             FormatAction::SetHeadingLevel(level) => {
@@ -242,6 +245,23 @@ impl<R: text::Renderer> Internal<R> {
             }
         }
         self.doc_version += 1;
+    }
+
+    /// Returns the [`SpanFormat`] at the start of the selection.
+    ///
+    /// For Word-style toggle behavior, we sample the format at the *first*
+    /// character of the selection to decide the toggle direction. If there
+    /// is no selection, falls back to `cursor.position`.
+    fn format_at_selection_start(&self, cursor: &Cursor) -> crate::document::SpanFormat {
+        let pos = match &cursor.selection {
+            Some(sel) => ordered_positions(&cursor.position, sel).0,
+            None => &cursor.position,
+        };
+        if pos.line < self.document.line_count() {
+            self.document.format_at(pos.line, pos.column)
+        } else {
+            crate::document::SpanFormat::default()
+        }
     }
 
     /// Apply a formatting operation across the current selection.
@@ -478,5 +498,154 @@ mod tests {
         assert!(!ctx.character.italic);
         assert!(!ctx.character.underline);
         assert_eq!(ctx.paragraph.heading, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // Bold toggle tests
+    // -----------------------------------------------------------------------
+
+    /// Helper: select all text and toggle bold.
+    fn select_all_and_toggle_bold(c: &TestContent) {
+        c.perform(Action::SelectAll);
+        c.perform(Action::Edit(Edit::Format(FormatAction::ToggleBold)));
+    }
+
+    /// Helper: access the internal document for assertions.
+    fn with_doc<F, T>(c: &TestContent, f: F) -> T
+    where
+        F: FnOnce(&crate::document::RichDocument) -> T,
+    {
+        let internal = c.0.borrow();
+        f(&internal.document)
+    }
+
+    #[test]
+    fn select_all_toggle_bold_on_plain_text() {
+        let c = TestContent::with_text("hello");
+        select_all_and_toggle_bold(&c);
+
+        let spans = with_doc(&c, |doc| doc.spans(0).to_vec());
+        assert!(!spans.is_empty(), "should have bold spans");
+        assert!(spans[0].1.bold, "text should be bold");
+    }
+
+    #[test]
+    fn select_all_toggle_bold_removes_bold() {
+        let c = TestContent::with_text("hello");
+
+        // First toggle: make bold
+        select_all_and_toggle_bold(&c);
+        let bold_after_first = with_doc(&c, |doc| doc.spans(0).iter().all(|(_, f)| f.bold));
+        assert!(bold_after_first, "first toggle should make text bold");
+
+        // Second toggle: remove bold
+        select_all_and_toggle_bold(&c);
+        let spans_after_second = with_doc(&c, |doc| doc.spans(0).to_vec());
+        // All spans should be gone (back to default = plain text)
+        assert!(
+            spans_after_second.is_empty(),
+            "second toggle should remove bold, but got: {spans_after_second:?}"
+        );
+    }
+
+    #[test]
+    fn bold_toggle_mixed_makes_all_bold() {
+        // Simulate: "hello world" where "world" (6..11) is already bold.
+        // Select all + Cmd+B should make everything bold (cursor starts at
+        // position 0 which is NOT bold).
+        let c = TestContent::with_text("hello world");
+
+        // Make "world" bold by selecting it
+        {
+            let mut internal = c.0.borrow_mut();
+            internal
+                .document
+                .set_format_property(0, 6..11, |f| f.bold = true);
+            internal.doc_version += 1;
+        }
+
+        // Verify setup: position 0 is not bold, position 6 is bold
+        let fmt_at_0 = with_doc(&c, |doc| doc.format_at(0, 0));
+        assert!(!fmt_at_0.bold);
+        let fmt_at_6 = with_doc(&c, |doc| doc.format_at(0, 6));
+        assert!(fmt_at_6.bold);
+
+        // Select all and toggle bold
+        select_all_and_toggle_bold(&c);
+
+        // Everything should be bold now (toggle direction from start = not bold)
+        let all_bold = with_doc(&c, |doc| (0..11).all(|col| doc.format_at(0, col).bold));
+        assert!(
+            all_bold,
+            "mixed selection starting non-bold should make all bold"
+        );
+    }
+
+    #[test]
+    fn bold_toggle_mixed_starting_bold_removes_all() {
+        // "hello world" where "hello" (0..5) is bold but "world" is not.
+        // Select all + Cmd+B → cursor starts at position 0 which IS bold
+        // → should remove bold from everything.
+        let c = TestContent::with_text("hello world");
+
+        {
+            let mut internal = c.0.borrow_mut();
+            internal
+                .document
+                .set_format_property(0, 0..5, |f| f.bold = true);
+            internal.doc_version += 1;
+        }
+
+        select_all_and_toggle_bold(&c);
+
+        let any_bold = with_doc(&c, |doc| doc.spans(0).iter().any(|(_, f)| f.bold));
+        assert!(
+            !any_bold,
+            "mixed selection starting bold should remove all bold"
+        );
+    }
+
+    #[test]
+    fn toggle_bold_multiline_consistent_direction() {
+        // Two lines: "aaa\nbbb", neither bold.
+        // Select all + Cmd+B → both lines become bold.
+        let c = TestContent::with_text("aaa\nbbb");
+
+        select_all_and_toggle_bold(&c);
+
+        let line0_bold = with_doc(&c, |doc| {
+            doc.spans(0).iter().all(|(_, f)| f.bold) && !doc.spans(0).is_empty()
+        });
+        let line1_bold = with_doc(&c, |doc| {
+            doc.spans(1).iter().all(|(_, f)| f.bold) && !doc.spans(1).is_empty()
+        });
+        assert!(line0_bold, "line 0 should be bold");
+        assert!(line1_bold, "line 1 should be bold");
+    }
+
+    #[test]
+    fn toggle_bold_multiline_mixed_uses_start() {
+        // "aaa\nbbb" where line 1 is bold but line 0 is not.
+        // Select all → start is (0,0) which is NOT bold → make all bold.
+        let c = TestContent::with_text("aaa\nbbb");
+
+        {
+            let mut internal = c.0.borrow_mut();
+            internal
+                .document
+                .set_format_property(1, 0..3, |f| f.bold = true);
+            internal.doc_version += 1;
+        }
+
+        select_all_and_toggle_bold(&c);
+
+        let line0_bold = with_doc(&c, |doc| {
+            !doc.spans(0).is_empty() && doc.spans(0).iter().all(|(_, f)| f.bold)
+        });
+        let line1_bold = with_doc(&c, |doc| {
+            !doc.spans(1).is_empty() && doc.spans(1).iter().all(|(_, f)| f.bold)
+        });
+        assert!(line0_bold, "line 0 should be bold");
+        assert!(line1_bold, "line 1 should stay bold");
     }
 }

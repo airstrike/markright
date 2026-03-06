@@ -4,8 +4,8 @@ use iced::theme::Palette;
 /// Theme selection for the editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ThemeChoice {
-    #[default]
     Light,
+    #[default]
     Dark,
 }
 
@@ -25,20 +25,20 @@ impl ThemeChoice {
     fn palette(self) -> Palette {
         match self {
             Self::Light => Palette {
-                background: color!(0xFAFAFA),
-                text: color!(0x1A1A1A),
-                primary: color!(0x2563EB),
-                success: color!(0x22C55E),
-                danger: color!(0xEF4444),
-                warning: color!(0xF59E0B),
+                background: color!(0xf2eede),
+                text: color!(0x555555),
+                primary: color!(0x1a1a1a), // Dark gray
+                success: color!(0x1e6fcc), // Blue
+                warning: color!(0x216609), // Green
+                danger: color!(0xcc3e28),  // Red-orange
             },
             Self::Dark => Palette {
-                background: color!(0x1A1A1A),
-                text: color!(0xE5E5E5),
-                primary: color!(0x60A5FA),
-                success: color!(0x22C55E),
-                danger: color!(0xEF4444),
-                warning: color!(0xF59E0B),
+                background: color!(0x1f1e1a), // Warm dark background
+                text: color!(0xd4c8b0),       // Warm muted paper color
+                primary: color!(0xe8dcc0),    // Warm light paper color
+                success: color!(0x1e6fcc),    // Blue
+                warning: color!(0x216609),    // Green
+                danger: color!(0xcc3e28),     // Red-orange
             },
         }
     }

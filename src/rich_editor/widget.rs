@@ -227,9 +227,25 @@ where
             Selection::Range(ranges) => ranges.first().cloned().unwrap_or_default().position(),
         };
 
-        let line_height = self
-            .line_height
-            .to_absolute(self.text_size.unwrap_or_else(|| renderer.default_size()));
+        let base_size: f32 = self
+            .text_size
+            .unwrap_or_else(|| renderer.default_size())
+            .into();
+        let logical = internal.editor.cursor();
+        let effective_size = if logical.position.line < internal.document.line_count() {
+            let line_fmt = internal.document.line_format(logical.position.line);
+            let heading_sz = line_fmt
+                .heading_level
+                .map(|lvl| super::highlight::heading_size(base_size, lvl as usize));
+            let span_fmt = internal
+                .document
+                .format_at(logical.position.line, logical.position.column);
+            span_fmt.size.or(heading_sz).unwrap_or(base_size)
+        } else {
+            base_size
+        };
+
+        let line_height = self.line_height.to_absolute(Pixels(effective_size));
 
         let position = cursor + translation;
 
@@ -725,6 +741,24 @@ where
         if let Some(focus) = state.focus.as_ref() {
             match internal.editor.selection() {
                 Selection::Caret(position) if focus.is_cursor_visible() => {
+                    let base_size: f32 = self
+                        .text_size
+                        .unwrap_or_else(|| renderer.default_size())
+                        .into();
+                    let logical = internal.editor.cursor();
+                    let effective_size = if logical.position.line < internal.document.line_count() {
+                        let line_fmt = internal.document.line_format(logical.position.line);
+                        let heading_sz = line_fmt
+                            .heading_level
+                            .map(|lvl| super::highlight::heading_size(base_size, lvl as usize));
+                        let span_fmt = internal
+                            .document
+                            .format_at(logical.position.line, logical.position.column);
+                        span_fmt.size.or(heading_sz).unwrap_or(base_size)
+                    } else {
+                        base_size
+                    };
+
                     let cursor = Rectangle::new(
                         position + translation,
                         Size::new(
@@ -733,11 +767,7 @@ where
                             } else {
                                 1.0
                             },
-                            self.line_height
-                                .to_absolute(
-                                    self.text_size.unwrap_or_else(|| renderer.default_size()),
-                                )
-                                .into(),
+                            self.line_height.to_absolute(Pixels(effective_size)).into(),
                         ),
                     );
 
