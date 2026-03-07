@@ -1,4 +1,3 @@
-use crate::core::text::Alignment;
 use crate::core::text::rich_editor::{self, Editor as _, ParagraphStyle, Style as RichStyle};
 
 use std::borrow::Cow;
@@ -115,7 +114,7 @@ impl<R: rich_editor::Renderer> Content<R> {
                 color: char_style.color,
             },
             paragraph: cursor::Paragraph {
-                alignment: para_style.alignment.unwrap_or(Alignment::Default),
+                alignment: para_style.alignment.unwrap_or_default(),
                 spacing_after: para_style.spacing_after.unwrap_or(0.0),
             },
             position: cursor::Position {

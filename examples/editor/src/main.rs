@@ -3,10 +3,11 @@ mod icon;
 mod theme;
 mod toolbar;
 
-use iced::widget::{column, container, text};
+use iced::widget::operation::focus;
+use iced::widget::{column, container, mouse_area, space, text};
 use iced::{Element, Fill, Font, Task, padding};
 
-use markright::widget::rich_editor::{self, Action, Content};
+use markright::widget::rich_editor::{self, Action, Content, cursor};
 
 use theme::Theme;
 
@@ -31,6 +32,7 @@ enum Message {
     EditorAction(Action),
     Font(fonts::Message),
     ToggleTheme,
+    FocusEditor,
 }
 
 impl App {
@@ -61,48 +63,48 @@ impl App {
                     eprintln!("Font loading failed: {e:?}");
                 }
             }
+            Message::FocusEditor => return focus("editor"),
         }
 
         Task::none()
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let ctx = self.content.cursor_context();
-        let tools = toolbar::view(
-            &ctx,
-            self.theme_choice.is_dark(),
-            Message::EditorAction,
-            Message::ToggleTheme,
-        );
+        let cursor = self.content.cursor_context();
+        let tools = toolbar(&cursor, self.theme_choice.is_dark());
+        let status_bar = status_bar(&cursor);
 
-        let editor = container(
+        let editor = column![
             rich_editor::rich_editor(&self.content)
+                .id("editor")
                 .on_action(Message::EditorAction)
                 .style(theme::text_editor::borderless)
                 .padding(20)
                 .size(BASE_SIZE),
-        )
-        .height(Fill)
-        .width(Fill);
+            mouse_area(space().height(Fill).width(Fill)).on_press(Message::FocusEditor),
+        ];
 
-        let status = text(format!(
-            "Line {}, Col {}",
-            ctx.position.line + 1,
-            ctx.position.column + 1,
-        ))
-        .size(12)
-        .style(theme::text::status_bar);
-
-        let content = column![
-            tools,
-            editor,
-            container(status)
-                .width(Fill)
-                .padding(padding::vertical(4).horizontal(20)),
-        ]
-        .width(Fill)
-        .height(Fill);
+        let content = column![tools, editor, status_bar].width(Fill).height(Fill);
 
         container(content).center_x(Fill).height(Fill).into()
     }
+}
+
+fn toolbar(cursor: &cursor::Context, is_dark: bool) -> Element<'static, Message> {
+    toolbar::view(cursor, is_dark, Message::EditorAction, Message::ToggleTheme)
+}
+
+fn status_bar(cursor: &cursor::Context) -> Element<'static, Message> {
+    container(
+        text(format!(
+            "Line {}, Col {}",
+            cursor.position.line + 1,
+            cursor.position.column + 1,
+        ))
+        .size(12)
+        .style(theme::text::status_bar),
+    )
+    .width(Fill)
+    .padding(padding::vertical(4).horizontal(20))
+    .into()
 }

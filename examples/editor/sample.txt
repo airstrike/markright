@@ -1,14 +1,15 @@
-Welcome to Markright
+THE RETURN
 
-This is a WYSIWYG rich text editor built with iced.
+A soft ping wakes him. Status lights blink on in sequence, blue-green shadows chasing each other across the bunk.
 
-Features
+Kael Vasaro does not open his eyes. His face is weathered, not hard. More tired than bitter. The kind of man who stopped caring about appearances around the same time he stopped caring about most things. The ship hums around him, through him, the way it has for twenty years.
 
-The editor reads formatting from a RichDocument model.
-Bold, italic, and heading formatting are applied via the document API.
+Transit complete. Kepler Station approach confirmed. Docking window in forty-three minutes.
 
-How It Works
+He opens his eyes to a ceiling of metal panels buried under twenty years of modifications, cable runs, personal touches. A photograph tucked into a joint seam, too faded to make out. He breathes. The first breath of another day that doesn't require anything from him.
 
-A RichTextHighlighter reads formatting spans from the RichDocument and converts them into visual formatting in real-time.
+The quarters are tight, a bunk barely wide enough for his shoulders with storage built into every surface. Fold-down desk, console, a coffee maker repaired so many times the original parts have long been outnumbered. He hits the button and it produces something approximately like coffee, which he drinks standing, looking at nothing.
 
-Try editing this text!
+Through the cockpit glass he can see stars, and in the distance, growing larger with each minute, the rotating ring of Kepler Station. Gray metal against black void, running lights blinking, ships dotting the approaches like fireflies.
+
+The station smells the way stations always smell: recycled air, machine oil, and something cooking with too much spice. Market stalls along the corridor walls sell synthetic protein, hydroponic greens, stimulants, questionable electronics. A man hawks "genuine Earth artifacts" that are obviously printed. There are more bots than people now. It has been this way for a while.
