@@ -1,10 +1,10 @@
-//! Rich text editor widget — forked from iced's `text_editor` with built-in
+//! Rich text editor widget -- forked from iced's `text_editor` with built-in
 //! rich text formatting support.
 //!
 //! Key differences from iced's text_editor:
-//! - Uses our [`Content`] which wraps both the cosmic-text editor and
-//!   [`RichDocument`] formatting model
-//! - Built-in [`RichHighlighter`] — no external highlighter generic
+//! - Uses our [`Content`] which wraps the rich editor (cosmic-text Editor +
+//!   AttrsList formatting)
+//! - No external highlighter -- formatting lives in AttrsList, always up-to-date
 //! - Built-in key bindings for Cmd+B/I/U formatting shortcuts
 //! - Emits our [`Action`] type instead of iced's `text_editor::Action`
 
@@ -18,7 +18,7 @@ use iced_core::layout::{self, Layout};
 use iced_core::mouse;
 use iced_core::renderer;
 use iced_core::text::editor::{Editor as _, Selection};
-use iced_core::text::highlighter::Highlighter;
+use iced_core::text::rich_editor::{self, Editor as RichEditorTrait};
 use iced_core::text::{self, LineHeight, Text, Wrapping};
 use iced_core::theme;
 use iced_core::time::{Duration, Instant};
@@ -32,12 +32,10 @@ use iced_core::{
 
 use std::cell::RefCell;
 use std::ops;
-use std::ops::DerefMut;
 use std::sync::Arc;
 
 use super::action::{Action, Edit, FormatAction};
 use super::content::Content;
-use super::highlight::{RichHighlighter, Settings as HighlightSettings};
 
 pub use iced_core::text::editor::Motion;
 
@@ -47,7 +45,7 @@ pub fn rich_editor<'a, Message, Theme, Renderer>(
 ) -> RichEditor<'a, Message, Theme, Renderer>
 where
     Theme: Catalog,
-    Renderer: text::Renderer<Font = Font>,
+    Renderer: rich_editor::Renderer<Font = Font>,
 {
     RichEditor::new(content)
 }
@@ -56,7 +54,7 @@ where
 pub struct RichEditor<'a, Message, Theme, Renderer>
 where
     Theme: Catalog,
-    Renderer: text::Renderer,
+    Renderer: rich_editor::Renderer,
 {
     id: Option<widget::Id>,
     content: &'a Content<Renderer>,
@@ -80,7 +78,7 @@ where
 impl<'a, Message, Theme, Renderer> RichEditor<'a, Message, Theme, Renderer>
 where
     Theme: Catalog,
-    Renderer: text::Renderer<Font = Font>,
+    Renderer: rich_editor::Renderer<Font = Font>,
 {
     /// Creates a new [`RichEditor`] with the given [`Content`].
     pub fn new(content: &'a Content<Renderer>) -> Self {
@@ -232,18 +230,10 @@ where
             .unwrap_or_else(|| renderer.default_size())
             .into();
         let logical = internal.editor.cursor();
-        let effective_size = if logical.position.line < internal.document.line_count() {
-            let line_fmt = internal.document.line_format(logical.position.line);
-            let heading_sz = line_fmt
-                .heading_level
-                .map(|lvl| super::highlight::heading_size(base_size, lvl as usize));
-            let span_fmt = internal
-                .document
-                .format_at(logical.position.line, logical.position.column);
-            span_fmt.size.or(heading_sz).unwrap_or(base_size)
-        } else {
-            base_size
-        };
+        let style = internal
+            .editor
+            .style_at(logical.position.line, logical.position.column);
+        let effective_size = style.size.unwrap_or(base_size);
 
         let line_height = self.line_height.to_absolute(Pixels(effective_size));
 
@@ -270,8 +260,6 @@ pub struct State {
     drag_click: Option<mouse::click::Kind>,
     partial_scroll: f32,
     last_theme: RefCell<Option<String>>,
-    highlighter: RefCell<RichHighlighter>,
-    highlighter_settings: HighlightSettings,
 }
 
 #[derive(Debug, Clone)]
@@ -329,24 +317,13 @@ impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer>
     for RichEditor<'_, Message, Theme, Renderer>
 where
     Theme: Catalog,
-    Renderer: text::Renderer<Font = Font>,
+    Renderer: rich_editor::Renderer<Font = Font>,
 {
     fn tag(&self) -> widget::tree::Tag {
         widget::tree::Tag::of::<State>()
     }
 
     fn state(&self) -> widget::tree::State {
-        let internal = self.content.0.borrow();
-        let font = self.font.unwrap_or(Font::DEFAULT);
-        let base_size: f32 = self.text_size.map(f32::from).unwrap_or(16.0);
-
-        let settings = HighlightSettings::from_document(
-            font,
-            base_size,
-            &internal.document,
-            internal.doc_version,
-        );
-
         widget::tree::State::new(State {
             focus: None,
             preedit: None,
@@ -354,8 +331,6 @@ where
             drag_click: None,
             partial_scroll: 0.0,
             last_theme: RefCell::default(),
-            highlighter: RefCell::new(RichHighlighter::new(&settings)),
-            highlighter_settings: settings,
         })
     }
 
@@ -373,26 +348,9 @@ where
         limits: &layout::Limits,
     ) -> layout::Node {
         let mut internal = self.content.0.borrow_mut();
-        let state = tree.state.downcast_mut::<State>();
+        let _state = tree.state.downcast_mut::<State>();
 
         let font = self.font.unwrap_or_else(|| renderer.default_font());
-        let base_size: f32 = self
-            .text_size
-            .unwrap_or_else(|| renderer.default_size())
-            .into();
-
-        // Snapshot document formatting into highlighter settings.
-        let new_settings = HighlightSettings::from_document(
-            font,
-            base_size,
-            &internal.document,
-            internal.doc_version,
-        );
-
-        if state.highlighter_settings != new_settings {
-            state.highlighter.borrow_mut().update(&new_settings);
-            state.highlighter_settings = new_settings;
-        }
 
         let limits = limits
             .width(self.width)
@@ -400,6 +358,8 @@ where
             .min_height(self.min_height)
             .max_height(self.max_height);
 
+        // Update the editor layout. No highlighter parameter needed --
+        // formatting is stored directly in AttrsList.
         internal.editor.update(
             limits.shrink(self.padding).max(),
             font,
@@ -409,16 +369,7 @@ where
             self.font_features.clone(),
             self.wrapping,
             renderer.scale_factor(),
-            state.highlighter.borrow_mut().deref_mut(),
         );
-
-        // Apply highlighting so cosmic-text has correct per-span sizes for layout.
-        // Without this, format-only changes (headings, font size) don't reshape.
-        internal
-            .editor
-            .highlight(font, state.highlighter.borrow_mut().deref_mut(), |h| {
-                h.to_format()
-            });
 
         match self.height {
             Length::Fill | Length::FillPortion(_) | Length::Fixed(_) => {
@@ -548,7 +499,7 @@ where
                     }
                 },
                 InternalUpdate::Binding(binding) => {
-                    fn apply_binding<R: text::Renderer, Message>(
+                    fn apply_binding<R: rich_editor::Renderer, Message>(
                         binding: Binding<Message>,
                         content: &Content<R>,
                         state: &mut State,
@@ -668,28 +619,10 @@ where
     ) {
         let bounds = layout.bounds();
 
-        let mut internal = self.content.0.borrow_mut();
+        let internal = self.content.0.borrow_mut();
         let state = tree.state.downcast_ref::<State>();
 
         let font = self.font.unwrap_or_else(|| renderer.default_font());
-
-        let theme_name = theme.name();
-
-        if state
-            .last_theme
-            .borrow()
-            .as_ref()
-            .is_none_or(|last_theme| last_theme != theme_name)
-        {
-            state.highlighter.borrow_mut().change_line(0);
-            let _ = state.last_theme.borrow_mut().replace(theme_name.to_owned());
-        }
-
-        internal
-            .editor
-            .highlight(font, state.highlighter.borrow_mut().deref_mut(), |h| {
-                h.to_format()
-            });
 
         let style = theme.style(&self.class, self.last_status.unwrap_or(Status::Active));
 
@@ -728,7 +661,7 @@ where
                 );
             }
         } else {
-            renderer.fill_editor(
+            renderer.fill_rich_editor(
                 &internal.editor,
                 text_bounds.position(),
                 style.value,
@@ -746,18 +679,10 @@ where
                         .unwrap_or_else(|| renderer.default_size())
                         .into();
                     let logical = internal.editor.cursor();
-                    let effective_size = if logical.position.line < internal.document.line_count() {
-                        let line_fmt = internal.document.line_format(logical.position.line);
-                        let heading_sz = line_fmt
-                            .heading_level
-                            .map(|lvl| super::highlight::heading_size(base_size, lvl as usize));
-                        let span_fmt = internal
-                            .document
-                            .format_at(logical.position.line, logical.position.column);
-                        span_fmt.size.or(heading_sz).unwrap_or(base_size)
-                    } else {
-                        base_size
-                    };
+                    let char_style = internal
+                        .editor
+                        .style_at(logical.position.line, logical.position.column);
+                    let effective_size = char_style.size.unwrap_or(base_size);
 
                     let cursor = Rectangle::new(
                         position + translation,
@@ -840,7 +765,7 @@ impl<'a, Message, Theme, Renderer> From<RichEditor<'a, Message, Theme, Renderer>
 where
     Message: 'a,
     Theme: Catalog + 'a,
-    Renderer: text::Renderer<Font = Font>,
+    Renderer: rich_editor::Renderer<Font = Font>,
 {
     fn from(editor: RichEditor<'a, Message, Theme, Renderer>) -> Self {
         Self::new(editor)
