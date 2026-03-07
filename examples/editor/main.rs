@@ -1,7 +1,4 @@
-// FIXME: this is wrong. should be built by the consumer. the library doesn't
-// know how the gui will work, it makes no prescriptive choices about icons.
 #[allow(dead_code)]
-#[path = "../../src/icon.rs"]
 mod icon;
 
 use iced::widget::{column, container, text};

@@ -743,6 +743,7 @@ name = "editor"
 version = "0.1.0"
 dependencies = [
  "iced",
+ "iced_lucide",
  "markright",
  "reqwest",
 ]
@@ -1981,7 +1982,6 @@ version = "0.1.0"
 dependencies = [
  "iced",
  "iced_core",
- "iced_lucide",
  "reqwest",
 ]
 

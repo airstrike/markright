@@ -12,3 +12,6 @@ path = "main.rs"
 markright = { path = "../.." }
 iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
 reqwest = { version = "0.12", features = ["rustls-tls"] }
+
+[build-dependencies]
+iced_lucide = { git = "https://github.com/A-Disruption/iced_lucide" }
