@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "examples/editor"]
+members = [".", "document", "examples/editor"]
 
 [package]
 name = "markright"
