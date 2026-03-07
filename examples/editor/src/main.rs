@@ -1,27 +1,15 @@
+mod fonts;
 #[allow(dead_code)]
 mod icon;
+mod theme;
+mod toolbar;
 
 use iced::widget::{column, container, text};
 use iced::{Element, Fill, Font, Length, Task, padding};
 
 use markright::widget::rich_editor::{self, Action, Content};
 
-mod theme;
-mod toolbar;
-
 use theme::ThemeChoice;
-
-// FIXME: move this to a fonts.rs and implement lazy loading from google fonts.
-/// IBM Plex Sans Regular
-const PLEX_SANS_REGULAR: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Regular.ttf";
-/// IBM Plex Sans Bold
-const PLEX_SANS_BOLD: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Bold.ttf";
-/// IBM Plex Sans Italic
-const PLEX_SANS_ITALIC: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Italic.ttf";
-/// IBM Plex Sans Bold Italic
-const PLEX_SANS_BOLD_ITALIC: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-BoldItalic.ttf";
-/// IBM Plex Mono Regular
-const PLEX_MONO_REGULAR: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-mono/fonts/complete/ttf/IBMPlexMono-Regular.ttf";
 
 const BASE_SIZE: f32 = 16.0;
 
@@ -50,21 +38,7 @@ impl App {
     fn new() -> (Self, Task<Message>) {
         let sample = include_str!("../sample.txt");
 
-        let font_tasks = Task::batch(
-            [
-                PLEX_SANS_REGULAR,
-                PLEX_SANS_BOLD,
-                PLEX_SANS_ITALIC,
-                PLEX_SANS_BOLD_ITALIC,
-                PLEX_MONO_REGULAR,
-            ]
-            .into_iter()
-            .map(|url| {
-                Task::future(fetch_font(url.to_owned()))
-                    .then(iced::font::load)
-                    .map(Message::FontLoaded)
-            }),
-        );
+        let font_tasks = fonts::load_defaults(Message::FontLoaded);
 
         (
             Self {
@@ -129,15 +103,4 @@ impl App {
             .height(Fill)
             .into()
     }
-}
-
-/// Fetch font bytes from a URL.
-async fn fetch_font(url: String) -> Vec<u8> {
-    reqwest::get(&url)
-        .await
-        .expect("font fetch failed")
-        .bytes()
-        .await
-        .expect("font bytes failed")
-        .to_vec()
 }
