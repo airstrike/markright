@@ -3,13 +3,13 @@ use iced::theme::Palette;
 
 /// Theme selection for the editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ThemeChoice {
+pub enum Theme {
     Light,
     #[default]
     Dark,
 }
 
-impl ThemeChoice {
+impl Theme {
     /// Build an iced Theme from this choice.
     pub fn to_theme(self) -> iced::Theme {
         iced::Theme::custom(self.name().to_string(), self.palette())

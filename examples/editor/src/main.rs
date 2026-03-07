@@ -1,15 +1,14 @@
 mod fonts;
-#[allow(dead_code)]
 mod icon;
 mod theme;
 mod toolbar;
 
 use iced::widget::{column, container, text};
-use iced::{Element, Fill, Font, Length, Task, padding};
+use iced::{Element, Fill, Font, Task, padding};
 
 use markright::widget::rich_editor::{self, Action, Content};
 
-use theme::ThemeChoice;
+use theme::Theme;
 
 const BASE_SIZE: f32 = 16.0;
 
@@ -24,7 +23,7 @@ fn main() -> iced::Result {
 
 struct App {
     content: Content<iced::Renderer>,
-    theme_choice: ThemeChoice,
+    theme_choice: Theme,
 }
 
 #[derive(Debug, Clone)]
@@ -43,7 +42,7 @@ impl App {
         (
             Self {
                 content: Content::with_text(sample),
-                theme_choice: ThemeChoice::default(),
+                theme_choice: Theme::default(),
             },
             font_tasks,
         )
@@ -53,12 +52,18 @@ impl App {
         self.theme_choice.to_theme()
     }
 
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::EditorAction(action) => self.content.perform(action),
             Message::ToggleTheme => self.theme_choice = self.theme_choice.toggle(),
-            Message::Font(_) => {}
+            Message::Font(res) => {
+                if let fonts::Message::Loaded(Err(e)) = res {
+                    eprintln!("Font loading failed: {e:?}");
+                }
+            }
         }
+
+        Task::none()
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -98,9 +103,6 @@ impl App {
         .width(Fill)
         .height(Fill);
 
-        container(content)
-            .center_x(Length::Fill)
-            .height(Fill)
-            .into()
+        container(content).center_x(Fill).height(Fill).into()
     }
 }
