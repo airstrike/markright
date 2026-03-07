@@ -1,3 +1,5 @@
+//! Visual styling for the rich text editor widget.
+
 use super::Status;
 use crate::core::theme;
 use crate::core::{Background, Border, Color, Theme};

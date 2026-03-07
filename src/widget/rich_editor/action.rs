@@ -1,3 +1,5 @@
+//! Action types for the rich text editor — navigation, selection, and edits.
+
 use crate::core::text::Alignment;
 use crate::core::{Font, Point};
 

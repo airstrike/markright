@@ -15,6 +15,7 @@ mod action;
 mod binding;
 mod content;
 pub mod cursor;
+mod operation;
 pub mod style;
 
 pub use crate::core::text::Alignment;
@@ -37,7 +38,7 @@ use crate::core::text::editor::Selection as EditorSelection;
 use crate::core::text::rich_editor::{self, Editor as RichEditorTrait};
 use crate::core::text::{self, LineHeight, Text, Wrapping};
 use crate::core::time::{Duration, Instant};
-use crate::core::widget::operation;
+use crate::core::widget::operation as widget_operation;
 use crate::core::widget::{self, Widget};
 use crate::core::window;
 use crate::core::{
@@ -302,7 +303,7 @@ impl State {
     }
 }
 
-impl operation::Focusable for State {
+impl widget_operation::Focusable for State {
     fn is_focused(&self) -> bool {
         self.focus.is_some()
     }

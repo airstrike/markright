@@ -1,3 +1,5 @@
+//! Cursor context types — formatting state at the current cursor position.
+
 use crate::core::text::Alignment;
 use crate::core::{Color, Font};
 

@@ -1,3 +1,5 @@
+//! Key binding definitions — maps keyboard input to editor actions.
+
 use super::{FormatAction, Motion, Status};
 use crate::core::SmolStr;
 use crate::core::keyboard;
