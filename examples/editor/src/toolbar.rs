@@ -13,6 +13,8 @@ use crate::theme;
 pub fn view<'a, Message>(
     ctx: &cursor::Context,
     is_dark: bool,
+    can_undo: bool,
+    can_redo: bool,
     on_action: impl Fn(Action) -> Message + 'a,
     on_toggle_theme: Message,
 ) -> Element<'a, Message>
@@ -20,6 +22,23 @@ where
     Message: Clone + 'a,
 {
     let fmt = |f: FormatAction| Action::Edit(Edit::Format(f));
+
+    let msg_undo = on_action(Action::Undo);
+    let msg_redo = on_action(Action::Redo);
+
+    let mut undo_btn = button(icon::undo().size(16))
+        .padding([4, 8])
+        .style(theme::button::icon);
+    if can_undo {
+        undo_btn = undo_btn.on_press(msg_undo);
+    }
+
+    let mut redo_btn = button(icon::redo().size(16))
+        .padding([4, 8])
+        .style(theme::button::icon);
+    if can_redo {
+        redo_btn = redo_btn.on_press(msg_redo);
+    }
 
     let msg_bold = on_action(fmt(FormatAction::ToggleBold));
     let msg_italic = on_action(fmt(FormatAction::ToggleItalic));
@@ -83,6 +102,9 @@ where
 
     container(
         row![
+            undo_btn,
+            redo_btn,
+            Space::new().width(8),
             bold_btn,
             italic_btn,
             underline_btn,

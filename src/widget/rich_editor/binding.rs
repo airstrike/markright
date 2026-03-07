@@ -87,6 +87,7 @@ impl<Message> Binding<Message> {
             Some('a') if modifiers.command() => Some(Self::SelectAll),
             // Undo / Redo (Shift+Cmd+Z before Cmd+Z so the more specific match wins).
             Some('z') if modifiers.command() && modifiers.shift() => Some(Self::Redo),
+            Some('y') if modifiers.command() => Some(Self::Redo),
             Some('z') if modifiers.command() => Some(Self::Undo),
             // Built-in formatting shortcuts.
             Some('b') if modifiers.command() => Some(Self::Format(FormatAction::ToggleBold)),

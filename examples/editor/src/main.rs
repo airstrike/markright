@@ -71,7 +71,9 @@ impl App {
 
     fn view(&self) -> Element<'_, Message> {
         let cursor = self.content.cursor_context();
-        let tools = toolbar(&cursor, self.theme_choice.is_dark());
+        let can_undo = self.content.can_undo();
+        let can_redo = self.content.can_redo();
+        let tools = toolbar(&cursor, self.theme_choice.is_dark(), can_undo, can_redo);
         let status_bar = status_bar(&cursor);
 
         let editor = column![
@@ -90,8 +92,20 @@ impl App {
     }
 }
 
-fn toolbar(cursor: &cursor::Context, is_dark: bool) -> Element<'static, Message> {
-    toolbar::view(cursor, is_dark, Message::EditorAction, Message::ToggleTheme)
+fn toolbar(
+    cursor: &cursor::Context,
+    is_dark: bool,
+    can_undo: bool,
+    can_redo: bool,
+) -> Element<'static, Message> {
+    toolbar::view(
+        cursor,
+        is_dark,
+        can_undo,
+        can_redo,
+        Message::EditorAction,
+        Message::ToggleTheme,
+    )
 }
 
 fn status_bar(cursor: &cursor::Context) -> Element<'static, Message> {
