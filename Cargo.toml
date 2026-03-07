@@ -17,8 +17,8 @@ reqwest = { version = "0.12", features = ["rustls-tls"] }
 iced_lucide = { git = "https://github.com/A-Disruption/iced_lucide" }
 
 [patch.crates-io]
-iced = { git = "https://github.com/airstrike/iced.git", branch = "markright/rich-editor" }
-iced_core = { git = "https://github.com/airstrike/iced.git", branch = "markright/rich-editor" }
-iced_graphics = { git = "https://github.com/airstrike/iced.git", branch = "markright/rich-editor" }
-iced_widget = { git = "https://github.com/airstrike/iced.git", branch = "markright/rich-editor" }
+iced = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
+iced_core = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
+iced_graphics = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
+iced_widget = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
 cosmic-text = { git = "https://github.com/airstrike/cosmic-text", branch = "featureful-fonts" }
