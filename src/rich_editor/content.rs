@@ -6,7 +6,6 @@ use std::cell::RefCell;
 
 use super::action::{self, Action, Edit, FormatAction};
 use super::cursor;
-use crate::shortcuts::{self, MarkdownAction};
 
 pub use iced_core::text::editor::{Cursor, Line, LineEnding, Position};
 
@@ -190,9 +189,6 @@ impl<R: rich_editor::Renderer> Internal<R> {
                     self.editor
                         .set_span_style(line, col..col + c.len_utf8(), style);
                 }
-
-                // Detect and apply typing shortcuts
-                self.detect_and_apply_shortcuts();
             }
             Edit::Paste(ref text) => {
                 let cursor_before = self.editor.cursor();
@@ -403,154 +399,6 @@ impl<R: rich_editor::Renderer> Internal<R> {
             }
         }
     }
-
-    /// Detect completed typing shortcuts on the current line and apply them.
-    fn detect_and_apply_shortcuts(&mut self) {
-        let cursor = self.editor.cursor();
-        let line_idx = cursor.position.line;
-
-        let line_text = match self.editor.line(line_idx) {
-            Some(l) => l.text.into_owned(),
-            None => return,
-        };
-
-        let actions = shortcuts::detect_patterns(&line_text);
-        if actions.is_empty() {
-            return;
-        }
-
-        for action in actions {
-            match action {
-                MarkdownAction::Heading { level, marker } => {
-                    self.remove_range_from_editor(line_idx, &marker);
-                    // Apply heading as a paragraph style preset
-                    // TODO: get base_size from widget configuration
-                    let size = heading_size(16.0, level as usize);
-                    self.editor.set_paragraph_style(
-                        line_idx,
-                        &ParagraphStyle {
-                            style: RichStyle {
-                                bold: Some(true),
-                                size: Some(size),
-                                ..RichStyle::default()
-                            },
-                            ..ParagraphStyle::default()
-                        },
-                    );
-                }
-                MarkdownAction::Bold { markers, .. } => {
-                    let adjusted = self.remove_markers_from_editor(line_idx, &markers);
-                    self.editor.set_span_style(
-                        line_idx,
-                        adjusted,
-                        &RichStyle {
-                            bold: Some(true),
-                            ..RichStyle::default()
-                        },
-                    );
-                }
-                MarkdownAction::Italic { markers, .. } => {
-                    let adjusted = self.remove_markers_from_editor(line_idx, &markers);
-                    self.editor.set_span_style(
-                        line_idx,
-                        adjusted,
-                        &RichStyle {
-                            italic: Some(true),
-                            ..RichStyle::default()
-                        },
-                    );
-                }
-                MarkdownAction::BoldItalic { markers, .. } => {
-                    let adjusted = self.remove_markers_from_editor(line_idx, &markers);
-                    self.editor.set_span_style(
-                        line_idx,
-                        adjusted.clone(),
-                        &RichStyle {
-                            bold: Some(true),
-                            italic: Some(true),
-                            ..RichStyle::default()
-                        },
-                    );
-                }
-                MarkdownAction::Code { markers, .. } => {
-                    let adjusted = self.remove_markers_from_editor(line_idx, &markers);
-                    let mono_font = iced_core::Font::with_name("IBM Plex Mono");
-                    self.editor.set_span_style(
-                        line_idx,
-                        adjusted,
-                        &RichStyle {
-                            font: Some(mono_font),
-                            ..RichStyle::default()
-                        },
-                    );
-                }
-            }
-        }
-    }
-
-    /// Remove a byte range from the editor on a given line.
-    fn remove_range_from_editor(&mut self, line: usize, range: &std::ops::Range<usize>) {
-        use iced_core::text::editor::{Action as IcedAction, Edit as IcedEdit, Motion};
-
-        let range_len = range.end - range.start;
-        if range_len == 0 {
-            return;
-        }
-
-        // Move cursor to end of range.
-        self.editor.move_to(Cursor {
-            position: Position {
-                line,
-                column: range.end,
-            },
-            selection: None,
-        });
-
-        // Select backwards.
-        for _ in 0..range_len {
-            self.editor.perform(IcedAction::Select(Motion::Left));
-        }
-
-        // Delete selection.
-        self.editor.perform(IcedAction::Edit(IcedEdit::Backspace));
-    }
-
-    /// Remove marker ranges from the editor (right-to-left) and return the
-    /// adjusted content range.
-    fn remove_markers_from_editor(
-        &mut self,
-        line: usize,
-        markers: &[std::ops::Range<usize>],
-    ) -> std::ops::Range<usize> {
-        let mut sorted_markers: Vec<_> = markers.to_vec();
-        sorted_markers.sort_by(|a, b| b.start.cmp(&a.start));
-
-        let first_marker_end = markers
-            .iter()
-            .map(|m| m.end)
-            .min()
-            .expect("markers should be non-empty");
-        let last_marker_start = markers
-            .iter()
-            .map(|m| m.start)
-            .max()
-            .expect("markers should be non-empty");
-
-        let content_start = first_marker_end;
-        let content_end = last_marker_start;
-
-        let mut removed_before_content = 0usize;
-        for marker in &sorted_markers {
-            self.remove_range_from_editor(line, marker);
-            if marker.end <= content_start {
-                removed_before_content += marker.end - marker.start;
-            }
-        }
-
-        let adjusted_start = content_start - removed_before_content;
-        let adjusted_end = content_end - removed_before_content;
-        adjusted_start..adjusted_end
-    }
 }
 
 /// Order two positions so that `start` comes before `end`.
@@ -559,18 +407,5 @@ fn ordered_positions<'a>(a: &'a Position, b: &'a Position) -> (&'a Position, &'a
         (a, b)
     } else {
         (b, a)
-    }
-}
-
-/// Heading size based on level (1-6).
-fn heading_size(base: f32, level: usize) -> f32 {
-    match level {
-        1 => base * 2.0,
-        2 => base * 1.5,
-        3 => base * 1.25,
-        4 => base * 1.125,
-        5 => base * 1.0,
-        6 => base * 0.875,
-        _ => base,
     }
 }
