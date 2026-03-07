@@ -30,7 +30,7 @@ struct App {
 #[derive(Debug, Clone)]
 enum Message {
     EditorAction(Action),
-    FontLoaded(Result<(), iced::font::Error>),
+    Font(fonts::Message),
     ToggleTheme,
 }
 
@@ -38,7 +38,7 @@ impl App {
     fn new() -> (Self, Task<Message>) {
         let sample = include_str!("../sample.txt");
 
-        let font_tasks = fonts::load_defaults(Message::FontLoaded);
+        let font_tasks = fonts::load_defaults().map(Message::Font);
 
         (
             Self {
@@ -57,7 +57,7 @@ impl App {
         match message {
             Message::EditorAction(action) => self.content.perform(action),
             Message::ToggleTheme => self.theme_choice = self.theme_choice.toggle(),
-            Message::FontLoaded(_) => {}
+            Message::Font(_) => {}
         }
     }
 

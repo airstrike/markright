@@ -21,6 +21,13 @@
 
 use iced::Task;
 
+/// Messages emitted by the font subsystem.
+#[derive(Debug, Clone)]
+pub enum Message {
+    /// A font finished loading (or failed).
+    Loaded(Result<(), iced::font::Error>),
+}
+
 /// URLs for the default font family (IBM Plex Sans) plus a monospace variant.
 const PLEX_SANS_REGULAR: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Regular.ttf";
 const PLEX_SANS_BOLD: &str = "https://raw.githubusercontent.com/IBM/plex/master/packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Bold.ttf";
@@ -37,13 +44,11 @@ const ALL: &[&str] = &[
 ];
 
 /// Returns a batch task that fetches and loads all default fonts.
-pub fn load_defaults<Message: Send + 'static>(
-    on_loaded: fn(Result<(), iced::font::Error>) -> Message,
-) -> Task<Message> {
+pub fn load_defaults() -> Task<Message> {
     Task::batch(ALL.iter().map(|url| {
         Task::future(fetch(url.to_string()))
             .then(iced::font::load)
-            .map(on_loaded)
+            .map(Message::Loaded)
     }))
 }
 
