@@ -48,7 +48,7 @@ enum Message {
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let sample = include_str!("sample.txt");
+        let sample = include_str!("../sample.txt");
 
         let font_tasks = Task::batch(
             [
