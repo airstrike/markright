@@ -1990,6 +1990,7 @@ name = "markright_document"
 version = "0.1.0"
 dependencies = [
  "cosmic-text 0.12.1",
+ "iced_core",
 ]
 
 [[package]]

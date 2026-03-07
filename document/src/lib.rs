@@ -1,17 +1,13 @@
 //! # Document
 //!
-//! The document model for markright's rich text editor.
+//! Operation-based document model for markright's rich text editor.
 //!
-//! For now, `Document` is a type alias for `cosmic_text::Editor`. Over time
-//! this will evolve into a full document model with paragraph styles, block-level
-//! formatting, embedded objects, undo/redo, and rope-based storage.
-//!
-//! The `rich_editor::Editor` trait insulates the widget layer from changes
-//! here -- when Document evolves, the trait stays stable.
+//! Provides atomic operations ([`Op`]) for all document mutations and
+//! an undo/redo [`History`] built on those operations. Designed so a
+//! future `crdt` subcrate can consume/produce the same operations.
 
-/// The document buffer. Currently backed by cosmic-text's Editor, which
-/// owns the text (Buffer) and per-character formatting (AttrsList per line).
-///
-/// cosmic-text handles span range adjustments on insert/delete automatically
-/// via `BufferLine::split_off()` + `BufferLine::append()`.
-pub type Document = cosmic_text::Editor<'static>;
+pub mod history;
+pub mod op;
+
+pub use history::{History, UndoGroup};
+pub use op::{Op, StyleRun, StyledText};
