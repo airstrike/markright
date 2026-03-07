@@ -553,6 +553,7 @@ where
                             }
                             Binding::Format(fmt) => {
                                 publish(Action::Edit(Edit::Format(fmt)));
+                                shell.request_redraw();
                             }
                             Binding::Sequence(sequence) => {
                                 for binding in sequence {
