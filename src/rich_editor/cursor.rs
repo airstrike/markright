@@ -1,4 +1,4 @@
-use crate::document::Alignment;
+use iced_core::text::Alignment;
 use iced_core::{Color, Font};
 
 /// Formatting context at the current cursor position.
@@ -24,15 +24,13 @@ pub struct Character {
 #[derive(Debug, Clone)]
 pub struct Paragraph {
     pub alignment: Alignment,
-    pub heading: Option<u8>,
     pub spacing_after: f32,
 }
 
 impl Default for Paragraph {
     fn default() -> Self {
         Self {
-            alignment: Alignment::Left,
-            heading: None,
+            alignment: Alignment::Default,
             spacing_after: 0.0,
         }
     }
