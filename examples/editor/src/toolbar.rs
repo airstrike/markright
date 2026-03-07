@@ -63,7 +63,10 @@ where
         .style(theme::button::toolbar_toggle(ctx.character.underline))
         .on_press(msg_underline);
 
-    let is_left = ctx.paragraph.alignment == Alignment::Left;
+    let is_left = matches!(
+        ctx.paragraph.alignment,
+        Alignment::Left | Alignment::Default
+    );
     let is_center = ctx.paragraph.alignment == Alignment::Center;
     let is_right = ctx.paragraph.alignment == Alignment::Right;
     let is_justify = ctx.paragraph.alignment == Alignment::Justified;

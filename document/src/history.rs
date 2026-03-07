@@ -82,12 +82,16 @@ impl History {
 
     /// Push a group onto the redo stack (used by Content after applying undo inverses).
     pub fn push_redo(&mut self, group: UndoGroup) {
-        self.redo_stack.push(group);
+        if !group.is_empty() {
+            self.redo_stack.push(group);
+        }
     }
 
     /// Push a group onto the undo stack (used by Content after applying redo inverses).
     pub fn push_undo(&mut self, group: UndoGroup) {
-        self.undo_stack.push(group);
+        if !group.is_empty() {
+            self.undo_stack.push(group);
+        }
     }
 
     /// Returns whether an undo operation is available.

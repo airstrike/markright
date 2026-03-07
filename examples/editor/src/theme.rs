@@ -100,11 +100,11 @@ pub mod button {
         }
     }
 
-    /// Icon-only button (transparent background).
+    /// Icon-only button (transparent background, visually muted when disabled).
     pub fn icon(theme: &Theme, status: button::Status) -> button::Style {
         let palette = theme.extended_palette();
         let text_color = match status {
-            button::Status::Disabled => palette.background.weak.text,
+            button::Status::Disabled => palette.background.base.text.scale_alpha(0.25),
             button::Status::Hovered => palette.primary.base.color,
             _ => palette.background.base.text,
         };
@@ -156,9 +156,9 @@ pub mod text_editor {
     pub fn borderless(theme: &Theme, status: Status) -> Style {
         let palette = theme.extended_palette();
         let selection = if matches!(status, Status::Focused { .. }) {
-            palette.primary.strong.color
+            palette.success.base.color.scale_alpha(0.4)
         } else {
-            palette.primary.weak.color
+            palette.success.base.color.scale_alpha(0.2)
         };
         Style {
             background: Background::Color(palette.background.base.color),
