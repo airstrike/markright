@@ -1,5 +1,5 @@
-use iced_core::text::Alignment;
-use iced_core::text::rich_editor::{self, Editor as _, ParagraphStyle, Style as RichStyle};
+use crate::core::text::Alignment;
+use crate::core::text::rich_editor::{self, Editor as _, ParagraphStyle, Style as RichStyle};
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use super::action::{self, Action, Edit, FormatAction};
 use super::cursor;
 
-pub use iced_core::text::editor::{Cursor, Line, LineEnding, Position};
+pub use crate::core::text::editor::{Cursor, Line, LineEnding, Position};
 
 /// The content of a rich text editor -- wraps the rich editor which manages
 /// both text and formatting via cosmic-text's AttrsList.
@@ -174,8 +174,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
             Edit::Format(fmt) => self.perform_format(fmt),
             Edit::Insert(c) => {
                 let cursor_before = self.editor.cursor();
-                self.editor.perform(iced_core::text::editor::Action::Edit(
-                    iced_core::text::editor::Edit::Insert(c),
+                self.editor.perform(crate::core::text::editor::Action::Edit(
+                    crate::core::text::editor::Edit::Insert(c),
                 ));
 
                 // Apply pending style to the inserted character
@@ -188,8 +188,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
             }
             Edit::Paste(ref text) => {
                 let cursor_before = self.editor.cursor();
-                self.editor.perform(iced_core::text::editor::Action::Edit(
-                    iced_core::text::editor::Edit::Paste(text.clone()),
+                self.editor.perform(crate::core::text::editor::Action::Edit(
+                    crate::core::text::editor::Edit::Paste(text.clone()),
                 ));
 
                 // Apply pending style to pasted text
@@ -204,20 +204,20 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 }
             }
             Edit::Enter => {
-                self.editor.perform(iced_core::text::editor::Action::Edit(
-                    iced_core::text::editor::Edit::Enter,
+                self.editor.perform(crate::core::text::editor::Action::Edit(
+                    crate::core::text::editor::Edit::Enter,
                 ));
                 self.pending_style = None;
             }
             Edit::Backspace => {
-                self.editor.perform(iced_core::text::editor::Action::Edit(
-                    iced_core::text::editor::Edit::Backspace,
+                self.editor.perform(crate::core::text::editor::Action::Edit(
+                    crate::core::text::editor::Edit::Backspace,
                 ));
                 self.pending_style = None;
             }
             Edit::Delete => {
-                self.editor.perform(iced_core::text::editor::Action::Edit(
-                    iced_core::text::editor::Edit::Delete,
+                self.editor.perform(crate::core::text::editor::Action::Edit(
+                    crate::core::text::editor::Edit::Delete,
                 ));
                 self.pending_style = None;
             }

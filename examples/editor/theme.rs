@@ -149,7 +149,7 @@ pub mod text {
 
 pub mod text_editor {
     use iced::{Background, Border, Theme};
-    use markright::rich_editor::{Status, Style};
+    use markright::widget::rich_editor::{Status, Style};
 
     /// Editor with no focus border.
     pub fn borderless(theme: &Theme, _status: Status) -> Style {

@@ -7,7 +7,7 @@ mod icon;
 use iced::widget::{column, container, text};
 use iced::{Element, Fill, Font, Length, Task, padding};
 
-use markright::rich_editor::{self, Action, Content};
+use markright::widget::rich_editor::{self, Action, Content};
 
 mod theme;
 mod toolbar;

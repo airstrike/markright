@@ -1,7 +1,7 @@
 use iced::widget::{Space, button, container, row};
 use iced::{Element, Length};
 
-use markright::rich_editor::{Action, Alignment, Edit, FormatAction, cursor};
+use markright::widget::rich_editor::{Action, Alignment, Edit, FormatAction, cursor};
 
 use crate::icon;
 use crate::theme;

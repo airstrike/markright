@@ -1,3 +1,3 @@
-pub mod rich_editor;
+pub mod widget;
 
-pub use iced_core as core;
+use iced_core as core;

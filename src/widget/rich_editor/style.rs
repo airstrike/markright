@@ -1,6 +1,6 @@
+use super::Status;
 use crate::core::theme;
 use crate::core::{Background, Border, Color, Theme};
-use crate::rich_editor::Status;
 
 /// The appearance of a [`RichEditor`].
 #[derive(Debug, Clone, Copy, PartialEq)]

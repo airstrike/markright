@@ -1,5 +1,5 @@
-use iced_core::text::Alignment;
-use iced_core::{Color, Font};
+use crate::core::text::Alignment;
+use crate::core::{Color, Font};
 
 /// Formatting context at the current cursor position.
 #[derive(Debug, Clone, Default)]

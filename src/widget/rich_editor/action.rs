@@ -1,5 +1,5 @@
-use iced_core::text::Alignment;
-use iced_core::{Font, Point};
+use crate::core::text::Alignment;
+use crate::core::{Font, Point};
 
 use std::sync::Arc;
 
@@ -76,8 +76,8 @@ pub enum FormatAction {
 /// Convert our [`Action`] to an iced editor [`Action`] when possible.
 ///
 /// Returns `None` for formatting actions that have no iced equivalent.
-pub(crate) fn to_iced_action(action: &Action) -> Option<iced_core::text::editor::Action> {
-    use iced_core::text::editor;
+pub(crate) fn to_iced_action(action: &Action) -> Option<crate::core::text::editor::Action> {
+    use crate::core::text::editor;
 
     match action {
         Action::Edit(edit) => {
@@ -103,4 +103,4 @@ pub(crate) fn to_iced_action(action: &Action) -> Option<iced_core::text::editor:
 }
 
 // Re-export iced types that are part of our public API.
-pub use iced_core::text::editor::{Cursor, Line, LineEnding, Motion, Position, Selection};
+pub use crate::core::text::editor::{Cursor, Line, LineEnding, Motion, Position, Selection};

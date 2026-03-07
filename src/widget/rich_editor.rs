@@ -1,5 +1,8 @@
-//! Rich text editor widget -- forked from iced's `text_editor` with built-in
-//! rich text formatting support.
+//! Rich text editor widget with integrated formatting model.
+//!
+//! This module provides a rich text editor that wraps a `rich_editor::Renderer`
+//! backed by cosmic-text. All formatting and text editing go through
+//! [`Content::perform`].
 //!
 //! Key differences from iced's text_editor:
 //! - Uses our [`Content`] which wraps the rich editor (cosmic-text Editor +
@@ -7,6 +10,20 @@
 //! - No external highlighter -- formatting lives in AttrsList, always up-to-date
 //! - Built-in key bindings for Cmd+B/I/U formatting shortcuts
 //! - Emits our [`Action`] type instead of iced's `text_editor::Action`
+
+mod action;
+mod binding;
+mod content;
+pub mod cursor;
+pub mod style;
+
+pub use crate::core::text::Alignment;
+pub use action::{
+    Action, Cursor, Edit, FormatAction, Line, LineEnding, Motion, Position, Selection,
+};
+pub use binding::{Binding, KeyPress};
+pub use content::Content;
+pub use style::{Catalog, Style, StyleFn};
 
 use crate::core::Font;
 use crate::core::alignment;
@@ -16,7 +33,7 @@ use crate::core::keyboard;
 use crate::core::layout::{self, Layout};
 use crate::core::mouse;
 use crate::core::renderer;
-use crate::core::text::editor::Selection;
+use crate::core::text::editor::Selection as EditorSelection;
 use crate::core::text::rich_editor::{self, Editor as RichEditorTrait};
 use crate::core::text::{self, LineHeight, Text, Wrapping};
 use crate::core::time::{Duration, Instant};
@@ -30,12 +47,8 @@ use crate::core::{
 
 use std::sync::Arc;
 
-use super::action::{Action, Edit};
-use super::binding::{Binding, Ime, KeyPress};
-use super::content::Content;
-use super::style::{Catalog, Style, StyleFn};
-
-pub use crate::core::text::editor::Motion;
+use action::Edit as ActionEdit;
+use binding::{Binding as BindingType, Ime};
 
 /// Creates a new [`RichEditor`] with the given [`Content`].
 pub fn rich_editor<'a, Message, Theme, Renderer>(
@@ -219,8 +232,10 @@ where
         let translation = text_bounds.position() - Point::ORIGIN;
 
         let cursor = match internal.editor.selection() {
-            Selection::Caret(position) => position,
-            Selection::Range(ranges) => ranges.first().cloned().unwrap_or_default().position(),
+            EditorSelection::Caret(position) => position,
+            EditorSelection::Range(ranges) => {
+                ranges.first().cloned().unwrap_or_default().position()
+            }
         };
 
         let base_size: f32 = self
@@ -425,7 +440,9 @@ where
                     && let Some(focus) = &mut state.focus
                     && focus.is_window_focused
                 {
-                    shell.publish(on_action(Action::Edit(Edit::Paste(Arc::new(text.clone())))));
+                    shell.publish(on_action(Action::Edit(ActionEdit::Paste(Arc::new(
+                        text.clone(),
+                    )))));
                 }
             }
             _ => {}
@@ -483,12 +500,12 @@ where
                         shell.request_redraw();
                     }
                     Ime::Commit(text) => {
-                        shell.publish(on_action(Action::Edit(Edit::Paste(Arc::new(text)))));
+                        shell.publish(on_action(Action::Edit(ActionEdit::Paste(Arc::new(text)))));
                     }
                 },
                 Update::Binding(binding) => {
                     fn apply_binding<R: rich_editor::Renderer, Message>(
-                        binding: Binding<Message>,
+                        binding: BindingType<Message>,
                         content: &Content<R>,
                         state: &mut State,
                         on_action: &dyn Fn(Action) -> Message,
@@ -497,66 +514,66 @@ where
                         let mut publish = |action| shell.publish(on_action(action));
 
                         match binding {
-                            Binding::Unfocus => {
+                            BindingType::Unfocus => {
                                 state.focus = None;
                                 state.drag_click = None;
                             }
-                            Binding::Copy => {
+                            BindingType::Copy => {
                                 if let Some(selection) = content.selection() {
                                     shell.write_clipboard(clipboard::Content::Text(selection));
                                 }
                             }
-                            Binding::Cut => {
+                            BindingType::Cut => {
                                 if let Some(selection) = content.selection() {
                                     shell.write_clipboard(clipboard::Content::Text(selection));
-                                    shell.publish(on_action(Action::Edit(Edit::Delete)));
+                                    shell.publish(on_action(Action::Edit(ActionEdit::Delete)));
                                 }
                             }
-                            Binding::Paste => {
+                            BindingType::Paste => {
                                 shell.read_clipboard(clipboard::Kind::Text);
                             }
-                            Binding::Move(motion) => {
+                            BindingType::Move(motion) => {
                                 publish(Action::Move(motion));
                             }
-                            Binding::Select(motion) => {
+                            BindingType::Select(motion) => {
                                 publish(Action::Select(motion));
                             }
-                            Binding::SelectWord => {
+                            BindingType::SelectWord => {
                                 publish(Action::SelectWord);
                             }
-                            Binding::SelectLine => {
+                            BindingType::SelectLine => {
                                 publish(Action::SelectLine);
                             }
-                            Binding::SelectAll => {
+                            BindingType::SelectAll => {
                                 publish(Action::SelectAll);
                             }
-                            Binding::Insert(c) => {
-                                publish(Action::Edit(Edit::Insert(c)));
+                            BindingType::Insert(c) => {
+                                publish(Action::Edit(ActionEdit::Insert(c)));
                             }
-                            Binding::Enter => {
-                                publish(Action::Edit(Edit::Enter));
+                            BindingType::Enter => {
+                                publish(Action::Edit(ActionEdit::Enter));
                             }
-                            Binding::Backspace => {
-                                publish(Action::Edit(Edit::Backspace));
+                            BindingType::Backspace => {
+                                publish(Action::Edit(ActionEdit::Backspace));
                             }
-                            Binding::Delete => {
-                                publish(Action::Edit(Edit::Delete));
+                            BindingType::Delete => {
+                                publish(Action::Edit(ActionEdit::Delete));
                             }
-                            Binding::Format(fmt) => {
-                                publish(Action::Edit(Edit::Format(fmt)));
+                            BindingType::Format(fmt) => {
+                                publish(Action::Edit(ActionEdit::Format(fmt)));
                             }
-                            Binding::Sequence(sequence) => {
+                            BindingType::Sequence(sequence) => {
                                 for binding in sequence {
                                     apply_binding(binding, content, state, on_action, shell);
                                 }
                             }
-                            Binding::Custom(message) => {
+                            BindingType::Custom(message) => {
                                 shell.publish(message);
                             }
                         }
                     }
 
-                    if !matches!(binding, Binding::Unfocus) {
+                    if !matches!(binding, BindingType::Unfocus) {
                         shell.capture_event();
                     }
 
@@ -661,7 +678,7 @@ where
 
         if let Some(focus) = state.focus.as_ref() {
             match internal.editor.selection() {
-                Selection::Caret(position) if focus.is_cursor_visible() => {
+                EditorSelection::Caret(position) if focus.is_cursor_visible() => {
                     let base_size: f32 = self
                         .text_size
                         .unwrap_or_else(|| renderer.default_size())
@@ -694,7 +711,7 @@ where
                         );
                     }
                 }
-                Selection::Range(ranges) => {
+                EditorSelection::Range(ranges) => {
                     for range in ranges
                         .into_iter()
                         .filter_map(|range| text_bounds.intersection(&(range + translation)))
@@ -708,7 +725,7 @@ where
                         );
                     }
                 }
-                Selection::Caret(_) => {
+                EditorSelection::Caret(_) => {
                     renderer.fill_quad(renderer::Quad::default(), Color::TRANSPARENT);
                 }
             }
@@ -754,7 +771,7 @@ enum Update<Message> {
     Release,
     Scroll(f32),
     InputMethod(Ime),
-    Binding(Binding<Message>),
+    Binding(BindingType<Message>),
 }
 
 impl<Message> Update<Message> {
@@ -780,7 +797,7 @@ impl<Message> Update<Message> {
                         );
                         Some(Self::Click(click))
                     } else if state.focus.is_some() {
-                        binding(Binding::Unfocus)
+                        binding(BindingType::Unfocus)
                     } else {
                         None
                     }
@@ -848,7 +865,7 @@ impl<Message> Update<Message> {
                     status,
                 };
 
-                Binding::from_key_press(key_press).map(Self::Binding)
+                BindingType::from_key_press(key_press).map(Self::Binding)
             }
             _ => None,
         }

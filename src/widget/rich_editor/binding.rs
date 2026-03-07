@@ -1,7 +1,7 @@
+use super::{FormatAction, Motion, Status};
 use crate::core::SmolStr;
 use crate::core::keyboard;
 use crate::core::keyboard::key;
-use crate::rich_editor::{FormatAction, Motion, Status};
 use std::ops;
 
 // A binding to an action in the [`RichEditor`].
