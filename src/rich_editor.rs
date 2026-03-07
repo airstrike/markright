@@ -1,13 +1,12 @@
 //! Rich text editor widget with integrated formatting model.
 //!
-//! This module provides a rich text editor that wraps iced's cosmic-text
-//! editor alongside a [`RichDocument`] formatting model. All formatting
-//! and text editing go through [`Content::perform`].
+//! This module provides a rich text editor that wraps a `rich_editor::Renderer`
+//! backed by cosmic-text. All formatting and text editing go through
+//! [`Content::perform`].
 
 mod action;
 mod content;
 pub mod cursor;
-pub(crate) mod highlight;
 pub mod widget;
 
 pub use action::{
