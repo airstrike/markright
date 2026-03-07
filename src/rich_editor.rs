@@ -5,13 +5,17 @@
 //! [`Content::perform`].
 
 mod action;
+mod binding;
 mod content;
 pub mod cursor;
+pub mod style;
 pub mod widget;
 
 pub use action::{
     Action, Cursor, Edit, FormatAction, Line, LineEnding, Motion, Position, Selection,
 };
+pub use binding::{Binding, KeyPress};
 pub use content::Content;
 pub use iced_core::text::Alignment;
-pub use widget::{Binding, Catalog, KeyPress, RichEditor, Status, Style, StyleFn, rich_editor};
+pub use style::{Catalog, Style, StyleFn};
+pub use widget::{RichEditor, Status, rich_editor};

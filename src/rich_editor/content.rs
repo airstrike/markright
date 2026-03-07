@@ -155,10 +155,6 @@ where
     }
 }
 
-// ---------------------------------------------------------------------------
-// Internal implementation
-// ---------------------------------------------------------------------------
-
 impl<R: rich_editor::Renderer> Internal<R> {
     fn perform(&mut self, action: Action) {
         match action {
@@ -366,13 +362,33 @@ impl<R: rich_editor::Renderer> Internal<R> {
         }
     }
 
-    /// Returns the Style at the start of the selection (Word-style toggle behavior).
+    /// Returns the Style at the first non-empty character in the selection.
+    ///
+    /// Skips blank lines at the start of the selection so that the toggle
+    /// state reflects actual content, not unformatted newlines.
     fn style_at_selection_start(&self, cursor: &Cursor) -> RichStyle {
-        let pos = match &cursor.selection {
-            Some(sel) => ordered_positions(&cursor.position, sel).0,
-            None => &cursor.position,
+        let (start, end) = match &cursor.selection {
+            Some(sel) => ordered_positions(&cursor.position, sel),
+            None => {
+                return self
+                    .editor
+                    .style_at(cursor.position.line, cursor.position.column);
+            }
         };
-        self.editor.style_at(pos.line, pos.column)
+
+        for line in start.line..=end.line {
+            let col_start = if line == start.line { start.column } else { 0 };
+            let col_end = if line == end.line {
+                end.column
+            } else {
+                self.editor.line(line).map(|l| l.text.len()).unwrap_or(0)
+            };
+            if col_start < col_end {
+                return self.editor.style_at(line, col_start);
+            }
+        }
+
+        self.editor.style_at(start.line, start.column)
     }
 
     /// Apply a formatting operation across the current selection.

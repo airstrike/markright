@@ -8,35 +8,34 @@
 //! - Built-in key bindings for Cmd+B/I/U formatting shortcuts
 //! - Emits our [`Action`] type instead of iced's `text_editor::Action`
 
-use iced_core::Font;
-use iced_core::alignment;
-use iced_core::clipboard;
-use iced_core::input_method;
-use iced_core::keyboard;
-use iced_core::keyboard::key;
-use iced_core::layout::{self, Layout};
-use iced_core::mouse;
-use iced_core::renderer;
-use iced_core::text::editor::Selection;
-use iced_core::text::rich_editor::{self, Editor as RichEditorTrait};
-use iced_core::text::{self, LineHeight, Text, Wrapping};
-use iced_core::theme;
-use iced_core::time::{Duration, Instant};
-use iced_core::widget::operation;
-use iced_core::widget::{self, Widget};
-use iced_core::window;
-use iced_core::{
-    Background, Border, Color, Element, Event, InputMethod, Length, Padding, Pixels, Point,
-    Rectangle, Shell, Size, SmolStr, Theme, Vector,
+use crate::core::Font;
+use crate::core::alignment;
+use crate::core::clipboard;
+use crate::core::input_method;
+use crate::core::keyboard;
+use crate::core::layout::{self, Layout};
+use crate::core::mouse;
+use crate::core::renderer;
+use crate::core::text::editor::Selection;
+use crate::core::text::rich_editor::{self, Editor as RichEditorTrait};
+use crate::core::text::{self, LineHeight, Text, Wrapping};
+use crate::core::time::{Duration, Instant};
+use crate::core::widget::operation;
+use crate::core::widget::{self, Widget};
+use crate::core::window;
+use crate::core::{
+    Color, Element, Event, InputMethod, Length, Padding, Pixels, Point, Rectangle, Shell, Size,
+    Vector,
 };
 
-use std::ops;
 use std::sync::Arc;
 
-use super::action::{Action, Edit, FormatAction};
+use super::action::{Action, Edit};
+use super::binding::{Binding, Ime, KeyPress};
 use super::content::Content;
+use super::style::{Catalog, Style, StyleFn};
 
-pub use iced_core::text::editor::Motion;
+pub use crate::core::text::editor::Motion;
 
 /// Creates a new [`RichEditor`] with the given [`Content`].
 pub fn rich_editor<'a, Message, Theme, Renderer>(
@@ -67,8 +66,8 @@ where
     max_height: f32,
     padding: Padding,
     wrapping: Wrapping,
-    letter_spacing: iced_core::Em,
-    font_features: Vec<iced_core::font::Feature>,
+    letter_spacing: crate::core::Em,
+    font_features: Vec<crate::core::font::Feature>,
     class: Theme::Class<'a>,
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
     last_status: Option<Status>,
@@ -94,7 +93,7 @@ where
             max_height: f32::INFINITY,
             padding: Padding::new(5.0),
             wrapping: Wrapping::default(),
-            letter_spacing: iced_core::Em::default(),
+            letter_spacing: crate::core::Em::default(),
             font_features: Vec::new(),
             class: <Theme as Catalog>::default(),
             on_action: None,
@@ -177,7 +176,7 @@ where
     }
 
     /// Sets the letter spacing of the [`RichEditor`].
-    pub fn letter_spacing(mut self, letter_spacing: impl Into<iced_core::Em>) -> Self {
+    pub fn letter_spacing(mut self, letter_spacing: impl Into<crate::core::Em>) -> Self {
         self.letter_spacing = letter_spacing.into();
         self
     }
@@ -246,10 +245,6 @@ where
     }
 }
 
-// ---------------------------------------------------------------------------
-// Widget state
-// ---------------------------------------------------------------------------
-
 /// The state of a [`RichEditor`].
 #[derive(Debug)]
 pub struct State {
@@ -306,10 +301,6 @@ impl operation::Focusable for State {
         self.focus = None;
     }
 }
-
-// ---------------------------------------------------------------------------
-// Widget trait implementation
-// ---------------------------------------------------------------------------
 
 impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer>
     for RichEditor<'_, Message, Theme, Renderer>
@@ -441,10 +432,10 @@ where
         }
 
         if let Some(update) =
-            InternalUpdate::from_event(event, state, layout.bounds(), self.padding, cursor)
+            Update::from_event(event, state, layout.bounds(), self.padding, cursor)
         {
             match update {
-                InternalUpdate::Click(click) => {
+                Update::Click(click) => {
                     let action = match click.kind() {
                         mouse::click::Kind::Single => Action::Click(click.position()),
                         mouse::click::Kind::Double => Action::SelectWord,
@@ -458,13 +449,13 @@ where
                     shell.publish(on_action(action));
                     shell.capture_event();
                 }
-                InternalUpdate::Drag(position) => {
+                Update::Drag(position) => {
                     shell.publish(on_action(Action::Drag(position)));
                 }
-                InternalUpdate::Release => {
+                Update::Release => {
                     state.drag_click = None;
                 }
-                InternalUpdate::Scroll(lines) => {
+                Update::Scroll(lines) => {
                     let bounds = self.content.0.borrow().editor.bounds();
                     if bounds.height >= i32::MAX as f32 {
                         return;
@@ -478,7 +469,7 @@ where
                     }));
                     shell.capture_event();
                 }
-                InternalUpdate::InputMethod(update) => match update {
+                Update::InputMethod(update) => match update {
                     Ime::Toggle(is_open) => {
                         state.preedit = is_open.then(input_method::Preedit::new);
                         shell.request_redraw();
@@ -495,7 +486,7 @@ where
                         shell.publish(on_action(Action::Edit(Edit::Paste(Arc::new(text)))));
                     }
                 },
-                InternalUpdate::Binding(binding) => {
+                Update::Binding(binding) => {
                     fn apply_binding<R: rich_editor::Renderer, Message>(
                         binding: Binding<Message>,
                         content: &Content<R>,
@@ -553,7 +544,6 @@ where
                             }
                             Binding::Format(fmt) => {
                                 publish(Action::Edit(Edit::Format(fmt)));
-                                shell.request_redraw();
                             }
                             Binding::Sequence(sequence) => {
                                 for binding in sequence {
@@ -758,163 +748,7 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<RichEditor<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a,
-    Theme: Catalog + 'a,
-    Renderer: rich_editor::Renderer<Font = Font>,
-{
-    fn from(editor: RichEditor<'a, Message, Theme, Renderer>) -> Self {
-        Self::new(editor)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Bindings
-// ---------------------------------------------------------------------------
-
-/// A binding to an action in the [`RichEditor`].
-#[derive(Debug, Clone, PartialEq)]
-pub enum Binding<Message> {
-    /// Unfocus the editor.
-    Unfocus,
-    /// Copy the selection.
-    Copy,
-    /// Cut the selection.
-    Cut,
-    /// Paste from clipboard.
-    Paste,
-    /// Apply a [`Motion`].
-    Move(Motion),
-    /// Select text with a [`Motion`].
-    Select(Motion),
-    /// Select the word at cursor.
-    SelectWord,
-    /// Select the current line.
-    SelectLine,
-    /// Select all text.
-    SelectAll,
-    /// Insert a character.
-    Insert(char),
-    /// Break the line (Enter).
-    Enter,
-    /// Delete previous character.
-    Backspace,
-    /// Delete next character.
-    Delete,
-    /// Apply a formatting action (built-in shortcuts like Cmd+B).
-    Format(FormatAction),
-    /// A sequence of bindings.
-    Sequence(Vec<Self>),
-    /// A custom message.
-    Custom(Message),
-}
-
-/// A key press event.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeyPress {
-    /// The key pressed.
-    pub key: keyboard::Key,
-    /// The key with modifiers applied.
-    pub modified_key: keyboard::Key,
-    /// The physical key.
-    pub physical_key: keyboard::key::Physical,
-    /// Keyboard modifiers.
-    pub modifiers: keyboard::Modifiers,
-    /// Text produced by the key press.
-    pub text: Option<SmolStr>,
-    /// Current editor status.
-    pub status: Status,
-}
-
-impl<Message> Binding<Message> {
-    /// Returns the default binding for the given key press, including
-    /// built-in formatting shortcuts (Cmd+B, Cmd+I, Cmd+U).
-    pub fn from_key_press(event: KeyPress) -> Option<Self> {
-        let KeyPress {
-            key,
-            modified_key,
-            physical_key,
-            modifiers,
-            text,
-            status,
-        } = event;
-
-        if !matches!(status, Status::Focused { .. }) {
-            return None;
-        }
-
-        // Command combinations.
-        let combination = match key.to_latin(physical_key) {
-            Some('c') if modifiers.command() => Some(Self::Copy),
-            Some('x') if modifiers.command() => Some(Self::Cut),
-            Some('v') if modifiers.command() && !modifiers.alt() => Some(Self::Paste),
-            Some('a') if modifiers.command() => Some(Self::SelectAll),
-            // Built-in formatting shortcuts.
-            Some('b') if modifiers.command() => Some(Self::Format(FormatAction::ToggleBold)),
-            Some('i') if modifiers.command() => Some(Self::Format(FormatAction::ToggleItalic)),
-            Some('u') if modifiers.command() => Some(Self::Format(FormatAction::ToggleUnderline)),
-            _ => None,
-        };
-
-        if let Some(binding) = combination {
-            return Some(binding);
-        }
-
-        #[cfg(target_os = "macos")]
-        let modified_key = convert_macos_shortcut(&key, modifiers).unwrap_or(modified_key);
-
-        match modified_key.as_ref() {
-            keyboard::Key::Named(key::Named::Enter) => Some(Self::Enter),
-            keyboard::Key::Named(key::Named::Backspace) => Some(Self::Backspace),
-            keyboard::Key::Named(key::Named::Delete)
-                if text.is_none() || text.as_deref() == Some("\u{7f}") =>
-            {
-                Some(Self::Delete)
-            }
-            keyboard::Key::Named(key::Named::Escape) => Some(Self::Unfocus),
-            _ => {
-                if let Some(text) = text {
-                    let c = text.chars().find(|c| !c.is_control())?;
-                    Some(Self::Insert(c))
-                } else if let keyboard::Key::Named(named_key) = key.as_ref() {
-                    let motion = motion(named_key)?;
-
-                    let motion = if modifiers.macos_command() {
-                        match motion {
-                            Motion::Left => Motion::Home,
-                            Motion::Right => Motion::End,
-                            _ => motion,
-                        }
-                    } else {
-                        motion
-                    };
-
-                    let motion = if modifiers.jump() {
-                        motion.widen()
-                    } else {
-                        motion
-                    };
-
-                    Some(if modifiers.shift() {
-                        Self::Select(motion)
-                    } else {
-                        Self::Move(motion)
-                    })
-                } else {
-                    None
-                }
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Internal update types
-// ---------------------------------------------------------------------------
-
-enum InternalUpdate<Message> {
+enum Update<Message> {
     Click(mouse::Click),
     Drag(Point),
     Release,
@@ -923,16 +757,7 @@ enum InternalUpdate<Message> {
     Binding(Binding<Message>),
 }
 
-enum Ime {
-    Toggle(bool),
-    Preedit {
-        content: String,
-        selection: Option<ops::Range<usize>>,
-    },
-    Commit(String),
-}
-
-impl<Message> InternalUpdate<Message> {
+impl<Message> Update<Message> {
     fn from_event(
         event: &Event,
         state: &State,
@@ -1030,45 +855,17 @@ impl<Message> InternalUpdate<Message> {
     }
 }
 
-fn motion(key: key::Named) -> Option<Motion> {
-    match key {
-        key::Named::ArrowLeft => Some(Motion::Left),
-        key::Named::ArrowRight => Some(Motion::Right),
-        key::Named::ArrowUp => Some(Motion::Up),
-        key::Named::ArrowDown => Some(Motion::Down),
-        key::Named::Home => Some(Motion::Home),
-        key::Named::End => Some(Motion::End),
-        key::Named::PageUp => Some(Motion::PageUp),
-        key::Named::PageDown => Some(Motion::PageDown),
-        _ => None,
+impl<'a, Message, Theme, Renderer> From<RichEditor<'a, Message, Theme, Renderer>>
+    for Element<'a, Message, Theme, Renderer>
+where
+    Message: 'a,
+    Theme: Catalog + 'a,
+    Renderer: rich_editor::Renderer<Font = Font>,
+{
+    fn from(editor: RichEditor<'a, Message, Theme, Renderer>) -> Self {
+        Self::new(editor)
     }
 }
-
-#[cfg(target_os = "macos")]
-fn convert_macos_shortcut(
-    key: &keyboard::Key,
-    modifiers: keyboard::Modifiers,
-) -> Option<keyboard::Key> {
-    if modifiers != keyboard::Modifiers::CTRL {
-        return None;
-    }
-
-    let key = match key.as_ref() {
-        keyboard::Key::Character("b") => key::Named::ArrowLeft,
-        keyboard::Key::Character("f") => key::Named::ArrowRight,
-        keyboard::Key::Character("a") => key::Named::Home,
-        keyboard::Key::Character("e") => key::Named::End,
-        keyboard::Key::Character("h") => key::Named::Backspace,
-        keyboard::Key::Character("d") => key::Named::Delete,
-        _ => return None,
-    };
-
-    Some(keyboard::Key::Named(key))
-}
-
-// ---------------------------------------------------------------------------
-// Styling
-// ---------------------------------------------------------------------------
 
 /// The possible status of a [`RichEditor`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1084,87 +881,4 @@ pub enum Status {
     },
     /// The editor cannot be interacted with.
     Disabled,
-}
-
-/// The appearance of a [`RichEditor`].
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Style {
-    /// The background.
-    pub background: Background,
-    /// The border.
-    pub border: Border,
-    /// The placeholder color.
-    pub placeholder: Color,
-    /// The value color.
-    pub value: Color,
-    /// The selection color.
-    pub selection: Color,
-}
-
-/// The theme catalog for a [`RichEditor`].
-pub trait Catalog: theme::Base {
-    /// The item class.
-    type Class<'a>;
-
-    /// The default class.
-    fn default<'a>() -> Self::Class<'a>;
-
-    /// The style for a class and status.
-    fn style(&self, class: &Self::Class<'_>, status: Status) -> Style;
-}
-
-/// A styling function for a [`RichEditor`].
-pub type StyleFn<'a, Theme> = Box<dyn Fn(&Theme, Status) -> Style + 'a>;
-
-impl Catalog for Theme {
-    type Class<'a> = StyleFn<'a, Self>;
-
-    fn default<'a>() -> Self::Class<'a> {
-        Box::new(default)
-    }
-
-    fn style(&self, class: &Self::Class<'_>, status: Status) -> Style {
-        class(self, status)
-    }
-}
-
-/// The default style.
-pub fn default(theme: &Theme, status: Status) -> Style {
-    let palette = theme.extended_palette();
-
-    let active = Style {
-        background: Background::Color(palette.background.base.color),
-        border: Border {
-            radius: 2.0.into(),
-            width: 1.0,
-            color: palette.background.strong.color,
-        },
-        placeholder: palette.secondary.base.color,
-        value: palette.background.base.text,
-        selection: palette.primary.weak.color,
-    };
-
-    match status {
-        Status::Active => active,
-        Status::Hovered => Style {
-            border: Border {
-                color: palette.background.base.text,
-                ..active.border
-            },
-            ..active
-        },
-        Status::Focused { .. } => Style {
-            border: Border {
-                color: palette.primary.strong.color,
-                ..active.border
-            },
-            ..active
-        },
-        Status::Disabled => Style {
-            background: Background::Color(palette.background.weak.color),
-            value: active.placeholder,
-            placeholder: palette.background.strongest.color,
-            ..active
-        },
-    }
 }
