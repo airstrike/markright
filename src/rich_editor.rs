@@ -13,4 +13,5 @@ pub use action::{
     Action, Cursor, Edit, FormatAction, Line, LineEnding, Motion, Position, Selection,
 };
 pub use content::Content;
+pub use iced_core::text::Alignment;
 pub use widget::{Binding, Catalog, KeyPress, RichEditor, Status, Style, StyleFn, rich_editor};

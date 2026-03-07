@@ -1,7 +1,7 @@
 use iced::widget::{Space, button, container, row};
 use iced::{Element, Length};
 
-use markright::rich_editor::{Action, Edit, FormatAction, cursor};
+use markright::rich_editor::{Action, Alignment, Edit, FormatAction, cursor};
 
 use crate::icon;
 use crate::theme;
@@ -24,16 +24,10 @@ where
     let msg_bold = on_action(fmt(FormatAction::ToggleBold));
     let msg_italic = on_action(fmt(FormatAction::ToggleItalic));
     let msg_underline = on_action(fmt(FormatAction::ToggleUnderline));
-    let msg_align_left = on_action(fmt(FormatAction::SetAlignment(iced::text::Alignment::Left)));
-    let msg_align_center = on_action(fmt(FormatAction::SetAlignment(
-        iced::text::Alignment::Center,
-    )));
-    let msg_align_right = on_action(fmt(FormatAction::SetAlignment(
-        iced::text::Alignment::Right,
-    )));
-    let msg_align_justify = on_action(fmt(FormatAction::SetAlignment(
-        iced::text::Alignment::Justify,
-    )));
+    let msg_align_left = on_action(fmt(FormatAction::SetAlignment(Alignment::Left)));
+    let msg_align_center = on_action(fmt(FormatAction::SetAlignment(Alignment::Center)));
+    let msg_align_right = on_action(fmt(FormatAction::SetAlignment(Alignment::Right)));
+    let msg_align_justify = on_action(fmt(FormatAction::SetAlignment(Alignment::Justified)));
 
     let bold_btn = button(icon::bold().size(16))
         .padding([4, 8])
@@ -50,10 +44,10 @@ where
         .style(theme::button::toolbar_toggle(ctx.character.underline))
         .on_press(msg_underline);
 
-    let is_left = ctx.paragraph.alignment == iced::text::Alignment::Left;
-    let is_center = ctx.paragraph.alignment == iced::text::Alignment::Center;
-    let is_right = ctx.paragraph.alignment == iced::text::Alignment::Right;
-    let is_justify = ctx.paragraph.alignment == iced::text::Alignment::Justify;
+    let is_left = ctx.paragraph.alignment == Alignment::Left;
+    let is_center = ctx.paragraph.alignment == Alignment::Center;
+    let is_right = ctx.paragraph.alignment == Alignment::Right;
+    let is_justify = ctx.paragraph.alignment == Alignment::Justified;
 
     let align_left_btn = button(icon::text_align_start().size(16))
         .padding([4, 8])

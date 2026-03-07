@@ -17,7 +17,7 @@ use iced_core::keyboard::key;
 use iced_core::layout::{self, Layout};
 use iced_core::mouse;
 use iced_core::renderer;
-use iced_core::text::editor::{Editor as _, Selection};
+use iced_core::text::editor::Selection;
 use iced_core::text::rich_editor::{self, Editor as RichEditorTrait};
 use iced_core::text::{self, LineHeight, Text, Wrapping};
 use iced_core::theme;
@@ -30,7 +30,6 @@ use iced_core::{
     Rectangle, Shell, Size, SmolStr, Theme, Vector,
 };
 
-use std::cell::RefCell;
 use std::ops;
 use std::sync::Arc;
 
@@ -259,7 +258,6 @@ pub struct State {
     last_click: Option<mouse::Click>,
     drag_click: Option<mouse::click::Kind>,
     partial_scroll: f32,
-    last_theme: RefCell<Option<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -330,7 +328,6 @@ where
             last_click: None,
             drag_click: None,
             partial_scroll: 0.0,
-            last_theme: RefCell::default(),
         })
     }
 
