@@ -56,17 +56,22 @@ impl App {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::EditorAction(action) => self.content.perform(action),
-            Message::ToggleTheme => self.theme_choice = self.theme_choice.toggle(),
+            Message::EditorAction(action) => {
+                self.content.perform(action);
+                Task::none()
+            }
+            Message::ToggleTheme => {
+                self.theme_choice = self.theme_choice.toggle();
+                focus("editor")
+            }
             Message::Font(res) => {
                 if let fonts::Message::Loaded(Err(e)) = res {
                     eprintln!("Font loading failed: {e:?}");
                 }
+                focus("editor")
             }
-            Message::FocusEditor => return focus("editor"),
+            Message::FocusEditor => focus("editor"),
         }
-
-        Task::none()
     }
 
     fn view(&self) -> Element<'_, Message> {
