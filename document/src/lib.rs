@@ -6,8 +6,10 @@
 //! an undo/redo [`History`] built on those operations. Designed so a
 //! future `crdt` subcrate can consume/produce the same operations.
 
+pub mod capture;
 pub mod history;
 pub mod op;
 
+pub use capture::{read_style_runs, read_styled_text};
 pub use history::{History, UndoGroup};
 pub use op::{Op, StyleRun, StyledText};
