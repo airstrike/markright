@@ -104,6 +104,7 @@ pub mod button {
     pub fn icon(theme: &Theme, status: button::Status) -> button::Style {
         let palette = theme.extended_palette();
         let text_color = match status {
+            button::Status::Disabled => palette.background.weak.text,
             button::Status::Hovered => palette.primary.base.color,
             _ => palette.background.base.text,
         };
@@ -152,14 +153,19 @@ pub mod text_editor {
     use markright::widget::rich_editor::{Status, Style};
 
     /// Editor with no focus border.
-    pub fn borderless(theme: &Theme, _status: Status) -> Style {
+    pub fn borderless(theme: &Theme, status: Status) -> Style {
         let palette = theme.extended_palette();
+        let selection = if matches!(status, Status::Focused { .. }) {
+            palette.primary.strong.color
+        } else {
+            palette.primary.weak.color
+        };
         Style {
             background: Background::Color(palette.background.base.color),
             border: Border::default(),
             placeholder: palette.background.strong.color,
             value: palette.background.base.text,
-            selection: palette.primary.weak.color,
+            selection,
         }
     }
 }

@@ -41,8 +41,7 @@ use crate::core::widget::operation;
 use crate::core::widget::{self, Widget};
 use crate::core::window;
 use crate::core::{
-    Color, Element, Event, InputMethod, Length, Padding, Pixels, Point, Rectangle, Shell, Size,
-    Vector,
+    Element, Event, InputMethod, Length, Padding, Pixels, Point, Rectangle, Shell, Size, Vector,
 };
 
 use std::sync::Arc;
@@ -682,9 +681,27 @@ where
 
         let translation = text_bounds.position() - Point::ORIGIN;
 
-        if let Some(focus) = state.focus.as_ref() {
-            match internal.editor.selection() {
-                EditorSelection::Caret(position) if focus.is_cursor_visible() => {
+        // Draw selection ranges even when unfocused
+        match internal.editor.selection() {
+            EditorSelection::Range(ranges) => {
+                for range in ranges
+                    .into_iter()
+                    .filter_map(|range| text_bounds.intersection(&(range + translation)))
+                {
+                    renderer.fill_quad(
+                        renderer::Quad {
+                            bounds: range,
+                            ..renderer::Quad::default()
+                        },
+                        style.selection,
+                    );
+                }
+            }
+            EditorSelection::Caret(position) => {
+                // Only draw cursor caret when focused and visible
+                if let Some(focus) = state.focus.as_ref()
+                    && focus.is_cursor_visible()
+                {
                     let base_size: f32 = self
                         .text_size
                         .unwrap_or_else(|| renderer.default_size())
@@ -716,23 +733,6 @@ where
                             style.value,
                         );
                     }
-                }
-                EditorSelection::Range(ranges) => {
-                    for range in ranges
-                        .into_iter()
-                        .filter_map(|range| text_bounds.intersection(&(range + translation)))
-                    {
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: range,
-                                ..renderer::Quad::default()
-                            },
-                            style.selection,
-                        );
-                    }
-                }
-                EditorSelection::Caret(_) => {
-                    renderer.fill_quad(renderer::Quad::default(), Color::TRANSPARENT);
                 }
             }
         }

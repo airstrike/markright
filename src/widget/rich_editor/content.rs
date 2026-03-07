@@ -494,19 +494,38 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 }
             }
             FormatAction::SetAlignment(alignment) => {
-                let line = cursor.position.line;
-                let old_style = self.editor.paragraph_style(line);
-                let new_style = ParagraphStyle {
-                    alignment: Some(alignment),
-                    ..ParagraphStyle::default()
-                };
-                let op = Op::SetParagraphStyle {
-                    line,
-                    style: new_style.clone(),
-                    old_style,
-                };
-                self.history.record(op);
-                self.editor.set_paragraph_style(line, &new_style);
+                if has_selection {
+                    let sel = cursor.selection.as_ref().expect("has_selection checked");
+                    let (start, end) = ordered_positions(&cursor.position, sel);
+                    for line in start.line..=end.line {
+                        let old_style = self.editor.paragraph_style(line);
+                        let new_style = ParagraphStyle {
+                            alignment: Some(alignment),
+                            ..old_style.clone()
+                        };
+                        let op = Op::SetParagraphStyle {
+                            line,
+                            style: new_style.clone(),
+                            old_style,
+                        };
+                        self.history.record(op);
+                        self.editor.set_paragraph_style(line, &new_style);
+                    }
+                } else {
+                    let line = cursor.position.line;
+                    let old_style = self.editor.paragraph_style(line);
+                    let new_style = ParagraphStyle {
+                        alignment: Some(alignment),
+                        ..old_style.clone()
+                    };
+                    let op = Op::SetParagraphStyle {
+                        line,
+                        style: new_style.clone(),
+                        old_style,
+                    };
+                    self.history.record(op);
+                    self.editor.set_paragraph_style(line, &new_style);
+                }
             }
             FormatAction::SetFont(font) => {
                 if has_selection {
