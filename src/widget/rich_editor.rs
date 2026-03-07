@@ -562,6 +562,12 @@ where
                             BindingType::Format(fmt) => {
                                 publish(Action::Edit(ActionEdit::Format(fmt)));
                             }
+                            BindingType::Undo => {
+                                publish(Action::Undo);
+                            }
+                            BindingType::Redo => {
+                                publish(Action::Redo);
+                            }
                             BindingType::Sequence(sequence) => {
                                 for binding in sequence {
                                     apply_binding(binding, content, state, on_action, shell);

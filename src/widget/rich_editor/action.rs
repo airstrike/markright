@@ -28,6 +28,10 @@ pub enum Action {
         /// The number of lines to scroll.
         lines: i32,
     },
+    /// Undo the last edit group.
+    Undo,
+    /// Redo the last undone edit group.
+    Redo,
 }
 
 impl Action {
@@ -99,6 +103,7 @@ pub(crate) fn to_iced_action(action: &Action) -> Option<crate::core::text::edito
         Action::Click(p) => Some(editor::Action::Click(*p)),
         Action::Drag(p) => Some(editor::Action::Drag(*p)),
         Action::Scroll { lines } => Some(editor::Action::Scroll { lines: *lines }),
+        Action::Undo | Action::Redo => None,
     }
 }
 

@@ -35,6 +35,10 @@ pub enum Binding<Message> {
     Delete,
     /// Apply a formatting action (built-in shortcuts like Cmd+B).
     Format(FormatAction),
+    /// Undo the last edit.
+    Undo,
+    /// Redo the last undone edit.
+    Redo,
     /// A sequence of bindings.
     Sequence(Vec<Self>),
     /// A custom message.
@@ -81,6 +85,9 @@ impl<Message> Binding<Message> {
             Some('x') if modifiers.command() => Some(Self::Cut),
             Some('v') if modifiers.command() && !modifiers.alt() => Some(Self::Paste),
             Some('a') if modifiers.command() => Some(Self::SelectAll),
+            // Undo / Redo (Shift+Cmd+Z before Cmd+Z so the more specific match wins).
+            Some('z') if modifiers.command() && modifiers.shift() => Some(Self::Redo),
+            Some('z') if modifiers.command() => Some(Self::Undo),
             // Built-in formatting shortcuts.
             Some('b') if modifiers.command() => Some(Self::Format(FormatAction::ToggleBold)),
             Some('i') if modifiers.command() => Some(Self::Format(FormatAction::ToggleItalic)),

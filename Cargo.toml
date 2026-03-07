@@ -8,6 +8,7 @@ edition = "2024"
 
 [dependencies]
 iced_core = "0.15.0-dev"
+markright_document = { path = "document" }
 
 [dev-dependencies]
 iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
