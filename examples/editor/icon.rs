@@ -4,7 +4,7 @@
 use iced::Font;
 use iced::widget::{Text, text};
 
-pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
+pub const FONT: &[u8] = include_bytes!("fonts/lucide.ttf");
 
 /// All icons as `(name, codepoint_str)` pairs.
 /// Use this to populate an icon-picker widget.
