@@ -1,10 +1,9 @@
-use crate::document::Alignment;
-
+use iced_core::text::Alignment;
 use iced_core::{Font, Point};
 
 use std::sync::Arc;
 
-/// Top-level editor action — navigation, selection, and edits.
+/// Top-level editor action -- navigation, selection, and edits.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Action {
@@ -38,7 +37,7 @@ impl Action {
     }
 }
 
-/// Buffer-modifying operations. Tracks dirty state.
+/// Buffer-modifying operations.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Edit {
@@ -66,9 +65,7 @@ pub enum FormatAction {
     ToggleItalic,
     /// Toggle underline on the selection.
     ToggleUnderline,
-    /// Set or clear the heading level for the current line.
-    SetHeadingLevel(Option<u8>),
-    /// Set the text alignment for the current line.
+    /// Set the text alignment for the current line(s).
     SetAlignment(Alignment),
     /// Set the font for the selection.
     SetFont(Font),
@@ -76,7 +73,7 @@ pub enum FormatAction {
     SetFontSize(f32),
 }
 
-/// Convert our [`Action`] to an iced [`text::editor::Action`] when possible.
+/// Convert our [`Action`] to an iced editor [`Action`] when possible.
 ///
 /// Returns `None` for formatting actions that have no iced equivalent.
 pub(crate) fn to_iced_action(action: &Action) -> Option<iced_core::text::editor::Action> {
