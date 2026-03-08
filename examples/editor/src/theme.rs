@@ -148,6 +148,20 @@ pub mod container {
             ..Default::default()
         }
     }
+
+    /// Debug panel — subtle left border, slightly inset background.
+    pub fn debug_panel(theme: &Theme) -> container::Style {
+        let palette = theme.extended_palette();
+        container::Style {
+            background: Some(Background::Color(palette.background.weak.color)),
+            border: Border {
+                color: palette.background.strong.color,
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        }
+    }
 }
 
 pub mod text {

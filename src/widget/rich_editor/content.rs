@@ -13,6 +13,7 @@ use super::cursor;
 use super::operation;
 
 pub use crate::core::text::editor::{Cursor, Line, LineEnding};
+pub use markright_document::{StyleRun, StyledLine};
 
 /// Returns the style at the first non-empty character in a selection.
 ///
@@ -162,6 +163,18 @@ impl<R: rich_editor::Renderer> Content<R> {
                 column: editor_cursor.position.column,
             },
         }
+    }
+
+    /// Returns per-line styled content for debugging/inspection.
+    pub fn styled_line(&self, index: usize) -> Option<markright_document::StyledLine> {
+        let internal = self.0.borrow();
+        let line = internal.editor.line(index)?;
+        let len = line.text.len();
+        Some(markright_document::read_styled_line(
+            &internal.editor,
+            index,
+            0..len,
+        ))
     }
 
     /// Returns whether the content is empty.

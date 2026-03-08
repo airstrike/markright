@@ -22,7 +22,7 @@ pub use action::{
     Action, Alignment, Cursor, Edit, FormatAction, Line, LineEnding, Motion, Position, Selection,
 };
 pub use binding::{Binding, KeyPress};
-pub use content::Content;
+pub use content::{Content, StyleRun, StyledLine};
 pub use style::{Catalog, Style, StyleFn};
 
 use crate::core::Font;

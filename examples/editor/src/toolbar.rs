@@ -32,6 +32,7 @@ pub fn view<'a, Message>(
     can_redo: bool,
     on_action: impl Fn(Action) -> Message + 'a,
     on_toggle_theme: Message,
+    on_toggle_debug: Message,
 ) -> Element<'a, Message>
 where
     Message: Clone + 'a,
@@ -134,6 +135,11 @@ where
     )
     .padding([0, 8]);
 
+    let debug_btn = button(text("{*}").size(12))
+        .padding([4, 8])
+        .style(theme::button::icon)
+        .on_press(on_toggle_debug);
+
     container(
         row![
             history_group,
@@ -141,7 +147,7 @@ where
             align_group,
             font_group,
             Space::new().width(Length::Fill),
-            group(theme_toggle),
+            group(row![debug_btn, theme_toggle]),
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center),
