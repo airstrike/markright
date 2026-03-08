@@ -103,6 +103,16 @@ impl History {
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
     }
+
+    /// Returns the number of undo groups.
+    pub fn undo_len(&self) -> usize {
+        self.undo_stack.len()
+    }
+
+    /// Returns the number of redo groups.
+    pub fn redo_len(&self) -> usize {
+        self.redo_stack.len()
+    }
 }
 
 impl Default for History {

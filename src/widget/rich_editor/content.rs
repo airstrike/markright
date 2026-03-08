@@ -182,9 +182,32 @@ impl<R: rich_editor::Renderer> Content<R> {
         self.0.borrow().editor.is_empty()
     }
 
+    /// Returns a Debug-formatted dump of cursor, style, and paragraph state.
+    pub fn debug_state(&self) -> String {
+        use std::fmt::Write;
+        let internal = self.0.borrow();
+        let c = internal.editor.cursor();
+        let col = c.position.column.saturating_sub(1);
+        let style = internal.editor.style_at(c.position.line, col);
+        let para = internal.editor.paragraph_style(c.position.line);
+        let mut out = String::new();
+        let _ = write!(out, "{c:#?}\n{style:#?}\n{para:#?}");
+        out
+    }
+
     /// Returns whether undo is available.
     pub fn can_undo(&self) -> bool {
         self.0.borrow().history.can_undo()
+    }
+
+    /// Number of undo groups.
+    pub fn undo_len(&self) -> usize {
+        self.0.borrow().history.undo_len()
+    }
+
+    /// Number of redo groups.
+    pub fn redo_len(&self) -> usize {
+        self.0.borrow().history.redo_len()
     }
 
     /// Returns whether redo is available.

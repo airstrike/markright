@@ -4,6 +4,7 @@ mod icon;
 mod theme;
 mod toolbar;
 
+use iced::clipboard;
 use iced::widget::operation::focus;
 use iced::widget::{column, container, mouse_area, row, space, text};
 use iced::{Element, Fill, Font, Task};
@@ -37,6 +38,7 @@ enum Message {
     Font(fonts::Message),
     ToggleTheme,
     ToggleDebug,
+    CopyDebug(String),
     FocusEditor,
 }
 
@@ -74,6 +76,7 @@ impl App {
                 self.show_debug = !self.show_debug;
                 focus("editor")
             }
+            Message::CopyDebug(s) => clipboard::write(s).discard(),
             Message::Font(res) => {
                 if let fonts::Message::Loaded(Err(e)) = res {
                     eprintln!("Font loading failed: {e:?}");
@@ -102,7 +105,7 @@ impl App {
         ];
 
         let body: Element<'_, Message> = if self.show_debug {
-            let debug_panel = container(debug::view::<Message>(&self.content))
+            let debug_panel = container(debug::view(&self.content, Message::CopyDebug))
                 .style(theme::container::debug_panel)
                 .height(Fill);
 
