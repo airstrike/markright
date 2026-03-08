@@ -29,7 +29,7 @@ struct App {
 
 #[derive(Debug, Clone)]
 enum Message {
-    EditorAction(Action),
+    Editor(Action),
     Font(fonts::Message),
     ToggleTheme,
     FocusEditor,
@@ -56,9 +56,9 @@ impl App {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::EditorAction(action) => {
+            Message::Editor(action) => {
                 self.content.perform(action);
-                Task::none()
+                focus("editor")
             }
             Message::ToggleTheme => {
                 self.theme_choice = self.theme_choice.toggle();
@@ -84,7 +84,7 @@ impl App {
         let editor = column![
             rich_editor::rich_editor(&self.content)
                 .id("editor")
-                .on_action(Message::EditorAction)
+                .on_action(Message::Editor)
                 .style(theme::text_editor::borderless)
                 .padding(20)
                 .size(BASE_SIZE),
@@ -108,7 +108,7 @@ fn toolbar(
         is_dark,
         can_undo,
         can_redo,
-        Message::EditorAction,
+        Message::Editor,
         Message::ToggleTheme,
     )
 }
@@ -124,6 +124,6 @@ fn status_bar(cursor: &cursor::Context) -> Element<'static, Message> {
         .style(theme::text::status_bar),
     )
     .width(Fill)
-    .padding(padding::vertical(4).horizontal(20))
+    .padding([4, 20])
     .into()
 }
