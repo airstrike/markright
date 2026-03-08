@@ -85,3 +85,52 @@ fn select_all_type_to_replace_then_undo() {
         "after undo, first line should be restored"
     );
 }
+
+#[test]
+fn bold_italic_underline_are_additive_and_undo_independently() {
+    let c = content("hello");
+    let original = c.cursor_context();
+
+    // Bold
+    c.perform(Action::SelectAll);
+    c.perform(fmt(FormatAction::ToggleBold));
+    let ctx = c.cursor_context();
+    assert!(ctx.character.bold, "should be bold");
+    assert!(!ctx.character.italic, "should not be italic yet");
+
+    // Italic — should NOT clear bold
+    c.perform(Action::SelectAll);
+    c.perform(fmt(FormatAction::ToggleItalic));
+    let ctx = c.cursor_context();
+    assert!(ctx.character.bold, "bold should be preserved");
+    assert!(ctx.character.italic, "should be italic");
+
+    // Underline — should NOT clear bold or italic
+    c.perform(Action::SelectAll);
+    c.perform(fmt(FormatAction::ToggleUnderline));
+    let ctx = c.cursor_context();
+    assert!(ctx.character.bold, "bold should be preserved");
+    assert!(ctx.character.italic, "italic should be preserved");
+    assert!(ctx.character.underline, "should be underlined");
+
+    // Undo underline
+    c.perform(Action::Undo);
+    let ctx = c.cursor_context();
+    assert!(ctx.character.bold, "bold after undo underline");
+    assert!(ctx.character.italic, "italic after undo underline");
+    assert!(!ctx.character.underline, "underline should be gone");
+
+    // Undo italic
+    c.perform(Action::Undo);
+    let ctx = c.cursor_context();
+    assert!(ctx.character.bold, "bold after undo italic");
+    assert!(!ctx.character.italic, "italic should be gone");
+
+    // Undo bold — back to original
+    c.perform(Action::Undo);
+    let ctx = c.cursor_context();
+    assert_eq!(
+        ctx.character, original.character,
+        "should be back to original after undoing all formatting"
+    );
+}
