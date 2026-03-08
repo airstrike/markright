@@ -2,11 +2,10 @@
 
 use iced::advanced::graphics::core::font;
 use iced::widget::{button, column, container, right, scrollable, stack, text};
-use iced::{Element, Fill, Font};
+use iced::{Element, Fill};
 
 use markright::widget::rich_editor::{Alignment, Content, StyleRun, StyledLine};
 
-const MONO: Font = Font::with_name("GT Pressura Mono");
 const SIZE: f32 = 14.0;
 const BOX_W: usize = 48;
 
