@@ -1,12 +1,13 @@
 //! Debug panel — compact box-drawing view of the editor's internal state.
 
-use iced::widget::{button, column, container, scrollable, stack, text};
+use iced::advanced::graphics::core::font;
+use iced::widget::{button, column, container, right, scrollable, stack, text};
 use iced::{Element, Fill, Font};
 
-use markright::widget::rich_editor::{Alignment, Content, StyleRun};
+use markright::widget::rich_editor::{Alignment, Content, StyleRun, StyledLine};
 
 const MONO: Font = Font::with_name("GT Pressura Mono");
-const SIZE: f32 = 11.0;
+const SIZE: f32 = 14.0;
 const BOX_W: usize = 48;
 
 fn align_char(a: Alignment) -> char {
@@ -41,20 +42,33 @@ fn line_flags(runs: &[StyleRun]) -> String {
     s
 }
 
-/// Extract font info from style runs (first non-default font/size found).
-fn font_info(runs: &[StyleRun]) -> Option<String> {
+/// Extract font info from a styled line (paragraph style + span runs).
+fn font_info(styled: &StyledLine) -> Option<String> {
     let mut name: Option<&str> = None;
     let mut size: Option<f32> = None;
-    for r in runs {
-        if let Some(font) = r.style.font {
-            if let iced::font::Family::Name(n) = font.family {
-                name = Some(n);
-            }
+
+    // Check paragraph-level style first (line defaults)
+    if let Some(font) = styled.paragraph_style.style.font
+        && let iced::font::Family::Name(n) = font.family
+    {
+        name = Some(n);
+    }
+    if styled.paragraph_style.style.size.is_some() {
+        size = styled.paragraph_style.style.size;
+    }
+
+    // Override with span-level style if present
+    for r in &styled.runs {
+        if let Some(font) = r.style.font
+            && let iced::font::Family::Name(n) = font.family
+        {
+            name = Some(n);
         }
         if r.style.size.is_some() {
             size = r.style.size;
         }
     }
+
     if name.is_none() && size.is_none() {
         return None;
     }
@@ -74,7 +88,7 @@ fn font_info(runs: &[StyleRun]) -> Option<String> {
 /// Build the full debug string for display and clipboard copy.
 pub fn to_string(content: &Content<iced::Renderer>) -> String {
     let count = content.line_count();
-    let num_w = if count > 0 {
+    let num_w = if count > 1 {
         (count - 1).to_string().len().max(2)
     } else {
         2
@@ -104,7 +118,7 @@ pub fn to_string(content: &Content<iced::Renderer>) -> String {
             )
         };
         let right = format!(" {range} \u{2510}");
-        let fill = BOX_W.saturating_sub(left.len() + right.len());
+        let fill = BOX_W.saturating_sub(left.chars().count() + right.chars().count());
         out.push_str(&left);
         for _ in 0..fill {
             out.push('\u{2500}');
@@ -118,7 +132,7 @@ pub fn to_string(content: &Content<iced::Renderer>) -> String {
         }
 
         // Footer: font info (blank line separator, then info)
-        if let Some(info) = font_info(&styled.runs) {
+        if let Some(info) = font_info(&styled) {
             out.push_str(&format!("\u{2502} {:<w$} \u{2502}\n", "", w = BOX_W - 4));
             out.push_str(&format!("\u{2502} {info:<w$} \u{2502}\n", w = BOX_W - 4));
         }
@@ -159,10 +173,10 @@ pub fn to_string(content: &Content<iced::Renderer>) -> String {
     if ctx.character.underline {
         style_parts.push("U".to_string());
     }
-    if let Some(font) = ctx.character.font {
-        if let iced::font::Family::Name(n) = font.family {
-            style_parts.push(n.to_string());
-        }
+    if let Some(font) = ctx.character.font
+        && let iced::font::Family::Name(n) = font.family
+    {
+        style_parts.push(n.to_string());
     }
     if let Some(size) = ctx.character.size {
         style_parts.push(format!("{size:.0}px"));
@@ -227,23 +241,25 @@ fn wrap_text(s: &str, width: usize) -> Vec<&str> {
     lines
 }
 
+const LIGA: font::Tag = font::Tag::new(b"liga");
+
 pub fn view<'a, Message: Clone + 'a>(
     content: &Content<iced::Renderer>,
     on_copy: impl Fn(String) -> Message + 'a,
 ) -> Element<'a, Message> {
     let debug_str = to_string(content);
 
-    let copy_btn = button(text("\u{2398}").font(MONO).size(SIZE))
-        .padding([2, 6])
+    let copy_btn = button(crate::icon::clipboard_copy().size(16))
+        .padding([4, 8])
         .style(crate::theme::button::icon)
         .on_press(on_copy(debug_str.clone()));
 
-    let debug_text = text(debug_str).font(MONO).size(SIZE);
+    let debug_text = text(debug_str)
+        .font(iced::Font::with_name("Fira Code"))
+        .size(SIZE)
+        .line_height(1.0)
+        .font_feature(font::Feature::off(LIGA));
     let body = scrollable(container(column![debug_text]).padding(12).width(Fill)).height(Fill);
 
-    stack![
-        body,
-        container(copy_btn).align_x(iced::Alignment::End).padding(4),
-    ]
-    .into()
+    stack![body, right(copy_btn).padding(5),].into()
 }
