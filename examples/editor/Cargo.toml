@@ -7,10 +7,15 @@ publish = false
 [[bin]]
 name = "editor"
 
+[features]
+default = ["wgpu"]
+wgpu = ["iced/wgpu"]
+
 [dependencies]
 markright = { path = "../.." }
 iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
 reqwest = { version = "0.12", features = ["rustls-tls"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]
 iced_lucide = { git = "https://github.com/A-Disruption/iced_lucide" }

@@ -15,13 +15,19 @@ use theme::Theme;
 
 const BASE_SIZE: f32 = 16.0;
 const MONO_FONT: &[u8] = include_bytes!("../fonts/GT-Pressura-Mono-Regular.ttf");
+const FIRA_CODE: &[u8] = include_bytes!("../fonts/FiraCode-Variable.ttf");
 
 fn main() -> iced::Result {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     iced::application(App::new, App::update, App::view)
         .title("Markright")
         .theme(App::theme)
         .font(icon::FONT)
         .font(MONO_FONT)
+        .font(FIRA_CODE)
         .default_font(Font::with_name("IBM Plex Sans"))
         .run()
 }
