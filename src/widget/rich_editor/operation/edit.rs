@@ -8,7 +8,7 @@ use std::sync::Arc;
 use super::{Position, iced_edit, ordered_positions};
 
 /// Insert a single character with a resolved style.
-pub(crate) fn insert<E: Editor>(editor: &mut E, c: char, style: RichStyle) -> Op {
+pub fn insert<E: Editor>(editor: &mut E, c: char, style: RichStyle) -> Op {
     let cursor = editor.cursor();
     let content = StyledText {
         text: c.to_string(),
@@ -29,7 +29,7 @@ pub(crate) fn insert<E: Editor>(editor: &mut E, c: char, style: RichStyle) -> Op
 ///
 /// Single-line paste produces an op. Multi-line paste applies directly (not yet
 /// undoable) and returns an empty vec.
-pub(crate) fn paste<E: Editor>(editor: &mut E, text: Arc<String>, style: RichStyle) -> Vec<Op> {
+pub fn paste<E: Editor>(editor: &mut E, text: Arc<String>, style: RichStyle) -> Vec<Op> {
     let cursor = editor.cursor();
     let line = cursor.position.line;
     let col = cursor.position.column;
@@ -50,13 +50,13 @@ pub(crate) fn paste<E: Editor>(editor: &mut E, text: Arc<String>, style: RichSty
 }
 
 /// Enter key — split the line at the cursor.
-pub(crate) fn enter<E: Editor>(editor: &mut E) -> Op {
+pub fn enter<E: Editor>(editor: &mut E) -> Op {
     let cursor = editor.cursor();
     split_line(editor, cursor.position.line, cursor.position.column)
 }
 
 /// Backspace — handles selection delete, character delete, or line merge.
-pub(crate) fn backspace<E: Editor>(editor: &mut E) -> Vec<Op> {
+pub fn backspace<E: Editor>(editor: &mut E) -> Vec<Op> {
     let cursor = editor.cursor();
     let line = cursor.position.line;
     let col = cursor.position.column;
@@ -74,7 +74,7 @@ pub(crate) fn backspace<E: Editor>(editor: &mut E) -> Vec<Op> {
 }
 
 /// Delete key — handles selection delete, character delete, or line merge.
-pub(crate) fn delete<E: Editor>(editor: &mut E) -> Vec<Op> {
+pub fn delete<E: Editor>(editor: &mut E) -> Vec<Op> {
     let cursor = editor.cursor();
     let line = cursor.position.line;
     let col = cursor.position.column;
@@ -190,82 +190,40 @@ fn merge_line_forward<E: Editor>(editor: &mut E, line: usize, col: usize) -> Op 
     Op::MergeLine { line, col }
 }
 
-/// Delete a multi-line (or single-line) selection.
+/// Delete a selection (single-line or multi-line).
 ///
-/// Captures all text and styles, records decomposed ops, then applies one
-/// `Delete` to the editor.
+/// Captures all text, styles, and paragraph formatting into a single
+/// `DeleteRange` op, then applies one atomic delete to the editor.
 fn delete_selection<E: Editor>(editor: &mut E, start: &Position, end: &Position) -> Vec<Op> {
-    let mut ops = Vec::new();
+    let mut lines = Vec::new();
 
-    if start.line == end.line {
-        let line_text = editor
-            .line(start.line)
-            .map(|l| l.text.to_string())
-            .unwrap_or_default();
-        let end_col = end.column.min(line_text.len());
-        let start_col = start.column.min(end_col);
+    for line_idx in start.line..=end.line {
+        let line_len = editor.line(line_idx).map(|l| l.text.len()).unwrap_or(0);
+        let col_start = if line_idx == start.line {
+            start.column.min(line_len)
+        } else {
+            0
+        };
+        let col_end = if line_idx == end.line {
+            end.column.min(line_len)
+        } else {
+            line_len
+        };
 
-        if start_col < end_col {
-            let deleted = &line_text[start_col..end_col];
-            let styled =
-                document::read_styled_text(editor, start.line, start_col..end_col, deleted);
-            ops.push(Op::DeleteText {
-                line: start.line,
-                col: start_col,
-                content: styled,
-            });
-        }
-    } else {
-        let first_text = editor
-            .line(start.line)
-            .map(|l| l.text.to_string())
-            .unwrap_or_default();
-
-        if start.column < first_text.len() {
-            let tail = &first_text[start.column..];
-            let styled = document::read_styled_text(
-                editor,
-                start.line,
-                start.column..first_text.len(),
-                tail,
-            );
-            ops.push(Op::DeleteText {
-                line: start.line,
-                col: start.column,
-                content: styled,
-            });
-        }
-
-        for orig_line in (start.line + 1)..=end.line {
-            let line_text = editor
-                .line(orig_line)
-                .map(|l| l.text.to_string())
-                .unwrap_or_default();
-
-            ops.push(Op::MergeLine {
-                line: start.line,
-                col: start.column,
-            });
-
-            let del_end = if orig_line == end.line {
-                end.column.min(line_text.len())
-            } else {
-                line_text.len()
-            };
-
-            if del_end > 0 {
-                let deleted = &line_text[..del_end];
-                let styled = document::read_styled_text(editor, orig_line, 0..del_end, deleted);
-                ops.push(Op::DeleteText {
-                    line: start.line,
-                    col: start.column,
-                    content: styled,
-                });
-            }
-        }
+        lines.push(document::read_styled_line(
+            editor,
+            line_idx,
+            col_start..col_end,
+        ));
     }
 
     editor.perform(iced_edit(iced_editor::Edit::Delete));
 
-    ops
+    vec![Op::DeleteRange {
+        start_line: start.line,
+        start_col: start.column,
+        end_line: end.line,
+        end_col: end.column,
+        lines,
+    }]
 }

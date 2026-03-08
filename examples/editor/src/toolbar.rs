@@ -1,4 +1,4 @@
-use iced::widget::{Space, button, container, row};
+use iced::widget::{Space, button, container, row, text};
 use iced::{Element, Length};
 
 use markright::widget::rich_editor::{Action, Alignment, Edit, FormatAction, cursor};
@@ -6,10 +6,25 @@ use markright::widget::rich_editor::{Action, Alignment, Edit, FormatAction, curs
 use crate::icon;
 use crate::theme;
 
-/// Build the toolbar view with icon buttons.
-///
-/// The toolbar emits [`Action`] values directly -- no intermediate
-/// `ToolbarAction` type needed.
+/// Wrap content in a subtle group container with fixed height matching buttons.
+fn group<'a, Message: 'a>(
+    content: impl Into<Element<'a, Message>>,
+) -> container::Container<'a, Message> {
+    container(content)
+        .style(theme::container::group)
+        .height(28)
+        .align_y(iced::Alignment::Center)
+}
+
+/// Extract font family name from cursor context, falling back to the default.
+fn font_name(font: Option<iced::Font>) -> &'static str {
+    match font.map(|f| f.family) {
+        Some(iced::font::Family::Name(name)) => name,
+        _ => "IBM Plex Sans",
+    }
+}
+
+/// Build the toolbar view with grouped icon buttons.
 pub fn view<'a, Message>(
     ctx: &cursor::Context,
     is_dark: bool,
@@ -63,10 +78,7 @@ where
         .style(theme::button::toolbar_toggle(ctx.character.underline))
         .on_press(msg_underline);
 
-    let is_left = matches!(
-        ctx.paragraph.alignment,
-        Alignment::Left | Alignment::Default
-    );
+    let is_left = ctx.paragraph.alignment == Alignment::Left;
     let is_center = ctx.paragraph.alignment == Alignment::Center;
     let is_right = ctx.paragraph.alignment == Alignment::Right;
     let is_justify = ctx.paragraph.alignment == Alignment::Justified;
@@ -101,24 +113,37 @@ where
         .style(theme::button::icon)
         .on_press(on_toggle_theme);
 
-    let spacer = Space::new().width(Length::Fill);
+    let size = ctx.character.size.unwrap_or(crate::BASE_SIZE);
+
+    let history_group = group(row![undo_btn, redo_btn]);
+    let format_group = group(row![bold_btn, italic_btn, underline_btn]);
+    let align_group = group(row![
+        align_left_btn,
+        align_center_btn,
+        align_right_btn,
+        align_justify_btn,
+    ]);
+    let font_group = group(
+        row![
+            text(font_name(ctx.character.font)).size(12),
+            text("·").size(12),
+            text(format!("{}", size as u32)).size(12),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center),
+    )
+    .padding([0, 8]);
 
     container(
         row![
-            undo_btn,
-            redo_btn,
-            Space::new().width(8),
-            bold_btn,
-            italic_btn,
-            underline_btn,
-            align_left_btn,
-            align_center_btn,
-            align_right_btn,
-            align_justify_btn,
-            spacer,
-            theme_toggle,
+            history_group,
+            format_group,
+            align_group,
+            font_group,
+            Space::new().width(Length::Fill),
+            group(theme_toggle),
         ]
-        .spacing(4)
+        .spacing(6)
         .align_y(iced::Alignment::Center),
     )
     .style(theme::container::toolbar)

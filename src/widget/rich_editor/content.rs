@@ -1,6 +1,7 @@
 //! Rich text editor content — wraps the editor and manages pending style
 //! and undo/redo history. All edits flow through [`Content::perform`].
 
+use crate::core::text::editor::Position;
 use crate::core::text::rich_editor::{self, Editor as _, Style as RichStyle};
 use markright_document::{History, Op};
 
@@ -12,6 +13,29 @@ use super::cursor;
 use super::operation;
 
 pub use crate::core::text::editor::{Cursor, Line, LineEnding};
+
+/// Returns the style at the first non-empty character in a selection.
+///
+/// Skips blank lines so the reported style reflects actual content.
+fn style_at_selection_start<E: rich_editor::Editor>(
+    editor: &E,
+    pos: &Position,
+    sel: &Position,
+) -> RichStyle {
+    let (start, end) = operation::ordered_positions(pos, sel);
+    for line in start.line..=end.line {
+        let col_start = if line == start.line { start.column } else { 0 };
+        let col_end = if line == end.line {
+            end.column
+        } else {
+            editor.line(line).map(|l| l.text.len()).unwrap_or(0)
+        };
+        if col_start < col_end {
+            return editor.style_at(line, col_start);
+        }
+    }
+    editor.style_at(start.line, start.column)
+}
 
 /// The content of a rich text editor -- wraps the rich editor which manages
 /// both text and formatting via cosmic-text's AttrsList.
@@ -97,19 +121,27 @@ impl<R: rich_editor::Renderer> Content<R> {
     }
 
     /// Returns the cursor context (formatting at cursor position).
+    ///
+    /// When a selection is active, reports the style at the first non-empty
+    /// character in the selection (matching the toggle logic in format ops).
+    /// Without a selection, bias-left reads the character before the cursor.
     pub fn cursor_context(&self) -> cursor::Context {
         let internal = self.0.borrow();
         let editor_cursor = internal.editor.cursor();
-        let line = editor_cursor.position.line;
-        let col = editor_cursor.position.column;
 
-        // Bias-left: read style from character before cursor
         let char_style = if let Some(ref pending) = internal.pending_style {
             pending.clone()
+        } else if let Some(ref sel) = editor_cursor.selection {
+            // With a selection: read from the first non-empty content character
+            style_at_selection_start(&internal.editor, &editor_cursor.position, sel)
         } else {
+            // No selection: bias-left
+            let line = editor_cursor.position.line;
+            let col = editor_cursor.position.column;
             internal.editor.style_at(line, col.saturating_sub(1))
         };
 
+        let line = editor_cursor.position.line;
         let para_style = internal.editor.paragraph_style(line);
 
         cursor::Context {
@@ -122,7 +154,7 @@ impl<R: rich_editor::Renderer> Content<R> {
                 color: char_style.color,
             },
             paragraph: cursor::Paragraph {
-                alignment: para_style.alignment.unwrap_or_default(),
+                alignment: super::Alignment::from_iced(para_style.alignment),
                 spacing_after: para_style.spacing_after.unwrap_or(0.0),
             },
             position: cursor::Position {
@@ -191,18 +223,23 @@ impl<R: rich_editor::Renderer> Internal<R> {
         match edit {
             Edit::Insert(c) => {
                 let style = self.resolve_style();
+                let mut ops = self.delete_selection_if_any();
                 let op = operation::insert(&mut self.editor, c, style);
-                self.record_group(vec![op]);
+                ops.push(op);
+                self.record_group(ops);
             }
             Edit::Paste(ref text) => {
                 let style = self.resolve_style();
-                let ops = operation::paste(&mut self.editor, text.clone(), style);
+                let mut ops = self.delete_selection_if_any();
+                ops.extend(operation::paste(&mut self.editor, text.clone(), style));
                 self.record_group(ops);
                 self.pending_style = None;
             }
             Edit::Enter => {
+                let mut ops = self.delete_selection_if_any();
                 let op = operation::enter(&mut self.editor);
-                self.record_group(vec![op]);
+                ops.push(op);
+                self.record_group(ops);
                 self.pending_style = None;
             }
             Edit::Backspace => {
@@ -223,6 +260,18 @@ impl<R: rich_editor::Renderer> Internal<R> {
                     self.update_pending_style(fmt);
                 }
             }
+        }
+    }
+
+    /// Delete the current selection (if any) and return the ops.
+    ///
+    /// After this call the cursor is at the start of where the selection was,
+    /// with no selection — ready for an insert or enter.
+    fn delete_selection_if_any(&mut self) -> Vec<Op> {
+        if self.editor.cursor().selection.is_some() {
+            operation::backspace(&mut self.editor)
+        } else {
+            Vec::new()
         }
     }
 

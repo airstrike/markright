@@ -15,12 +15,11 @@ mod action;
 mod binding;
 mod content;
 pub mod cursor;
-mod operation;
+pub mod operation;
 pub mod style;
 
-pub use crate::core::text::Alignment;
 pub use action::{
-    Action, Cursor, Edit, FormatAction, Line, LineEnding, Motion, Position, Selection,
+    Action, Alignment, Cursor, Edit, FormatAction, Line, LineEnding, Motion, Position, Selection,
 };
 pub use binding::{Binding, KeyPress};
 pub use content::Content;

@@ -1,6 +1,6 @@
 //! Cursor context types — formatting state at the current cursor position.
 
-use crate::core::text::Alignment;
+use super::action::Alignment;
 use crate::core::{Color, Font};
 
 /// Formatting context at the current cursor position.
@@ -12,7 +12,7 @@ pub struct Context {
 }
 
 /// Per-character formatting at cursor.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Character {
     pub bold: bool,
     pub italic: bool,
@@ -23,7 +23,7 @@ pub struct Character {
 }
 
 /// Per-paragraph formatting at cursor.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Paragraph {
     pub alignment: Alignment,
     pub spacing_after: f32,
@@ -32,7 +32,7 @@ pub struct Paragraph {
 impl Default for Paragraph {
     fn default() -> Self {
         Self {
-            alignment: Alignment::Default,
+            alignment: Alignment::Left,
             spacing_after: 0.0,
         }
     }

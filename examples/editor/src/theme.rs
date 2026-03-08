@@ -133,6 +133,21 @@ pub mod container {
             ..Default::default()
         }
     }
+
+    /// Subtle group container for toolbar button clusters.
+    pub fn group(theme: &Theme) -> container::Style {
+        let palette = theme.extended_palette();
+        container::Style {
+            background: Some(Background::Color(
+                palette.background.base.text.scale_alpha(0.06),
+            )),
+            border: Border {
+                radius: 4.0.into(),
+                ..Border::default()
+            },
+            ..Default::default()
+        }
+    }
 }
 
 pub mod text {
@@ -156,9 +171,9 @@ pub mod text_editor {
     pub fn borderless(theme: &Theme, status: Status) -> Style {
         let palette = theme.extended_palette();
         let selection = if matches!(status, Status::Focused { .. }) {
-            palette.success.base.color.scale_alpha(0.4)
+            palette.primary.base.color.scale_alpha(0.4)
         } else {
-            palette.success.base.color.scale_alpha(0.2)
+            palette.primary.base.color.scale_alpha(0.2)
         };
         Style {
             background: Background::Color(palette.background.base.color),

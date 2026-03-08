@@ -10,6 +10,6 @@ pub mod capture;
 pub mod history;
 pub mod op;
 
-pub use capture::{read_style_runs, read_styled_text};
+pub use capture::{read_style_runs, read_styled_line, read_styled_text};
 pub use history::{History, UndoGroup};
-pub use op::{Op, StyleRun, StyledText};
+pub use op::{Alignment, Op, SpanAttr, StyleRun, StyledLine, StyledText};

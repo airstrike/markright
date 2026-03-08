@@ -12,6 +12,7 @@ markright_document = { path = "document" }
 
 [dev-dependencies]
 iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
+iced_graphics = "0.15.0-dev"
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 
 
