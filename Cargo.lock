@@ -32,6 +32,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aho-corasick"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -578,7 +587,7 @@ dependencies = [
 [[package]]
 name = "cosmic-text"
 version = "0.18.2"
-source = "git+https://github.com/airstrike/cosmic-text?branch=featureful-fonts#ee57818bbf05e1208f49f2cd35e7fbdf6d543e02"
+source = "git+https://github.com/airstrike/cosmic-text?branch=featureful-fonts#5f6dab1aff00f3b2eecd40483c2d9befd2ca7d17"
 dependencies = [
  "bitflags 2.11.0",
  "fontdb 0.23.0",
@@ -746,6 +755,7 @@ dependencies = [
  "iced_lucide",
  "markright",
  "reqwest",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1456,7 +1466,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "iced_core",
  "iced_debug",
@@ -1471,7 +1481,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "bitflags 2.11.0",
  "bytes",
@@ -1488,7 +1498,7 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -1498,7 +1508,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "futures",
  "iced_core",
@@ -1512,7 +1522,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1542,7 +1552,7 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -1551,7 +1561,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -1563,7 +1573,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "bytes",
  "iced_core",
@@ -1575,7 +1585,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "bytemuck",
  "cosmic-text 0.18.2",
@@ -1591,7 +1601,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1610,7 +1620,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "iced_renderer",
  "log",
@@ -1623,7 +1633,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#034db3d8b6d573a043ca8c9d9cbc7fd61b479551"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#3f2af5e119f02189305727faf92323a64f241054"
 dependencies = [
  "arboard",
  "iced_debug",
@@ -1862,6 +1872,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy_static"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+
+[[package]]
 name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1993,6 +2009,15 @@ version = "0.1.0"
 dependencies = [
  "cosmic-text 0.12.1",
  "iced_core",
+]
+
+[[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
 ]
 
 [[package]]
@@ -2156,6 +2181,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "nu-ansi-term"
+version = "0.50.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3052,6 +3086,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-automata"
+version = "0.4.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-syntax",
+]
+
+[[package]]
+name = "regex-syntax"
+version = "0.8.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+
+[[package]]
 name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3385,6 +3436,15 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
 ]
 
 [[package]]
@@ -3732,6 +3792,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread_local"
+version = "1.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "tiny-skia"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3975,6 +4044,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f30143827ddab0d256fd843b7a66d164e9f271cfa0dde49142c5ca0ca291f1e"
+dependencies = [
+ "matchers",
+ "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
@@ -4126,6 +4225,12 @@ dependencies = [
  "serde_core",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "valuable"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "vcpkg"
