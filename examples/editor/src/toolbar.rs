@@ -28,12 +28,14 @@ fn font_name(font: Option<iced::Font>) -> String {
 pub fn view<'a, Message>(
     ctx: &cursor::Context,
     font_list: &'a combo_box::State<String>,
+    size_list: &'a combo_box::State<String>,
     is_dark: bool,
     can_undo: bool,
     can_redo: bool,
     show_debug: bool,
     on_action: impl Fn(Action) -> Message + 'a,
     on_font_selected: impl Fn(String) -> Message + 'a,
+    on_size_selected: impl Fn(String) -> Message + 'a,
     on_toggle_theme: Message,
     on_toggle_debug: Message,
 ) -> Element<'a, Message>
@@ -130,16 +132,21 @@ where
     let current_font = font_name(ctx.character.font);
     let font_selector = combo_box(font_list, "Font…", Some(&current_font), on_font_selected)
         .width(140)
-        .size(12);
+        .size(12)
+        .input_style(theme::combo_box::toolbar)
+        .menu_style(theme::combo_box::toolbar_menu);
+
+    let current_size = format!("{}", size as u32);
+    let size_selector = combo_box(size_list, "Size", Some(&current_size), on_size_selected)
+        .width(50)
+        .size(12)
+        .input_style(theme::combo_box::toolbar)
+        .menu_style(theme::combo_box::toolbar_menu);
 
     let font_group = group(
-        row![
-            font_selector,
-            text("·").size(12),
-            text(format!("{}", size as u32)).size(12),
-        ]
-        .spacing(6)
-        .align_y(iced::Alignment::Center),
+        row![font_selector, text("·").size(12), size_selector,]
+            .spacing(6)
+            .align_y(iced::Alignment::Center),
     )
     .padding([0, 8]);
 

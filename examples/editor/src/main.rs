@@ -35,6 +35,7 @@ fn main() -> iced::Result {
 struct App {
     content: Content<iced::Renderer>,
     font_list: combo_box::State<String>,
+    size_list: combo_box::State<String>,
     theme_choice: Theme,
     show_debug: bool,
 }
@@ -44,6 +45,7 @@ enum Message {
     Editor(Action),
     Font(fonts::Message),
     FontSelected(String),
+    SizeSelected(String),
     ToggleTheme,
     ToggleDebug,
     CopyDebug(String),
@@ -63,10 +65,18 @@ impl App {
             "IBM Plex Sans".to_string(),
         ]);
 
+        let size_list = combo_box::State::new(
+            [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+
         (
             Self {
                 content: Content::with_text(sample),
                 font_list,
+                size_list,
                 theme_choice: Theme::default(),
                 show_debug: false,
             },
@@ -89,6 +99,13 @@ impl App {
                     .perform(Action::Edit(Edit::Format(FormatAction::SetFont(
                         Font::with_name(Box::leak(name.into_boxed_str())),
                     ))));
+                focus("editor")
+            }
+            Message::SizeSelected(size_str) => {
+                if let Ok(size) = size_str.parse::<f32>() {
+                    self.content
+                        .perform(Action::Edit(Edit::Format(FormatAction::SetFontSize(size))));
+                }
                 focus("editor")
             }
             Message::ToggleTheme => {
@@ -134,6 +151,7 @@ impl App {
         let tools = toolbar(
             &cursor,
             &self.font_list,
+            &self.size_list,
             self.theme_choice.is_dark(),
             can_undo,
             can_redo,
@@ -170,6 +188,7 @@ impl App {
 fn toolbar<'a>(
     cursor: &cursor::Context,
     font_list: &'a combo_box::State<String>,
+    size_list: &'a combo_box::State<String>,
     is_dark: bool,
     can_undo: bool,
     can_redo: bool,
@@ -178,12 +197,14 @@ fn toolbar<'a>(
     toolbar::view(
         cursor,
         font_list,
+        size_list,
         is_dark,
         can_undo,
         can_redo,
         show_debug,
         Message::Editor,
         Message::FontSelected,
+        Message::SizeSelected,
         Message::ToggleTheme,
         Message::ToggleDebug,
     )

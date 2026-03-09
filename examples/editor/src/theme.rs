@@ -177,6 +177,58 @@ pub mod text {
     }
 }
 
+pub mod combo_box {
+    use iced::widget::{overlay::menu, text_input};
+    use iced::{Background, Border, Shadow, Theme};
+
+    /// Toolbar combo_box input — minimal, borderless look matching the toolbar.
+    pub fn toolbar(theme: &Theme, status: text_input::Status) -> text_input::Style {
+        let palette = theme.extended_palette();
+        let bg = palette.background.base.text.scale_alpha(0.06);
+        let border = match status {
+            text_input::Status::Focused { .. } => Border {
+                color: palette.primary.base.color.scale_alpha(0.4),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            text_input::Status::Hovered => Border {
+                color: palette.background.strong.color.scale_alpha(0.3),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            _ => Border {
+                radius: 4.0.into(),
+                ..Border::default()
+            },
+        };
+        text_input::Style {
+            background: Background::Color(bg),
+            border,
+            icon: palette.background.base.text,
+            placeholder: palette.background.base.text.scale_alpha(0.5),
+            value: palette.background.base.text,
+            selection: palette.primary.base.color.scale_alpha(0.3),
+        }
+    }
+
+    /// Toolbar combo_box dropdown menu — matches toolbar palette.
+    pub fn toolbar_menu(theme: &Theme) -> menu::Style {
+        let palette = theme.extended_palette();
+        menu::Style {
+            background: Background::Color(palette.background.weak.color),
+            border: Border {
+                color: palette.background.strong.color,
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            text_color: palette.background.base.text,
+            selected_text_color: palette.primary.base.text,
+            selected_background: Background::Color(palette.primary.base.color),
+            shadow: Shadow::default(),
+        }
+    }
+}
+
 pub mod text_editor {
     use iced::{Background, Border, Theme};
     use markright::widget::rich_editor::{Status, Style};
