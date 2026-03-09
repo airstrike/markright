@@ -11,6 +11,7 @@ use iced::{Element, Fill, Font, Size, Task, window};
 
 use markright::widget::rich_editor::{self, Action, Content, Edit, FormatAction, cursor};
 
+use fonts::gfonts;
 use theme::Theme;
 
 const BASE_SIZE: f32 = 16.0;
@@ -34,6 +35,7 @@ fn main() -> iced::Result {
 
 struct App {
     content: Content<iced::Renderer>,
+    catalog: Option<gfonts::Catalog>,
     font_list: combo_box::State<String>,
     size_list: combo_box::State<String>,
     theme_choice: Theme,
@@ -56,12 +58,11 @@ impl App {
     fn new() -> (Self, Task<Message>) {
         let sample = include_str!("../sample.txt");
 
-        let font_tasks = fonts::load_defaults().map(Message::Font);
+        let init_task = fonts::init().map(Message::Font);
 
         let font_list = combo_box::State::new(vec![
             "Fira Code".to_string(),
             "GT Pressura Mono".to_string(),
-            "IBM Plex Mono".to_string(),
             "IBM Plex Sans".to_string(),
         ]);
 
@@ -75,12 +76,13 @@ impl App {
         (
             Self {
                 content: Content::with_text(sample),
+                catalog: None,
                 font_list,
                 size_list,
                 theme_choice: Theme::default(),
                 show_debug: false,
             },
-            font_tasks,
+            init_task,
         )
     }
 
@@ -97,9 +99,9 @@ impl App {
             Message::FontSelected(name) => {
                 self.content
                     .perform(Action::Edit(Edit::Format(FormatAction::SetFont(
-                        Font::with_name(Box::leak(name.into_boxed_str())),
+                        Font::with_name(gfonts::intern(&name)),
                     ))));
-                focus("editor")
+                Task::batch([fonts::load(name).map(Message::Font), focus("editor")])
             }
             Message::SizeSelected(size_str) => {
                 if let Ok(size) = size_str.parse::<f32>() {
@@ -132,14 +134,33 @@ impl App {
                 Task::batch([resize_task, focus("editor")])
             }
             Message::CopyDebug(s) => clipboard::write(s).discard(),
-            Message::Font(res) => {
-                if let fonts::Message::Loaded(Err(e)) = res {
-                    eprintln!("Font loading failed: {e:?}");
+            Message::Font(msg) => match msg {
+                fonts::Message::CatalogLoaded(Ok(catalog)) => {
+                    let mut names = catalog.top(100);
+                    // Keep bundled fonts available even if not in the top 100.
+                    for bundled in ["Fira Code", "GT Pressura Mono"] {
+                        if !names.iter().any(|n| n == bundled) {
+                            names.push(bundled.to_string());
+                        }
+                    }
+                    self.font_list = combo_box::State::new(names);
+                    self.catalog = Some(catalog);
+                    focus("editor")
                 }
-                self.content
-                    .set_default_font(Font::with_name("IBM Plex Sans"));
-                focus("editor")
-            }
+                fonts::Message::CatalogLoaded(Err(e)) => {
+                    eprintln!("Catalog loading failed: {e}");
+                    focus("editor")
+                }
+                fonts::Message::Loaded(Ok(())) => {
+                    self.content
+                        .set_default_font(Font::with_name("IBM Plex Sans"));
+                    focus("editor")
+                }
+                fonts::Message::Loaded(Err(e)) => {
+                    eprintln!("Font loading failed: {e}");
+                    focus("editor")
+                }
+            },
             Message::FocusEditor => focus("editor"),
         }
     }
