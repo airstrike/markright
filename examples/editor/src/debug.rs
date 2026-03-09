@@ -6,8 +6,9 @@ use iced::{Element, Fill};
 
 use markright::widget::rich_editor::{Alignment, Content, StyleRun, StyledLine};
 
-const SIZE: f32 = 14.0;
-const BOX_W: usize = 48;
+const SIZE: f32 = 11.0;
+const BOX_W: usize = 32;
+pub const PANEL_W: f32 = 260.0;
 
 fn align_char(a: Alignment) -> char {
     match a {
@@ -95,61 +96,10 @@ pub fn to_string(content: &Content<iced::Renderer>) -> String {
 
     let mut out = String::new();
 
-    for i in 0..count {
-        let Some(styled) = content.styled_line(i) else {
-            continue;
-        };
-        if styled.text.is_empty() {
-            continue;
-        }
-
-        let alignment = Alignment::from_iced(styled.paragraph_style.alignment);
-        let flags = line_flags(&styled.runs);
-        let range = format!("0\u{2025}{}", styled.text.len());
-
-        // Header: ┌ 00 L BI ─────────── 0‥44 ┐
-        let left = if flags.is_empty() {
-            format!("\u{250c} {i:0>num_w$} {a} ", a = align_char(alignment))
-        } else {
-            format!(
-                "\u{250c} {i:0>num_w$} {a} {flags} ",
-                a = align_char(alignment)
-            )
-        };
-        let right = format!(" {range} \u{2510}");
-        let fill = BOX_W.saturating_sub(left.chars().count() + right.chars().count());
-        out.push_str(&left);
-        for _ in 0..fill {
-            out.push('\u{2500}');
-        }
-        out.push_str(&right);
-        out.push('\n');
-
-        // Body: │ text │
-        for line in wrap_text(&styled.text, BOX_W - 4) {
-            out.push_str(&format!("\u{2502} {line:<w$} \u{2502}\n", w = BOX_W - 4));
-        }
-
-        // Footer: font info (blank line separator, then info)
-        if let Some(info) = font_info(&styled) {
-            out.push_str(&format!("\u{2502} {:<w$} \u{2502}\n", "", w = BOX_W - 4));
-            out.push_str(&format!("\u{2502} {info:<w$} \u{2502}\n", w = BOX_W - 4));
-        }
-
-        // Bottom: └───┘
-        out.push('\u{2514}');
-        for _ in 0..BOX_W - 2 {
-            out.push('\u{2500}');
-        }
-        out.push('\u{2518}');
-        out.push('\n');
-    }
-
-    // Cursor/selection summary
+    // Cursor/selection summary (at the top for quick reference)
     let cursor = content.cursor();
     let ctx = content.cursor_context();
 
-    out.push('\n');
     out.push_str(&format!(
         "cursor   {}:{}\n",
         cursor.position.line, cursor.position.column
@@ -159,6 +109,8 @@ pub fn to_string(content: &Content<iced::Renderer>) -> String {
             "select   {}:{} \u{2192} {}:{}\n",
             cursor.position.line, cursor.position.column, sel.line, sel.column
         ));
+    } else {
+        out.push_str("select   \u{2500}\n");
     }
 
     // Style summary
@@ -218,6 +170,58 @@ pub fn to_string(content: &Content<iced::Renderer>) -> String {
         }
     ));
 
+    out.push('\n');
+
+    for i in 0..count {
+        let Some(styled) = content.styled_line(i) else {
+            continue;
+        };
+        if styled.text.is_empty() {
+            continue;
+        }
+
+        let alignment = Alignment::from_iced(styled.paragraph_style.alignment);
+        let flags = line_flags(&styled.runs);
+        let range = format!("0..{}", styled.text.len());
+
+        // Header: ┌ 00 L BI ─────────── 0‥44 ┐
+        let left = if flags.is_empty() {
+            format!("\u{250c} {i:0>num_w$} {a} ", a = align_char(alignment))
+        } else {
+            format!(
+                "\u{250c} {i:0>num_w$} {a} {flags} ",
+                a = align_char(alignment)
+            )
+        };
+        let right = format!(" {range} \u{2510}");
+        let fill = BOX_W.saturating_sub(left.chars().count() + right.chars().count());
+        out.push_str(&left);
+        for _ in 0..fill {
+            out.push('\u{2500}');
+        }
+        out.push_str(&right);
+        out.push('\n');
+
+        // Body: │ text │
+        for line in wrap_text(&styled.text, BOX_W - 4) {
+            out.push_str(&format!("\u{2502} {line:<w$} \u{2502}\n", w = BOX_W - 4));
+        }
+
+        // Footer: font info (blank line separator, then info)
+        if let Some(info) = font_info(&styled) {
+            out.push_str(&format!("\u{2502} {:<w$} \u{2502}\n", "", w = BOX_W - 4));
+            out.push_str(&format!("\u{2502} {info:<w$} \u{2502}\n", w = BOX_W - 4));
+        }
+
+        // Bottom: └───┘
+        out.push('\u{2514}');
+        for _ in 0..BOX_W - 2 {
+            out.push('\u{2500}');
+        }
+        out.push('\u{2518}');
+        out.push('\n');
+    }
+
     // Raw Debug prints
     out.push('\n');
     out.push_str(&content.debug_state());
@@ -258,7 +262,9 @@ pub fn view<'a, Message: Clone + 'a>(
         .size(SIZE)
         .line_height(1.0)
         .font_feature(font::Feature::off(LIGA));
-    let body = scrollable(container(column![debug_text]).padding(12).width(Fill)).height(Fill);
+    let body = scrollable(container(column![debug_text]).padding(8).width(PANEL_W)).height(Fill);
 
-    stack![body, right(copy_btn).padding(5),].into()
+    container(stack![body, right(copy_btn).padding(5),])
+        .width(PANEL_W)
+        .into()
 }

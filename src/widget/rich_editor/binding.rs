@@ -1,6 +1,6 @@
 //! Key binding definitions — maps keyboard input to editor actions.
 
-use super::{FormatAction, Motion, Status};
+use super::{Alignment, FormatAction, Motion, Status};
 use crate::core::SmolStr;
 use crate::core::keyboard;
 use crate::core::keyboard::key;
@@ -95,6 +95,21 @@ impl<Message> Binding<Message> {
             Some('b') if modifiers.command() => Some(Self::Format(FormatAction::ToggleBold)),
             Some('i') if modifiers.command() => Some(Self::Format(FormatAction::ToggleItalic)),
             Some('u') if modifiers.command() => Some(Self::Format(FormatAction::ToggleUnderline)),
+            // Alignment shortcuts.
+            Some('l') if modifiers.command() => {
+                Some(Self::Format(FormatAction::SetAlignment(Alignment::Left)))
+            }
+            Some('e') if modifiers.command() => {
+                Some(Self::Format(FormatAction::SetAlignment(Alignment::Center)))
+            }
+            Some('r') if modifiers.command() => {
+                Some(Self::Format(FormatAction::SetAlignment(Alignment::Right)))
+            }
+            Some('j') if modifiers.command() => Some(Self::Format(FormatAction::SetAlignment(
+                Alignment::Justified,
+            ))),
+            // Suppress all other Cmd+key combos — never produce an Insert.
+            Some(_) if modifiers.command() => return None,
             _ => None,
         };
 

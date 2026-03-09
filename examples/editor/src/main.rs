@@ -7,7 +7,7 @@ mod toolbar;
 use iced::clipboard;
 use iced::widget::operation::focus;
 use iced::widget::{column, container, mouse_area, row, space, text};
-use iced::{Element, Fill, Font, Task};
+use iced::{Element, Fill, Font, Size, Task, window};
 
 use markright::widget::rich_editor::{self, Action, Content, cursor};
 
@@ -80,13 +80,30 @@ impl App {
             }
             Message::ToggleDebug => {
                 self.show_debug = !self.show_debug;
-                focus("editor")
+                let opening = self.show_debug;
+                let resize_task = window::latest().then(move |opt_id| {
+                    let Some(id) = opt_id else {
+                        return Task::none();
+                    };
+                    window::size(id).then(move |size| {
+                        let delta = debug::PANEL_W;
+                        let new_width = if opening {
+                            size.width + delta
+                        } else {
+                            (size.width - delta).max(400.0)
+                        };
+                        window::resize(id, Size::new(new_width, size.height))
+                    })
+                });
+                Task::batch([resize_task, focus("editor")])
             }
             Message::CopyDebug(s) => clipboard::write(s).discard(),
             Message::Font(res) => {
                 if let fonts::Message::Loaded(Err(e)) = res {
                     eprintln!("Font loading failed: {e:?}");
                 }
+                self.content
+                    .set_default_font(Font::with_name("IBM Plex Sans"));
                 focus("editor")
             }
             Message::FocusEditor => focus("editor"),
@@ -97,7 +114,13 @@ impl App {
         let cursor = self.content.cursor_context();
         let can_undo = self.content.can_undo();
         let can_redo = self.content.can_redo();
-        let tools = toolbar(&cursor, self.theme_choice.is_dark(), can_undo, can_redo);
+        let tools = toolbar(
+            &cursor,
+            self.theme_choice.is_dark(),
+            can_undo,
+            can_redo,
+            self.show_debug,
+        );
         let status_bar = status_bar(&cursor);
 
         let editor = column![
@@ -131,12 +154,14 @@ fn toolbar(
     is_dark: bool,
     can_undo: bool,
     can_redo: bool,
+    show_debug: bool,
 ) -> Element<'static, Message> {
     toolbar::view(
         cursor,
         is_dark,
         can_undo,
         can_redo,
+        show_debug,
         Message::Editor,
         Message::ToggleTheme,
         Message::ToggleDebug,

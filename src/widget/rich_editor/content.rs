@@ -1,6 +1,7 @@
 //! Rich text editor content — wraps the editor and manages pending style
 //! and undo/redo history. All edits flow through [`Content::perform`].
 
+use crate::core::Font;
 use crate::core::text::editor::Position;
 use crate::core::text::rich_editor::{self, Editor as _, Style as RichStyle};
 use markright_document::{History, Op};
@@ -53,6 +54,9 @@ pub(crate) struct Internal<R: rich_editor::Renderer> {
     pending_style: Option<RichStyle>,
     /// Undo/redo history of document operations.
     history: History,
+    /// Document-level default font, used as fallback when a span has no
+    /// explicit font set.
+    default_font: Option<Font>,
 }
 
 impl<R: rich_editor::Renderer> Content<R> {
@@ -67,6 +71,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             editor: R::RichEditor::with_text(text),
             pending_style: None,
             history: History::new(),
+            default_font: None,
         }))
     }
 
@@ -150,7 +155,7 @@ impl<R: rich_editor::Renderer> Content<R> {
                 bold: char_style.bold.unwrap_or(false),
                 italic: char_style.italic.unwrap_or(false),
                 underline: char_style.underline.unwrap_or(false),
-                font: char_style.font,
+                font: char_style.font.or(internal.default_font),
                 size: char_style.size,
                 color: char_style.color,
             },
@@ -213,6 +218,16 @@ impl<R: rich_editor::Renderer> Content<R> {
     /// Returns whether redo is available.
     pub fn can_redo(&self) -> bool {
         self.0.borrow().history.can_redo()
+    }
+
+    /// Sets the document-level default font.
+    ///
+    /// This font is used as a fallback when a span has no explicit font set.
+    /// Existing spans without an explicit font are updated immediately.
+    pub fn set_default_font(&self, font: Font) {
+        let mut internal = self.0.borrow_mut();
+        internal.default_font = Some(font);
+        internal.apply_default_font_to_all();
     }
 }
 
@@ -312,13 +327,17 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     fn resolve_style(&self) -> RichStyle {
-        self.pending_style.clone().unwrap_or_else(|| {
+        let mut style = self.pending_style.clone().unwrap_or_else(|| {
             let cursor = self.editor.cursor();
             self.editor.style_at(
                 cursor.position.line,
                 cursor.position.column.saturating_sub(1),
             )
-        })
+        });
+        if style.font.is_none() {
+            style.font = self.default_font;
+        }
+        style
     }
 
     fn record_group(&mut self, ops: Vec<Op>) {
@@ -349,6 +368,28 @@ impl<R: rich_editor::Renderer> Internal<R> {
             FormatAction::SetFont(font) => current.font = Some(*font),
             FormatAction::SetFontSize(size) => current.size = Some(*size),
             FormatAction::SetAlignment(_) => {}
+        }
+    }
+
+    /// Apply the default font to all spans that have no explicit font set.
+    fn apply_default_font_to_all(&mut self) {
+        let Some(font) = self.default_font else {
+            return;
+        };
+        let line_count = self.editor.line_count();
+        for line in 0..line_count {
+            let len = self.editor.line(line).map(|l| l.text.len()).unwrap_or(0);
+            if len == 0 {
+                continue;
+            }
+            let runs = markright_document::read_style_runs(&self.editor, line, 0..len);
+            for run in runs {
+                if run.style.font.is_none() {
+                    let mut style = run.style;
+                    style.font = Some(font);
+                    self.editor.set_span_style(line, run.range, &style);
+                }
+            }
         }
     }
 

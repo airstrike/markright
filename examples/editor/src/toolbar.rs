@@ -30,6 +30,7 @@ pub fn view<'a, Message>(
     is_dark: bool,
     can_undo: bool,
     can_redo: bool,
+    show_debug: bool,
     on_action: impl Fn(Action) -> Message + 'a,
     on_toggle_theme: Message,
     on_toggle_debug: Message,
@@ -140,20 +141,26 @@ where
         .style(theme::button::icon)
         .on_press(on_toggle_debug);
 
-    container(
-        row![
-            history_group,
-            format_group,
-            align_group,
-            font_group,
-            Space::new().width(Length::Fill),
-            group(row![debug_btn, theme_toggle]),
-        ]
-        .spacing(6)
-        .align_y(iced::Alignment::Center),
-    )
-    .style(theme::container::toolbar)
-    .padding([8, 16])
-    .width(Length::Fill)
-    .into()
+    let toolbar_spacing = 6.0;
+
+    let mut toolbar_row = row![
+        history_group,
+        format_group,
+        align_group,
+        font_group,
+        Space::new().width(Length::Fill),
+        group(row![debug_btn, theme_toggle]),
+    ]
+    .spacing(toolbar_spacing)
+    .align_y(iced::Alignment::Center);
+
+    if show_debug {
+        toolbar_row = toolbar_row.push(Space::new().width(crate::debug::PANEL_W - toolbar_spacing));
+    }
+
+    container(toolbar_row)
+        .style(theme::container::toolbar)
+        .padding([8, 16])
+        .width(Length::Fill)
+        .into()
 }
