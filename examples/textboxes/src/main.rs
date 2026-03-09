@@ -1,15 +1,16 @@
 mod icon;
 mod workspace;
 
+use std::collections::HashMap;
+
 use iced::alignment;
-use iced::keyboard;
 use iced::widget::operation::focus;
-use iced::widget::{button, container, mouse_area, row};
-use iced::{Background, Border, Element, Length, Point, Size, Subscription, Task};
+use iced::widget::{button, container, row};
+use iced::{Background, Border, Element, Length, Point, Rectangle, Size, Task};
 
-use markright::widget::rich_editor::{self, Action, Content, Edit, FormatAction, Status, Style};
+use markright::widget::rich_editor::{self, Action, Content, Edit, FormatAction};
 
-use workspace::{Child, Workspace};
+use workspace::Id;
 
 const BASE_SIZE: f32 = 16.0;
 const TOOLBAR_H: f32 = 32.0;
@@ -17,49 +18,20 @@ const TOOLBAR_H: f32 = 32.0;
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
         .title("Textboxes")
-        .subscription(App::subscription)
         .font(icon::FONT)
         .run()
 }
 
 struct App {
-    boxes: Vec<TextBox>,
-    interaction: Interaction,
-}
-
-struct TextBox {
-    position: Point,
-    size: Size,
-    content: Content<iced::Renderer>,
-    v_align: alignment::Vertical,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-enum Interaction {
-    #[default]
-    Idle,
-    Pressed {
-        id: usize,
-    },
-    Dragging {
-        id: usize,
-        origin: Point,
-        box_origin: Point,
-    },
-    Editing {
-        id: usize,
-    },
+    state: workspace::State,
+    content: HashMap<Id, Content<iced::Renderer>>,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
-    BoxPressed(usize),
-    MouseMoved(Point),
-    MouseReleased,
-    BoxDoubleClicked(usize),
+    EditStarted(#[allow(dead_code)] Id),
+    EditExited,
     Editor(Action),
-    ExitEdit,
-    Ignored,
     ToggleBold,
     ToggleItalic,
     ToggleUnderline,
@@ -68,132 +40,81 @@ enum Message {
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let boxes = vec![
-            TextBox {
-                position: Point::new(50.0, 80.0),
-                size: Size::new(280.0, 160.0),
-                content: Content::with_text(
-                    "Hello, world!\n\nThis is a floating textbox. Double-click to edit.",
-                ),
-                v_align: alignment::Vertical::Top,
-            },
-            TextBox {
-                position: Point::new(400.0, 120.0),
-                size: Size::new(260.0, 140.0),
-                content: Content::with_text("A second textbox.\n\nDrag me around!"),
-                v_align: alignment::Vertical::Center,
-            },
-            TextBox {
-                position: Point::new(200.0, 340.0),
-                size: Size::new(320.0, 120.0),
-                content: Content::with_text("Bottom-aligned text in a wider box."),
-                v_align: alignment::Vertical::Bottom,
-            },
-        ];
+        let mut state = workspace::State::new();
+        let mut content = HashMap::new();
 
-        (
-            Self {
-                boxes,
-                interaction: Interaction::Idle,
-            },
-            Task::none(),
-        )
-    }
+        let id = state.insert(
+            Rectangle::new(Point::new(50.0, 80.0), Size::new(280.0, 160.0)),
+            alignment::Vertical::Top,
+        );
+        content.insert(
+            id,
+            Content::with_text(
+                "Hello, world!\n\nThis is a floating textbox. Double-click to edit.",
+            ),
+        );
 
-    fn subscription(&self) -> Subscription<Message> {
-        keyboard::listen().map(|event| match event {
-            keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(keyboard::key::Named::Escape),
-                ..
-            } => Message::ExitEdit,
-            _ => Message::Ignored,
-        })
+        let id = state.insert(
+            Rectangle::new(Point::new(400.0, 120.0), Size::new(260.0, 140.0)),
+            alignment::Vertical::Center,
+        );
+        content.insert(
+            id,
+            Content::with_text("A second textbox.\n\nDrag me around!"),
+        );
+
+        let id = state.insert(
+            Rectangle::new(Point::new(200.0, 340.0), Size::new(320.0, 120.0)),
+            alignment::Vertical::Bottom,
+        );
+        content.insert(
+            id,
+            Content::with_text("Bottom-aligned text in a wider box."),
+        );
+
+        (Self { state, content }, Task::none())
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Ignored => Task::none(),
-            Message::BoxPressed(id) => {
-                if matches!(self.interaction, Interaction::Editing { id: eid } if eid == id) {
-                    return Task::none();
-                }
-                self.interaction = Interaction::Pressed { id };
-                Task::none()
-            }
-            Message::MouseMoved(point) => {
-                match self.interaction {
-                    Interaction::Pressed { id } => {
-                        self.interaction = Interaction::Dragging {
-                            id,
-                            origin: point,
-                            box_origin: self.boxes[id].position,
-                        };
-                    }
-                    Interaction::Dragging {
-                        id,
-                        origin,
-                        box_origin,
-                    } => {
-                        let dx = point.x - origin.x;
-                        let dy = point.y - origin.y;
-                        self.boxes[id].position = Point::new(box_origin.x + dx, box_origin.y + dy);
-                    }
-                    _ => {}
-                }
-                Task::none()
-            }
-            Message::MouseReleased => {
-                match self.interaction {
-                    Interaction::Pressed { .. } | Interaction::Dragging { .. } => {
-                        self.interaction = Interaction::Idle;
-                    }
-                    _ => {}
-                }
-                Task::none()
-            }
-            Message::BoxDoubleClicked(id) => {
-                self.interaction = Interaction::Editing { id };
-                focus("editor")
-            }
+            Message::EditStarted(_) => focus("editor"),
+            Message::EditExited => Task::none(),
             Message::Editor(action) => {
-                if let Interaction::Editing { id } = self.interaction {
-                    self.boxes[id].content.perform(action);
-                }
-                Task::none()
-            }
-            Message::ExitEdit => {
-                if matches!(self.interaction, Interaction::Editing { .. }) {
-                    self.interaction = Interaction::Idle;
+                if let Some(id) = self.state.editing() {
+                    self.content.get_mut(&id).unwrap().perform(action);
                 }
                 Task::none()
             }
             Message::ToggleBold => {
-                if let Interaction::Editing { id } = self.interaction {
-                    self.boxes[id]
-                        .content
+                if let Some(id) = self.state.editing() {
+                    self.content
+                        .get_mut(&id)
+                        .unwrap()
                         .perform(Action::Edit(Edit::Format(FormatAction::ToggleBold)));
                 }
                 focus("editor")
             }
             Message::ToggleItalic => {
-                if let Interaction::Editing { id } = self.interaction {
-                    self.boxes[id]
-                        .content
+                if let Some(id) = self.state.editing() {
+                    self.content
+                        .get_mut(&id)
+                        .unwrap()
                         .perform(Action::Edit(Edit::Format(FormatAction::ToggleItalic)));
                 }
                 focus("editor")
             }
             Message::ToggleUnderline => {
-                if let Interaction::Editing { id } = self.interaction {
-                    self.boxes[id]
-                        .content
+                if let Some(id) = self.state.editing() {
+                    self.content
+                        .get_mut(&id)
+                        .unwrap()
                         .perform(Action::Edit(Edit::Format(FormatAction::ToggleUnderline)));
                 }
                 focus("editor")
             }
             Message::SetVAlign(v) => {
-                if let Interaction::Editing { id } = self.interaction {
-                    self.boxes[id].v_align = v;
+                if let Some(id) = self.state.editing() {
+                    self.state.set_v_align(id, v);
                 }
                 focus("editor")
             }
@@ -201,84 +122,55 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let editing_id = match self.interaction {
-            Interaction::Editing { id } => Some(id),
-            _ => None,
-        };
+        let mut ws = workspace::workspace(&self.state, |id, bx| {
+            let content = &self.content[&id];
 
-        let children: Vec<Child<'_, Message>> = self
-            .boxes
-            .iter()
-            .enumerate()
-            .flat_map(|(i, tb)| {
-                let is_editing = editing_id == Some(i);
-                let mut items = Vec::new();
-
-                // Mini-toolbar above the editing textbox
-                if is_editing {
-                    let cursor = tb.content.cursor_context();
-                    let toolbar = mini_toolbar(&cursor, tb.v_align);
-                    items.push(Child {
-                        position: Point::new(tb.position.x, tb.position.y - TOOLBAR_H - 4.0),
-                        size: Size::new(tb.size.width, TOOLBAR_H),
-                        element: toolbar,
-                    });
-                }
-
-                let editor: Element<'_, Message> = if is_editing {
-                    // Active editor
-                    container(
-                        rich_editor::rich_editor(&tb.content)
-                            .id("editor")
-                            .on_action(Message::Editor)
-                            .style(editor_style)
-                            .padding(8)
-                            .height(Length::Shrink)
-                            .size(BASE_SIZE),
-                    )
-                    .align_y(tb.v_align)
-                    .width(tb.size.width)
-                    .height(tb.size.height)
-                    .style(textbox_style_active)
+            let editor: Element<'_, Message> = if bx.is_editing() {
+                rich_editor::rich_editor(content)
+                    .id("editor")
+                    .on_action(Message::Editor)
+                    .style(editor_style)
+                    .padding(8)
+                    .height(Length::Shrink)
+                    .size(BASE_SIZE)
                     .into()
-                } else {
-                    // Display-only
-                    mouse_area(
-                        container(
-                            rich_editor::rich_editor::<Message, _, _>(&tb.content)
-                                .style(editor_style)
-                                .padding(8)
-                                .height(Length::Shrink)
-                                .size(BASE_SIZE),
-                        )
-                        .align_y(tb.v_align)
-                        .width(tb.size.width)
-                        .height(tb.size.height)
-                        .style(textbox_style_idle),
-                    )
-                    .interaction(iced::mouse::Interaction::Pointer)
-                    .on_press(Message::BoxPressed(i))
-                    .on_double_click(Message::BoxDoubleClicked(i))
+            } else {
+                rich_editor::rich_editor::<Message, _, _>(content)
+                    .style(editor_style)
+                    .padding(8)
+                    .height(Length::Shrink)
+                    .size(BASE_SIZE)
                     .into()
-                };
+            };
 
-                items.push(Child {
-                    position: tb.position,
-                    size: tb.size,
-                    element: editor,
-                });
+            let box_style = if bx.is_editing() {
+                textbox_style_active
+            } else {
+                textbox_style_idle
+            };
 
-                items
-            })
-            .collect();
+            container(editor)
+                .align_y(bx.v_align())
+                .width(bx.bounds().width)
+                .height(bx.bounds().height)
+                .style(box_style)
+                .into()
+        })
+        .on_edit(Message::EditStarted)
+        .on_edit_exit(Message::EditExited);
 
-        let workspace: Element<'_, Message> = Workspace::new(children).into();
+        // Mini-toolbar above the active box.
+        if let Some(id) = self.state.editing() {
+            let bounds = self.state.bounds(id);
+            let ctx = self.content[&id].cursor_context();
+            ws = ws.push(
+                Point::new(bounds.x, bounds.y - TOOLBAR_H - 4.0),
+                Size::new(bounds.width, TOOLBAR_H),
+                mini_toolbar(&ctx, self.state.v_align(id)),
+            );
+        }
 
-        // Wrap in mouse_area for drag tracking
-        mouse_area(workspace)
-            .on_move(Message::MouseMoved)
-            .on_release(Message::MouseReleased)
-            .into()
+        ws.into()
     }
 }
 
@@ -338,14 +230,14 @@ fn mini_toolbar(
 
 // --- Styles ---
 
-fn editor_style(theme: &iced::Theme, status: Status) -> Style {
+fn editor_style(theme: &iced::Theme, status: rich_editor::Status) -> rich_editor::Style {
     let palette = theme.extended_palette();
-    let selection = if matches!(status, Status::Focused { .. }) {
+    let selection = if matches!(status, rich_editor::Status::Focused { .. }) {
         palette.primary.base.color.scale_alpha(0.4)
     } else {
         palette.primary.base.color.scale_alpha(0.2)
     };
-    Style {
+    rich_editor::Style {
         background: Background::Color(iced::Color::TRANSPARENT),
         border: Border::default(),
         placeholder: palette.background.strong.color,
