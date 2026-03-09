@@ -35,7 +35,8 @@ fn main() -> iced::Result {
 
 struct App {
     content: Content<iced::Renderer>,
-    catalog: Option<gfonts::Catalog>,
+    fonts: gfonts::Fonts,
+    recent_fonts: Vec<String>,
     font_list: combo_box::State<String>,
     size_list: combo_box::State<String>,
     theme_choice: Theme,
@@ -76,7 +77,8 @@ impl App {
         (
             Self {
                 content: Content::with_text(sample),
-                catalog: None,
+                fonts: gfonts::Fonts::new(),
+                recent_fonts: Vec::new(),
                 font_list,
                 size_list,
                 theme_choice: Theme::default(),
@@ -90,6 +92,36 @@ impl App {
         self.theme_choice.to_theme()
     }
 
+    /// Rebuild the font combo-box: recently-used first, then the rest
+    /// alphabetically. If `promote` is non-empty, move it to most-recent.
+    fn rebuild_font_list(&mut self, promote: &str) {
+        if !promote.is_empty() {
+            self.recent_fonts.retain(|n| n != promote);
+            self.recent_fonts.insert(0, promote.to_string());
+        }
+
+        let mut names = self.fonts.catalog().map(|c| c.top(100)).unwrap_or_default();
+
+        // Ensure bundled fonts are available.
+        for bundled in ["Fira Code", "GT Pressura Mono"] {
+            if !names.iter().any(|n| n == bundled) {
+                names.push(bundled.to_string());
+            }
+        }
+
+        names.sort();
+
+        // Move recent picks to the front, most-recent first.
+        for (i, recent) in self.recent_fonts.iter().enumerate() {
+            if let Some(pos) = names.iter().position(|n| n == recent) {
+                names.remove(pos);
+                names.insert(i, recent.clone());
+            }
+        }
+
+        self.font_list = combo_box::State::new(names);
+    }
+
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Editor(action) => {
@@ -97,10 +129,10 @@ impl App {
                 focus("editor")
             }
             Message::FontSelected(name) => {
+                let font = self.fonts.get(&name);
                 self.content
-                    .perform(Action::Edit(Edit::Format(FormatAction::SetFont(
-                        Font::with_name(gfonts::intern(&name)),
-                    ))));
+                    .perform(Action::Edit(Edit::Format(FormatAction::SetFont(font))));
+                self.rebuild_font_list(&name);
                 Task::batch([fonts::load(name).map(Message::Font), focus("editor")])
             }
             Message::SizeSelected(size_str) => {
@@ -136,15 +168,8 @@ impl App {
             Message::CopyDebug(s) => clipboard::write(s).discard(),
             Message::Font(msg) => match msg {
                 fonts::Message::CatalogLoaded(Ok(catalog)) => {
-                    let mut names = catalog.top(100);
-                    // Keep bundled fonts available even if not in the top 100.
-                    for bundled in ["Fira Code", "GT Pressura Mono"] {
-                        if !names.iter().any(|n| n == bundled) {
-                            names.push(bundled.to_string());
-                        }
-                    }
-                    self.font_list = combo_box::State::new(names);
-                    self.catalog = Some(catalog);
+                    self.fonts.set_catalog(catalog);
+                    self.rebuild_font_list("");
                     focus("editor")
                 }
                 fonts::Message::CatalogLoaded(Err(e)) => {

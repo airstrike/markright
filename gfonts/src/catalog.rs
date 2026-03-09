@@ -28,9 +28,20 @@ impl Catalog {
     }
 
     /// Names of the `n` most popular families.
+    ///
+    /// Noto script variants (e.g. "Noto Sans Arabic") are excluded — only
+    /// the base Noto families are kept.
     pub fn top(&self, n: usize) -> Vec<String> {
+        const NOTO_BASES: &[&str] = &[
+            "Noto Sans",
+            "Noto Serif",
+            "Noto Sans Mono",
+            "Noto Color Emoji",
+        ];
+
         self.families
             .iter()
+            .filter(|f| !f.is_noto || NOTO_BASES.contains(&f.name.as_str()))
             .take(n)
             .map(|f| f.name.clone())
             .collect()
@@ -72,6 +83,8 @@ struct FamilyMetadata {
     fonts: serde_json::Map<String, serde_json::Value>,
     #[serde(default)]
     axes: Vec<AxisMetadata>,
+    #[serde(rename = "isNoto", default)]
+    is_noto: bool,
 }
 
 #[derive(Deserialize)]
@@ -116,6 +129,7 @@ pub(crate) fn parse(json: &str) -> Result<Catalog, Error> {
                 name: m.family,
                 category: Category::from_metadata(&m.category),
                 popularity: m.popularity,
+                is_noto: m.is_noto,
                 variants,
             }
         })

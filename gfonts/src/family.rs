@@ -6,6 +6,7 @@ pub struct Family {
     pub name: String,
     pub category: Category,
     pub popularity: u32,
+    pub is_noto: bool,
     pub variants: Variants,
 }
 

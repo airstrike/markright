@@ -16,7 +16,6 @@ pub use error::Error;
 pub use family::{Axis, Category, Family, Variants};
 
 use std::collections::HashSet;
-use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use iced::Task;
@@ -24,22 +23,43 @@ use iced::Task;
 /// Default max age for cached catalog metadata (7 days).
 pub const DEFAULT_CATALOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
-static INTERNED: LazyLock<Mutex<HashSet<&'static str>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+/// Font registry. Holds the Google Fonts catalog and resolves family names
+/// to [`iced::Font`] values, interning the name strings so each unique
+/// name is leaked only once.
+#[derive(Debug, Default)]
+pub struct Fonts {
+    names: HashSet<&'static str>,
+    catalog: Option<Catalog>,
+}
 
-/// Intern a string, returning a `&'static str`.
-///
-/// Repeated calls with the same content return the same pointer without
-/// allocating again. Use this for font family names passed to
-/// [`iced::Font::with_name`].
-pub fn intern(s: &str) -> &'static str {
-    let mut set = INTERNED.lock().expect("intern lock poisoned");
-    if let Some(&existing) = set.get(s) {
-        return existing;
+impl Fonts {
+    pub fn new() -> Self {
+        Self::default()
     }
-    let leaked: &'static str = Box::leak(s.to_owned().into_boxed_str());
-    set.insert(leaked);
-    leaked
+
+    /// Get an [`iced::Font`] for the given family name.
+    pub fn get(&mut self, name: &str) -> iced::Font {
+        iced::Font::with_name(self.intern(name))
+    }
+
+    /// Store the catalog once it has been fetched.
+    pub fn set_catalog(&mut self, catalog: Catalog) {
+        self.catalog = Some(catalog);
+    }
+
+    /// The catalog, if loaded.
+    pub fn catalog(&self) -> Option<&Catalog> {
+        self.catalog.as_ref()
+    }
+
+    fn intern(&mut self, s: &str) -> &'static str {
+        if let Some(&existing) = self.names.get(s) {
+            return existing;
+        }
+        let leaked: &'static str = Box::leak(s.to_owned().into_boxed_str());
+        self.names.insert(leaked);
+        leaked
+    }
 }
 
 /// Fetch the Google Fonts catalog, using a disk cache with the given max age.
@@ -83,16 +103,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn intern_returns_same_pointer() {
-        let a = intern("TestFont");
-        let b = intern("TestFont");
-        assert!(std::ptr::eq(a, b));
+    fn get_returns_same_font() {
+        let mut fonts = Fonts::new();
+        let a = fonts.get("Roboto");
+        let b = fonts.get("Roboto");
+        assert_eq!(a, b);
     }
 
     #[test]
-    fn intern_different_strings() {
-        let a = intern("FontA");
-        let b = intern("FontB");
+    fn get_different_names() {
+        let mut fonts = Fonts::new();
+        let a = fonts.get("FontA");
+        let b = fonts.get("FontB");
         assert_ne!(a, b);
     }
 }
