@@ -1,9 +1,10 @@
+mod icon;
 mod workspace;
 
 use iced::alignment;
 use iced::keyboard;
 use iced::widget::operation::focus;
-use iced::widget::{button, container, mouse_area, row, text};
+use iced::widget::{button, container, mouse_area, row};
 use iced::{Background, Border, Element, Length, Point, Size, Subscription, Task};
 
 use markright::widget::rich_editor::{self, Action, Content, Edit, FormatAction, Status, Style};
@@ -17,6 +18,7 @@ fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
         .title("Textboxes")
         .subscription(App::subscription)
+        .font(icon::FONT)
         .run()
 }
 
@@ -288,54 +290,46 @@ fn mini_toolbar(
     let italic_active = cursor.character.italic;
     let underline_active = cursor.character.underline;
 
-    let bold_btn = button(text("B").size(13))
+    let bold_btn = button(icon::bold().size(14))
         .on_press(Message::ToggleBold)
         .style(move |theme, status| toggle_btn_style(theme, status, bold_active))
-        .padding([2, 8]);
+        .padding([4, 6]);
 
-    let italic_btn = button(text("I").size(13))
+    let italic_btn = button(icon::italic().size(14))
         .on_press(Message::ToggleItalic)
         .style(move |theme, status| toggle_btn_style(theme, status, italic_active))
-        .padding([2, 8]);
+        .padding([4, 6]);
 
-    let underline_btn = button(text("U").size(13))
+    let underline_btn = button(icon::underline().size(14))
         .on_press(Message::ToggleUnderline)
         .style(move |theme, status| toggle_btn_style(theme, status, underline_active))
-        .padding([2, 8]);
+        .padding([4, 6]);
 
-    let v_top = button(text("T").size(11))
+    let v_top = button(icon::align_v_top().size(14))
         .on_press(Message::SetVAlign(alignment::Vertical::Top))
         .style(move |theme, status| {
             toggle_btn_style(theme, status, v_align == alignment::Vertical::Top)
         })
-        .padding([2, 6]);
+        .padding([4, 6]);
 
-    let v_mid = button(text("M").size(11))
+    let v_mid = button(icon::align_v_center().size(14))
         .on_press(Message::SetVAlign(alignment::Vertical::Center))
         .style(move |theme, status| {
             toggle_btn_style(theme, status, v_align == alignment::Vertical::Center)
         })
-        .padding([2, 6]);
+        .padding([4, 6]);
 
-    let v_bot = button(text("B").size(11))
+    let v_bot = button(icon::align_v_bottom().size(14))
         .on_press(Message::SetVAlign(alignment::Vertical::Bottom))
         .style(move |theme, status| {
             toggle_btn_style(theme, status, v_align == alignment::Vertical::Bottom)
         })
-        .padding([2, 6]);
+        .padding([4, 6]);
 
     container(
-        row![
-            bold_btn,
-            italic_btn,
-            underline_btn,
-            text("  ").size(8),
-            v_top,
-            v_mid,
-            v_bot
-        ]
-        .spacing(2)
-        .align_y(alignment::Vertical::Center),
+        row![bold_btn, italic_btn, underline_btn, v_top, v_mid, v_bot]
+            .spacing(2)
+            .align_y(alignment::Vertical::Center),
     )
     .padding([2, 6])
     .style(toolbar_container_style)

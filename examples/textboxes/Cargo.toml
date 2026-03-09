@@ -14,3 +14,6 @@ wgpu = ["iced/wgpu"]
 [dependencies]
 markright = { path = "../.." }
 iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
+
+[build-dependencies]
+iced_lucide = { git = "https://github.com/A-Disruption/iced_lucide" }

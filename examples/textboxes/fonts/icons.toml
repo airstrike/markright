@@ -1,0 +1,9 @@
+module = "icon"
+
+[icons]
+bold              = "bold"
+italic            = "italic"
+underline         = "underline"
+align_v_top       = "align-start-vertical"
+align_v_center    = "align-center-vertical"
+align_v_bottom    = "align-end-vertical"
