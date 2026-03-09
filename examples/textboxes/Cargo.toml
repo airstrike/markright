@@ -1,0 +1,16 @@
+[package]
+name = "textboxes"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "textboxes"
+
+[features]
+default = ["wgpu"]
+wgpu = ["iced/wgpu"]
+
+[dependencies]
+markright = { path = "../.." }
+iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }

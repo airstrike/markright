@@ -3804,6 +3804,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "textboxes"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "markright",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
