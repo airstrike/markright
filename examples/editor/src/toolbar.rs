@@ -133,6 +133,7 @@ where
     let font_selector = combo_box(font_list, "Font…", Some(&current_font), on_font_selected)
         .width(140)
         .size(12)
+        .align_x(iced::Alignment::End)
         .input_style(theme::combo_box::toolbar)
         .menu_style(theme::combo_box::toolbar_menu);
 
@@ -144,11 +145,10 @@ where
         .menu_style(theme::combo_box::toolbar_menu);
 
     let font_group = group(
-        row![font_selector, text("·").size(12), size_selector,]
-            .spacing(6)
+        row![font_selector, size_selector]
+            .spacing(4)
             .align_y(iced::Alignment::Center),
-    )
-    .padding([0, 8]);
+    );
 
     let debug_btn = button(text("{*}").size(12))
         .padding([4, 8])
