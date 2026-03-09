@@ -61,11 +61,7 @@ impl App {
 
         let init_task = fonts::init().map(Message::Font);
 
-        let font_list = combo_box::State::new(vec![
-            "Fira Code".to_string(),
-            "GT Pressura Mono".to_string(),
-            "IBM Plex Sans".to_string(),
-        ]);
+        let font_list = combo_box::State::new(vec!["IBM Plex Sans".to_string()]);
 
         let size_list = combo_box::State::new(
             [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72]
@@ -101,13 +97,6 @@ impl App {
         }
 
         let mut names = self.fonts.catalog().map(|c| c.top(100)).unwrap_or_default();
-
-        // Ensure bundled fonts are available.
-        for bundled in ["Fira Code", "GT Pressura Mono"] {
-            if !names.iter().any(|n| n == bundled) {
-                names.push(bundled.to_string());
-            }
-        }
 
         names.sort();
 
@@ -176,13 +165,13 @@ impl App {
                     eprintln!("Catalog loading failed: {e}");
                     focus("editor")
                 }
-                fonts::Message::Loaded(Ok(())) => {
+                fonts::Message::Loaded(_name, Ok(())) => {
                     self.content
                         .set_default_font(Font::with_name("IBM Plex Sans"));
                     focus("editor")
                 }
-                fonts::Message::Loaded(Err(e)) => {
-                    eprintln!("Font loading failed: {e}");
+                fonts::Message::Loaded(name, Err(e)) => {
+                    eprintln!("Font loading failed ({name}): {e}");
                     focus("editor")
                 }
             },
