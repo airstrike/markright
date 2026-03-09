@@ -133,7 +133,6 @@ where
     let font_selector = combo_box(font_list, "Font…", Some(&current_font), on_font_selected)
         .width(140)
         .size(12)
-        .align_x(iced::Alignment::End)
         .input_style(theme::combo_box::toolbar)
         .menu_style(theme::combo_box::toolbar_menu);
 
@@ -141,6 +140,7 @@ where
     let size_selector = combo_box(size_list, "Size", Some(&current_size), on_size_selected)
         .width(50)
         .size(12)
+        .align_x(iced::Alignment::End)
         .input_style(theme::combo_box::toolbar)
         .menu_style(theme::combo_box::toolbar_menu);
 
