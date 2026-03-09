@@ -1,4 +1,4 @@
-use iced::widget::{Space, button, container, row, text};
+use iced::widget::{Space, button, combo_box, container, row, text};
 use iced::{Element, Length};
 
 use markright::widget::rich_editor::{Action, Alignment, Edit, FormatAction, cursor};
@@ -17,21 +17,23 @@ fn group<'a, Message: 'a>(
 }
 
 /// Extract font family name from cursor context, falling back to the default.
-fn font_name(font: Option<iced::Font>) -> &'static str {
+fn font_name(font: Option<iced::Font>) -> String {
     match font.map(|f| f.family) {
-        Some(iced::font::Family::Name(name)) => name,
-        _ => "IBM Plex Sans",
+        Some(iced::font::Family::Name(name)) => name.to_string(),
+        _ => "IBM Plex Sans".to_string(),
     }
 }
 
 /// Build the toolbar view with grouped icon buttons.
 pub fn view<'a, Message>(
     ctx: &cursor::Context,
+    font_list: &'a combo_box::State<String>,
     is_dark: bool,
     can_undo: bool,
     can_redo: bool,
     show_debug: bool,
     on_action: impl Fn(Action) -> Message + 'a,
+    on_font_selected: impl Fn(String) -> Message + 'a,
     on_toggle_theme: Message,
     on_toggle_debug: Message,
 ) -> Element<'a, Message>
@@ -125,9 +127,14 @@ where
         align_right_btn,
         align_justify_btn,
     ]);
+    let current_font = font_name(ctx.character.font);
+    let font_selector = combo_box(font_list, "Font…", Some(&current_font), on_font_selected)
+        .width(140)
+        .size(12);
+
     let font_group = group(
         row![
-            text(font_name(ctx.character.font)).size(12),
+            font_selector,
             text("·").size(12),
             text(format!("{}", size as u32)).size(12),
         ]

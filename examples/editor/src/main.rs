@@ -6,10 +6,10 @@ mod toolbar;
 
 use iced::clipboard;
 use iced::widget::operation::focus;
-use iced::widget::{column, container, mouse_area, row, space, text};
+use iced::widget::{column, combo_box, container, mouse_area, row, space, text};
 use iced::{Element, Fill, Font, Size, Task, window};
 
-use markright::widget::rich_editor::{self, Action, Content, cursor};
+use markright::widget::rich_editor::{self, Action, Content, Edit, FormatAction, cursor};
 
 use theme::Theme;
 
@@ -34,6 +34,7 @@ fn main() -> iced::Result {
 
 struct App {
     content: Content<iced::Renderer>,
+    font_list: combo_box::State<String>,
     theme_choice: Theme,
     show_debug: bool,
 }
@@ -42,6 +43,7 @@ struct App {
 enum Message {
     Editor(Action),
     Font(fonts::Message),
+    FontSelected(String),
     ToggleTheme,
     ToggleDebug,
     CopyDebug(String),
@@ -54,9 +56,17 @@ impl App {
 
         let font_tasks = fonts::load_defaults().map(Message::Font);
 
+        let font_list = combo_box::State::new(vec![
+            "Fira Code".to_string(),
+            "GT Pressura Mono".to_string(),
+            "IBM Plex Mono".to_string(),
+            "IBM Plex Sans".to_string(),
+        ]);
+
         (
             Self {
                 content: Content::with_text(sample),
+                font_list,
                 theme_choice: Theme::default(),
                 show_debug: false,
             },
@@ -72,6 +82,13 @@ impl App {
         match message {
             Message::Editor(action) => {
                 self.content.perform(action);
+                focus("editor")
+            }
+            Message::FontSelected(name) => {
+                self.content
+                    .perform(Action::Edit(Edit::Format(FormatAction::SetFont(
+                        Font::with_name(Box::leak(name.into_boxed_str())),
+                    ))));
                 focus("editor")
             }
             Message::ToggleTheme => {
@@ -116,6 +133,7 @@ impl App {
         let can_redo = self.content.can_redo();
         let tools = toolbar(
             &cursor,
+            &self.font_list,
             self.theme_choice.is_dark(),
             can_undo,
             can_redo,
@@ -149,20 +167,23 @@ impl App {
     }
 }
 
-fn toolbar(
+fn toolbar<'a>(
     cursor: &cursor::Context,
+    font_list: &'a combo_box::State<String>,
     is_dark: bool,
     can_undo: bool,
     can_redo: bool,
     show_debug: bool,
-) -> Element<'static, Message> {
+) -> Element<'a, Message> {
     toolbar::view(
         cursor,
+        font_list,
         is_dark,
         can_undo,
         can_redo,
         show_debug,
         Message::Editor,
+        Message::FontSelected,
         Message::ToggleTheme,
         Message::ToggleDebug,
     )
