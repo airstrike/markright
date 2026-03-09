@@ -213,7 +213,7 @@ where
     fn input_method<'b>(
         &self,
         state: &'b State,
-        renderer: &Renderer,
+        _renderer: &Renderer,
         layout: Layout<'_>,
     ) -> InputMethod<&'b str> {
         let Some(Focus {
@@ -230,29 +230,15 @@ where
         let text_bounds = bounds.shrink(self.padding);
         let translation = text_bounds.position() - Point::ORIGIN;
 
-        let cursor = match internal.editor.selection() {
-            EditorSelection::Caret(position) => position,
-            EditorSelection::Range(ranges) => {
-                ranges.first().cloned().unwrap_or_default().position()
-            }
+        let caret = match internal.editor.selection() {
+            EditorSelection::Caret(rect) => rect,
+            EditorSelection::Range(ranges) => ranges.first().cloned().unwrap_or_default(),
         };
 
-        let base_size: f32 = self
-            .text_size
-            .unwrap_or_else(|| renderer.default_size())
-            .into();
-        let logical = internal.editor.cursor();
-        let style = internal
-            .editor
-            .style_at(logical.position.line, logical.position.column);
-        let effective_size = style.size.unwrap_or(base_size);
-
-        let line_height = self.line_height.to_absolute(Pixels(effective_size));
-
-        let position = cursor + translation;
+        let position = caret.position() + translation;
 
         InputMethod::Enabled {
-            cursor: Rectangle::new(position, Size::new(1.0, f32::from(line_height))),
+            cursor: Rectangle::new(position, Size::new(1.0, caret.height)),
             purpose: input_method::Purpose::Normal,
             preedit: state.preedit.as_ref().map(input_method::Preedit::as_ref),
         }
@@ -697,30 +683,20 @@ where
                     );
                 }
             }
-            EditorSelection::Caret(position) => {
+            EditorSelection::Caret(caret) => {
                 // Only draw cursor caret when focused and visible
                 if let Some(focus) = state.focus.as_ref()
                     && focus.is_cursor_visible()
                 {
-                    let base_size: f32 = self
-                        .text_size
-                        .unwrap_or_else(|| renderer.default_size())
-                        .into();
-                    let logical = internal.editor.cursor();
-                    let char_style = internal
-                        .editor
-                        .style_at(logical.position.line, logical.position.column);
-                    let effective_size = char_style.size.unwrap_or(base_size);
-
                     let cursor = Rectangle::new(
-                        position + translation,
+                        caret.position() + translation,
                         Size::new(
                             if renderer::CRISP {
                                 (1.0 / renderer.scale_factor().unwrap_or(1.0)).max(1.0)
                             } else {
-                                1.0
+                                caret.width
                             },
-                            self.line_height.to_absolute(Pixels(effective_size)).into(),
+                            caret.height,
                         ),
                     );
 
