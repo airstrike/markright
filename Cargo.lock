@@ -587,7 +587,7 @@ dependencies = [
 [[package]]
 name = "cosmic-text"
 version = "0.18.2"
-source = "git+https://github.com/airstrike/cosmic-text?branch=featureful-fonts#5f6dab1aff00f3b2eecd40483c2d9befd2ca7d17"
+source = "git+https://github.com/airstrike/cosmic-text?branch=dev#408adef4188e3e6705dc39bbabfaf9302a50f4cf"
 dependencies = [
  "bitflags 2.11.0",
  "fontdb 0.23.0",
@@ -1487,7 +1487,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "iced_core",
  "iced_debug",
@@ -1502,7 +1502,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "bitflags 2.11.0",
  "bytes",
@@ -1519,7 +1519,7 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -1529,7 +1529,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "futures",
  "iced_core",
@@ -1543,7 +1543,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1573,7 +1573,7 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -1582,7 +1582,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -1594,7 +1594,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "bytes",
  "iced_core",
@@ -1606,7 +1606,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "bytemuck",
  "cosmic-text 0.18.2",
@@ -1622,7 +1622,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1641,7 +1641,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "iced_renderer",
  "log",
@@ -1654,7 +1654,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced.git?branch=markright#da6755ade8da00233cd4ddf64b4a7e45c96b3b72"
+source = "git+https://github.com/airstrike/iced.git?branch=markright#953fc7ac900e6909b9f5f35d01ce276d74689afd"
 dependencies = [
  "arboard",
  "iced_debug",
@@ -1906,9 +1906,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.182"
+version = "0.2.183"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
+checksum = "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d"
 
 [[package]]
 name = "libloading"
@@ -2947,9 +2947,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.13"
+version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1906b49b0c3bc04b5fe5d86a77925ae6524a19b816ae38ce1e426255f1d8a31"
+checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
 dependencies = [
  "bytes",
  "getrandom 0.3.4",
@@ -5463,18 +5463,18 @@ checksum = "6df3dc4292935e51816d896edcd52aa30bc297907c26167fec31e2b0c6a32524"
 
 [[package]]
 name = "zerocopy"
-version = "0.8.40"
+version = "0.8.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a789c6e490b576db9f7e6b6d661bcc9799f7c0ac8352f56ea20193b2681532e5"
+checksum = "f2578b716f8a7a858b7f02d5bd870c14bf4ddbbcf3a4c05414ba6503640505e3"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.40"
+version = "0.8.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f65c489a7071a749c849713807783f70672b28094011623e200cb86dcb835953"
+checksum = "7e6cc098ea4d3bd6246687de65af3f920c430e236bee1e3bf2e441463f08a02f"
 dependencies = [
  "proc-macro2",
  "quote",

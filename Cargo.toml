@@ -21,4 +21,4 @@ iced = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
 iced_core = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
 iced_graphics = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
 iced_widget = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
-cosmic-text = { git = "https://github.com/airstrike/cosmic-text", branch = "featureful-fonts" }
+cosmic-text = { git = "https://github.com/airstrike/cosmic-text", branch = "dev" }
