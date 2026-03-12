@@ -1,7 +1,8 @@
-//! Formatting operations — bold, italic, underline, alignment, font, size.
+//! Formatting operations — bold, italic, underline, alignment, font, size,
+//! list style, indentation, and line spacing.
 
 use crate::core::text::rich_editor::{Editor, Style as RichStyle};
-use markright_document::{self as document, Alignment, Op, SpanAttr};
+use markright_document::{self as document, Alignment, Op, SpanAttr, paragraph};
 use std::ops::Range;
 
 use super::super::action::FormatAction;
@@ -12,7 +13,13 @@ use super::{Cursor, Position, ordered_positions};
 /// Returns ops for selection-based formatting (and SetAlignment which always
 /// applies). Returns an empty vec when there's no selection — the caller should
 /// update pending_style instead.
-pub fn format<E: Editor>(editor: &mut E, fmt: &FormatAction) -> Vec<Op> {
+///
+/// `paragraph_styles` is the current per-line paragraph style storage from Content.
+pub fn format<E: Editor>(
+    editor: &mut E,
+    fmt: &FormatAction,
+    paragraph_styles: &[paragraph::Style],
+) -> Vec<Op> {
     let cursor = editor.cursor();
     let has_selection = cursor.selection.is_some();
 
@@ -56,6 +63,23 @@ pub fn format<E: Editor>(editor: &mut E, fmt: &FormatAction) -> Vec<Op> {
                 return vec![];
             }
             set_attr_in_selection(editor, SpanAttr::Size(Some(*size)))
+        }
+        FormatAction::SetList(list) => set_paragraph_field(editor, paragraph_styles, |style| {
+            style.list = list.clone();
+        }),
+        FormatAction::IndentList => set_paragraph_field(editor, paragraph_styles, |style| {
+            if style.level < 8 {
+                style.level += 1;
+            }
+        }),
+        FormatAction::DedentList => set_paragraph_field(editor, paragraph_styles, |style| {
+            style.level = style.level.saturating_sub(1);
+        }),
+        FormatAction::SetLineSpacing(spacing) => {
+            let spacing = *spacing;
+            set_paragraph_field(editor, paragraph_styles, |style| {
+                style.line_spacing = Some(spacing);
+            })
         }
     }
 }
@@ -159,6 +183,37 @@ fn set_alignment<E: Editor>(editor: &mut E, alignment: Alignment) -> Vec<Op> {
                 line,
                 alignment,
                 old_alignment,
+            }
+        })
+        .collect()
+}
+
+/// Set a paragraph-level field on lines covered by the current cursor/selection.
+///
+/// `apply` is a closure that mutates a cloned `paragraph::Style` to produce the
+/// new value. Returns one `SetParagraphStyle` op per affected line.
+fn set_paragraph_field<E: Editor>(
+    editor: &E,
+    paragraph_styles: &[paragraph::Style],
+    apply: impl Fn(&mut paragraph::Style),
+) -> Vec<Op> {
+    let cursor = editor.cursor();
+    let lines = if let Some(ref sel) = cursor.selection {
+        let (start, end) = ordered_positions(&cursor.position, sel);
+        start.line..=end.line
+    } else {
+        cursor.position.line..=cursor.position.line
+    };
+
+    lines
+        .map(|line| {
+            let old_style = paragraph_styles.get(line).cloned().unwrap_or_default();
+            let mut new_style = old_style.clone();
+            apply(&mut new_style);
+            Op::SetParagraphStyle {
+                line,
+                style: new_style,
+                old_style,
             }
         })
         .collect()

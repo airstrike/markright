@@ -1,6 +1,7 @@
 //! Action types for the rich text editor — navigation, selection, and edits.
 
 use crate::core::{Font, Point};
+use markright_document::paragraph;
 
 pub use markright_document::Alignment;
 
@@ -78,6 +79,14 @@ pub enum FormatAction {
     SetFont(Font),
     /// Set the font size for the selection.
     SetFontSize(f32),
+    /// Set or remove a list style on the current line(s).
+    SetList(Option<paragraph::List>),
+    /// Increase list indentation level.
+    IndentList,
+    /// Decrease list indentation level.
+    DedentList,
+    /// Set line spacing for the current line(s).
+    SetLineSpacing(paragraph::Spacing),
 }
 
 /// Convert our [`Action`] to an iced editor [`Action`] when possible.

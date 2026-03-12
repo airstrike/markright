@@ -2,6 +2,7 @@
 
 use super::action::Alignment;
 use crate::core::{Color, Font};
+use markright_document::paragraph;
 
 /// Formatting context at the current cursor position.
 #[derive(Debug, Clone, Default)]
@@ -27,6 +28,8 @@ pub struct Character {
 pub struct Paragraph {
     pub alignment: Alignment,
     pub spacing_after: f32,
+    /// Document-model paragraph style (spacing, indent, level, list).
+    pub style: paragraph::Style,
 }
 
 impl Default for Paragraph {
@@ -34,6 +37,7 @@ impl Default for Paragraph {
         Self {
             alignment: Alignment::Left,
             spacing_after: 0.0,
+            style: paragraph::Style::default(),
         }
     }
 }
