@@ -11,7 +11,6 @@ use iced::{Element, Fill, Font, Size, Task, window};
 
 use markright::widget::rich_editor::{self, Action, Content, Edit, FormatAction, cursor};
 
-use fonts::gfonts;
 use theme::Theme;
 
 const BASE_SIZE: f32 = 16.0;
@@ -35,7 +34,7 @@ fn main() -> iced::Result {
 
 struct App {
     content: Content<iced::Renderer>,
-    fonts: gfonts::Fonts,
+    fonts: fount::Fount,
     recent_fonts: Vec<String>,
     font_list: combo_box::State<String>,
     size_list: combo_box::State<String>,
@@ -73,7 +72,7 @@ impl App {
         (
             Self {
                 content: Content::with_text(sample),
-                fonts: gfonts::Fonts::new(),
+                fonts: fount::Fount::new(),
                 recent_fonts: Vec::new(),
                 font_list,
                 size_list,
@@ -96,7 +95,11 @@ impl App {
             self.recent_fonts.insert(0, promote.to_string());
         }
 
-        let mut names = self.fonts.catalog().map(|c| c.top(100)).unwrap_or_default();
+        let mut names = self
+            .fonts
+            .google_catalog()
+            .map(|c| c.top(100))
+            .unwrap_or_default();
 
         names.sort();
 
@@ -118,7 +121,7 @@ impl App {
                 focus("editor")
             }
             Message::FontSelected(name) => {
-                let font = self.fonts.get(&name);
+                let font = self.fonts.font(&name);
                 self.content
                     .perform(Action::Edit(Edit::Format(FormatAction::SetFont(font))));
                 self.rebuild_font_list(&name);
@@ -157,7 +160,7 @@ impl App {
             Message::CopyDebug(s) => clipboard::write(s).discard(),
             Message::Font(msg) => match msg {
                 fonts::Message::CatalogLoaded(Ok(catalog)) => {
-                    self.fonts.set_catalog(catalog);
+                    self.fonts.set_google_catalog(catalog);
                     self.rebuild_font_list("");
                     focus("editor")
                 }

@@ -1,9 +1,7 @@
 //! Font loading for the editor example.
 //!
-//! Delegates to `markright_gfonts` for Google Fonts catalog browsing and
-//! on-demand downloading with disk caching.
-
-pub use markright_gfonts as gfonts;
+//! Delegates to `fount` for Google Fonts catalog browsing and on-demand
+//! downloading with disk caching. Handles iced font registration.
 
 use iced::Task;
 
@@ -11,21 +9,43 @@ use iced::Task;
 #[derive(Debug, Clone)]
 pub enum Message {
     /// The catalog finished loading (or failed).
-    CatalogLoaded(Result<gfonts::Catalog, gfonts::Error>),
+    CatalogLoaded(Result<fount::Catalog, fount::Error>),
     /// A font variant finished loading (or failed). Carries the family name.
-    Loaded(String, Result<(), gfonts::Error>),
+    Loaded(String, Result<(), fount::Error>),
 }
 
 /// Fetch the catalog and load the default font in parallel.
 pub fn init() -> Task<Message> {
     Task::batch([
-        gfonts::catalog(gfonts::DEFAULT_CATALOG_MAX_AGE).map(Message::CatalogLoaded),
+        Task::future(fount::google::catalog(
+            fount::google::DEFAULT_CATALOG_MAX_AGE,
+        ))
+        .map(Message::CatalogLoaded),
         load("IBM Plex Sans".into()),
     ])
 }
 
-/// Load a font family by name.
+/// Load a font family by name via Google Fonts.
 pub fn load(name: String) -> Task<Message> {
     let n = name.clone();
-    gfonts::load(name).map(move |r| Message::Loaded(n.clone(), r))
+    Task::future(async move { fount::google::load(&name).await }).then(
+        move |result: Result<Vec<Vec<u8>>, fount::Error>| {
+            let n = n.clone();
+            match result {
+                Ok(bytes_list) => Task::batch(bytes_list.into_iter().map({
+                    let n = n.clone();
+                    move |bytes| {
+                        let n = n.clone();
+                        iced::font::load(bytes)
+                            .map(move |r| Message::Loaded(n.clone(), r.map_err(into_fount_error)))
+                    }
+                })),
+                Err(e) => Task::done(Message::Loaded(n, Err(e))),
+            }
+        },
+    )
+}
+
+fn into_fount_error(e: iced::font::Error) -> fount::Error {
+    fount::Error::Io(format!("{e:?}"))
 }

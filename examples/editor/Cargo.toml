@@ -13,7 +13,7 @@ wgpu = ["iced/wgpu"]
 
 [dependencies]
 markright = { path = "../.." }
-markright_gfonts = { path = "../../gfonts" }
+fount = { path = "../../../fount" }
 iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
