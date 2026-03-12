@@ -4,6 +4,7 @@ use super::{Alignment, FormatAction, Motion, Status};
 use crate::core::SmolStr;
 use crate::core::keyboard;
 use crate::core::keyboard::key;
+use markright_document::paragraph;
 use std::ops;
 
 // A binding to an action in the [`RichEditor`].
@@ -108,6 +109,13 @@ impl<Message> Binding<Message> {
             Some('j') if modifiers.command() => Some(Self::Format(FormatAction::SetAlignment(
                 Alignment::Justified,
             ))),
+            // List shortcuts (Cmd+Shift+7 = numbered, Cmd+Shift+8 = bullet).
+            Some('7') if modifiers.command() && modifiers.shift() => Some(Self::Format(
+                FormatAction::SetList(Some(paragraph::List::Ordered(paragraph::Number::Arabic))),
+            )),
+            Some('8') if modifiers.command() && modifiers.shift() => Some(Self::Format(
+                FormatAction::SetList(Some(paragraph::List::Bullet(paragraph::Bullet::Disc))),
+            )),
             // Suppress all other Cmd+key combos — never produce an Insert.
             Some(_) if modifiers.command() => return None,
             _ => None,
@@ -121,6 +129,10 @@ impl<Message> Binding<Message> {
         let modified_key = convert_macos_shortcut(&key, modifiers).unwrap_or(modified_key);
 
         match modified_key.as_ref() {
+            keyboard::Key::Named(key::Named::Tab) if modifiers.shift() => {
+                Some(Self::Format(FormatAction::DedentList))
+            }
+            keyboard::Key::Named(key::Named::Tab) => Some(Self::Format(FormatAction::IndentList)),
             keyboard::Key::Named(key::Named::Enter) => Some(Self::Enter),
             keyboard::Key::Named(key::Named::Backspace) => Some(Self::Backspace),
             keyboard::Key::Named(key::Named::Delete)
