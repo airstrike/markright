@@ -3,6 +3,8 @@ use std::ops::Range;
 use iced_core::text::rich_editor::{ParagraphStyle, Style};
 use iced_core::{Color, Font};
 
+use crate::paragraph;
+
 /// Text alignment for paragraphs.
 ///
 /// Unlike iced's `text::Alignment`, this enum has no `Default` variant —
@@ -105,7 +107,10 @@ pub struct StyledText {
 pub struct StyledLine {
     pub text: String,
     pub runs: Vec<StyleRun>,
+    /// Iced's paragraph style (alignment + character defaults for rendering).
     pub paragraph_style: ParagraphStyle,
+    /// Document-model paragraph style (spacing, indent, level, list).
+    pub paragraph: paragraph::Style,
 }
 
 /// An atomic document operation.
@@ -160,6 +165,12 @@ pub enum Op {
         start_line: usize,
         start_col: usize,
         lines: Vec<StyledLine>,
+    },
+    /// Set the paragraph style (spacing, indent, level, list) on a line.
+    SetParagraphStyle {
+        line: usize,
+        style: paragraph::Style,
+        old_style: paragraph::Style,
     },
 }
 
@@ -258,6 +269,17 @@ impl Op {
                     end_line,
                     end_col,
                     lines: lines.clone(),
+                }]
+            }
+            Op::SetParagraphStyle {
+                line,
+                style,
+                old_style,
+            } => {
+                vec![Op::SetParagraphStyle {
+                    line: *line,
+                    style: old_style.clone(),
+                    old_style: style.clone(),
                 }]
             }
         }
@@ -458,6 +480,7 @@ mod tests {
                 style: Style::default(),
             }],
             paragraph_style: ParagraphStyle::default(),
+            paragraph: paragraph::Style::default(),
         }
     }
 

@@ -59,6 +59,7 @@ pub fn read_styled_line<E: Editor>(editor: &E, line: usize, col_range: Range<usi
         text,
         runs,
         paragraph_style: editor.paragraph_style(line),
+        paragraph: crate::paragraph::Style::default(),
     }
 }
 

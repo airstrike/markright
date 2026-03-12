@@ -166,6 +166,10 @@ pub fn apply_op<E: Editor>(editor: &mut E, op: &Op) {
                 editor.set_paragraph_style(target_line, &styled_line.paragraph_style);
             }
         }
+        // SetParagraphStyle is a document-model operation — the paragraph::Style
+        // vector lives in Content, not in the iced editor. Content handles this
+        // op directly (Phase 2).
+        Op::SetParagraphStyle { .. } => {}
     }
 }
 
@@ -229,7 +233,9 @@ pub fn capture_op_state<E: Editor>(editor: &E, op: &Op) -> Op {
                 old_alignment,
             }
         }
-        // Range ops are self-contained — no state capture needed.
-        Op::DeleteRange { .. } | Op::InsertRange { .. } => op.clone(),
+        // Range ops and paragraph style ops are self-contained — no state capture needed.
+        Op::DeleteRange { .. } | Op::InsertRange { .. } | Op::SetParagraphStyle { .. } => {
+            op.clone()
+        }
     }
 }
