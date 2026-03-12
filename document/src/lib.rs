@@ -9,6 +9,7 @@
 pub mod capture;
 pub mod history;
 pub mod op;
+pub mod paragraph;
 
 pub use capture::{read_style_runs, read_styled_line, read_styled_text};
 pub use history::{History, UndoGroup};
