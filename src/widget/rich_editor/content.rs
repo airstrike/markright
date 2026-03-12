@@ -289,7 +289,9 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 let style = self.resolve_style();
                 let mut ops = self.delete_selection_if_any();
                 self.sync_paragraph_styles_for_ops(&ops);
-                ops.extend(operation::paste(&mut self.editor, text.clone(), style));
+                let paste_ops = operation::paste(&mut self.editor, text.clone(), style);
+                self.sync_paragraph_styles_for_ops(&paste_ops);
+                ops.extend(paste_ops);
                 self.record_group(ops);
                 self.pending_style = None;
             }
@@ -297,7 +299,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 let mut ops = self.delete_selection_if_any();
                 self.sync_paragraph_styles_for_ops(&ops);
                 let op = operation::enter(&mut self.editor);
-                self.sync_paragraph_split(self.editor.cursor().position.line.saturating_sub(1));
+                self.sync_paragraph_styles_for_ops(std::slice::from_ref(&op));
                 ops.push(op);
                 self.record_group(ops);
                 self.pending_style = None;
