@@ -634,4 +634,70 @@ mod tests {
         assert_eq!(modified.bold, Some(false));
         assert_eq!(modified.italic, Some(true)); // preserved
     }
+
+    #[test]
+    fn set_paragraph_style_inverse_swaps() {
+        let old = paragraph::Style {
+            level: 0,
+            ..Default::default()
+        };
+        let new = paragraph::Style {
+            level: 1,
+            list: Some(paragraph::List::Bullet(paragraph::Bullet::Disc)),
+            indent: paragraph::Indent {
+                left: 36.0,
+                hanging: 18.0,
+            },
+            ..Default::default()
+        };
+        let op = Op::SetParagraphStyle {
+            line: 2,
+            style: new.clone(),
+            old_style: old.clone(),
+        };
+        let inv = op.inverse();
+        assert_eq!(inv.len(), 1);
+        match &inv[0] {
+            Op::SetParagraphStyle {
+                line,
+                style,
+                old_style,
+            } => {
+                assert_eq!(*line, 2);
+                assert_eq!(*style, old);
+                assert_eq!(*old_style, new);
+            }
+            other => panic!("expected SetParagraphStyle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_paragraph_style_double_inverse_matches_original() {
+        let style = paragraph::Style {
+            level: 2,
+            line_spacing: Some(paragraph::Spacing::Multiple(1.5)),
+            space_before: Some(12.0),
+            ..Default::default()
+        };
+        let op = Op::SetParagraphStyle {
+            line: 0,
+            style: style.clone(),
+            old_style: paragraph::Style::default(),
+        };
+        let inv = op.inverse();
+        let double_inv = inv[0].inverse();
+        assert_eq!(double_inv.len(), 1);
+        match &double_inv[0] {
+            Op::SetParagraphStyle {
+                line,
+                style: s,
+                old_style,
+            } => {
+                assert_eq!(*line, 0);
+                assert_eq!(*s, style);
+                assert_eq!(*old_style, paragraph::Style::default());
+            }
+            other => panic!("expected SetParagraphStyle, got {other:?}"),
+        }
+    }
 }
