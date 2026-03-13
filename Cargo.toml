@@ -1,24 +1,33 @@
 [workspace]
 members = [".", "document", "gfonts", "examples/*"]
 
+[workspace.dependencies]
+cosmic-text = "0.18"
+iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
+iced_core = "0.15.0-dev"
+iced_graphics = "0.15.0-dev"
+iced_widget = "0.15.0-dev"
+markright_document = { path = "document" }
+reqwest = { version = "0.12", features = ["rustls-tls"] }
+
 [package]
 name = "markright"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced_core = "0.15.0-dev"
-markright_document = { path = "document" }
+iced_core.workspace = true
+markright_document.workspace = true
 
 [dev-dependencies]
-iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
-iced_graphics = "0.15.0-dev"
-reqwest = { version = "0.12", features = ["rustls-tls"] }
+iced.workspace = true
+iced_graphics.workspace = true
+reqwest.workspace = true
 
 
 [patch.crates-io]
-iced = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
-iced_core = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
-iced_graphics = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
-iced_widget = { git = "https://github.com/airstrike/iced.git", branch = "markright" }
+iced = { git = "https://github.com/airstrike/iced", branch = "markright" }
+iced_core = { git = "https://github.com/airstrike/iced", branch = "markright" }
+iced_graphics = { git = "https://github.com/airstrike/iced", branch = "markright" }
+iced_widget = { git = "https://github.com/airstrike/iced", branch = "markright" }
 cosmic-text = { git = "https://github.com/airstrike/cosmic-text", branch = "dev" }

@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cosmic-text = "0.12"
-iced_core = "0.15.0-dev"
+cosmic-text.workspace = true
+iced_core.workspace = true

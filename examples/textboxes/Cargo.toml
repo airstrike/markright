@@ -13,7 +13,7 @@ wgpu = ["iced/wgpu"]
 
 [dependencies]
 markright = { path = "../.." }
-iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
+iced.workspace = true
 indexmap = "2"
 
 [build-dependencies]

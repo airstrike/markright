@@ -14,7 +14,7 @@ wgpu = ["iced/wgpu"]
 [dependencies]
 markright = { path = "../.." }
 fount = { path = "../../../fount" }
-iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
+iced.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]

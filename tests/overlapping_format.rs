@@ -46,7 +46,7 @@ fn cursor_reports_font_after_set_font() {
     let c = content("hello");
 
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetFont(Font::with_name("Fira Code"))));
+    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
 
     // Move cursor to middle of text (Home + 3 rights)
     c.perform(Action::Move(Motion::Home));
@@ -56,7 +56,7 @@ fn cursor_reports_font_after_set_font() {
 
     assert_eq!(
         c.cursor_context().character.font,
-        Some(Font::with_name("Fira Code")),
+        Some(Font::new("Fira Code")),
         "cursor should report Fira Code after SetFont on entire text"
     );
 }
@@ -87,13 +87,13 @@ fn cursor_font_at_format_boundary() {
 
     // Select "hello" (chars 0..5) and set font
     select_range(&c, 0, 5);
-    c.perform(fmt(FormatAction::SetFont(Font::with_name("Fira Code"))));
+    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
 
     // Position 4 (inside "hello"): char_style_at reads char at index 4 ('o')
     let style_inside = char_style_at(&c, 4);
     assert_eq!(
         style_inside.font,
-        Some(Font::with_name("Fira Code")),
+        Some(Font::new("Fira Code")),
         "char inside formatted range should have Fira Code"
     );
 
@@ -279,7 +279,7 @@ fn set_font_preserves_existing_bold() {
 
     // Set font on everything
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetFont(Font::with_name("Fira Code"))));
+    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
 
     // Check styled runs: should have both bold and font
     let styled = c.styled_line(0).expect("line 0 should exist");
@@ -291,7 +291,7 @@ fn set_font_preserves_existing_bold() {
         );
         assert_eq!(
             run.style.font,
-            Some(Font::with_name("Fira Code")),
+            Some(Font::new("Fira Code")),
             "run {:?} should have Fira Code",
             run.range
         );
@@ -302,7 +302,7 @@ fn set_font_preserves_existing_bold() {
     assert!(ctx.character.bold, "cursor should report bold");
     assert_eq!(
         ctx.character.font,
-        Some(Font::with_name("Fira Code")),
+        Some(Font::new("Fira Code")),
         "cursor should report Fira Code"
     );
 }
@@ -313,7 +313,7 @@ fn set_bold_preserves_existing_font() {
 
     // Set font on everything
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetFont(Font::with_name("Fira Code"))));
+    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
 
     // Bold everything
     c.perform(Action::SelectAll);
@@ -324,7 +324,7 @@ fn set_bold_preserves_existing_font() {
     for run in &styled.runs {
         assert_eq!(
             run.style.font,
-            Some(Font::with_name("Fira Code")),
+            Some(Font::new("Fira Code")),
             "run {:?} should have Fira Code after ToggleBold",
             run.range
         );
@@ -429,7 +429,7 @@ fn overlapping_font_and_bold_undo() {
 
     // SetFont on "hello" (chars 0..5)
     select_range(&c, 0, 5);
-    c.perform(fmt(FormatAction::SetFont(Font::with_name("Fira Code"))));
+    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
 
     // Bold "lo wo" (chars 3..8)
     select_range(&c, 3, 5);
@@ -439,7 +439,7 @@ fn overlapping_font_and_bold_undo() {
     let s = char_style_at(&c, 1);
     assert_eq!(
         s.font,
-        Some(Font::with_name("Fira Code")),
+        Some(Font::new("Fira Code")),
         "pos 1 should have Fira Code"
     );
     assert!(!s.bold, "pos 1 should not be bold");
@@ -448,7 +448,7 @@ fn overlapping_font_and_bold_undo() {
     let s = char_style_at(&c, 4);
     assert_eq!(
         s.font,
-        Some(Font::with_name("Fira Code")),
+        Some(Font::new("Fira Code")),
         "pos 4 should have Fira Code"
     );
     assert!(s.bold, "pos 4 should be bold");
@@ -465,7 +465,7 @@ fn overlapping_font_and_bold_undo() {
     let s = char_style_at(&c, 4);
     assert_eq!(
         s.font,
-        Some(Font::with_name("Fira Code")),
+        Some(Font::new("Fira Code")),
         "pos 4 should still have Fira Code after undo bold"
     );
     assert!(!s.bold, "pos 4 should not be bold after undo");
