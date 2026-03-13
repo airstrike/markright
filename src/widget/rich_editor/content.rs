@@ -11,6 +11,7 @@ use std::cell::RefCell;
 
 use super::action::{self, Action, Edit, FormatAction};
 use super::cursor;
+use super::list;
 use super::operation;
 
 pub use crate::core::text::editor::{Cursor, Line, LineEnding};
@@ -59,7 +60,7 @@ pub(crate) struct Internal<R: rich_editor::Renderer> {
     default_font: Option<Font>,
     /// Per-line paragraph styles (spacing, indent, level, list).
     /// Kept in sync with the editor's line count.
-    paragraph_styles: Vec<paragraph::Style>,
+    pub(crate) paragraph_styles: Vec<paragraph::Style>,
 }
 
 impl<R: rich_editor::Renderer> Content<R> {
@@ -412,16 +413,20 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     /// Set the paragraph style for a given line, growing the vec if needed.
+    ///
+    /// Also syncs the editor's `margin_left` for the line based on the style.
     fn set_paragraph_style(&mut self, line: usize, style: paragraph::Style) {
         if line >= self.paragraph_styles.len() {
             self.paragraph_styles
                 .resize(line + 1, paragraph::Style::default());
         }
+        let margin = list::compute_margin(&style);
         self.paragraph_styles[line] = style;
+        self.editor.set_margin_left(line, margin);
     }
 
     /// Get the paragraph style for a given line, defaulting if out of bounds.
-    fn paragraph_style(&self, line: usize) -> &paragraph::Style {
+    pub(crate) fn paragraph_style(&self, line: usize) -> &paragraph::Style {
         static DEFAULT: paragraph::Style = paragraph::Style {
             line_spacing: None,
             space_before: None,
@@ -437,21 +442,26 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     /// Sync paragraph_styles after a SplitLine: clone the style at `line` and
-    /// insert it after.
+    /// insert it after, then sync margins for both lines.
     fn sync_paragraph_split(&mut self, line: usize) {
         let style = self.paragraph_style(line).clone();
         if line + 1 > self.paragraph_styles.len() {
             self.paragraph_styles
                 .resize(line + 1, paragraph::Style::default());
         }
+        let margin = list::compute_margin(&style);
         self.paragraph_styles.insert(line + 1, style);
+        self.editor.set_margin_left(line + 1, margin);
     }
 
-    /// Sync paragraph_styles after a MergeLine: remove the style at `line + 1`.
+    /// Sync paragraph_styles after a MergeLine: remove the style at `line + 1`
+    /// and sync the surviving line's margin.
     fn sync_paragraph_merge(&mut self, line: usize) {
         if line + 1 < self.paragraph_styles.len() {
             self.paragraph_styles.remove(line + 1);
         }
+        let margin = list::compute_margin(self.paragraph_style(line));
+        self.editor.set_margin_left(line, margin);
     }
 
     /// Sync paragraph_styles after a DeleteRange: remove styles for deleted lines.

@@ -15,6 +15,7 @@ mod action;
 mod binding;
 mod content;
 pub mod cursor;
+mod list;
 pub mod operation;
 pub mod style;
 
@@ -618,7 +619,7 @@ where
     ) {
         let bounds = layout.bounds();
 
-        let internal = self.content.0.borrow_mut();
+        let internal = self.content.0.borrow();
         let state = tree.state.downcast_ref::<State>();
 
         let font = self.font.unwrap_or_else(|| renderer.default_font());
@@ -667,6 +668,51 @@ where
                 style.value,
                 text_bounds,
             );
+
+            // Draw list markers (bullets/numbers) in the margin space
+            let text_size = self.text_size.unwrap_or_else(|| renderer.default_size());
+            let line_count = internal.editor.line_count();
+
+            for line_idx in 0..line_count {
+                let para_style = internal.paragraph_style(line_idx);
+                let Some(ref list_style) = para_style.list else {
+                    continue;
+                };
+
+                let Some((line_top, line_height, _)) = internal.editor.line_geometry(line_idx)
+                else {
+                    continue;
+                };
+
+                let ordinal = list::count_ordinal(&internal.paragraph_styles, line_idx);
+                let marker = list::marker_text(list_style, ordinal);
+                let margin = list::compute_margin(para_style);
+
+                renderer.fill_text(
+                    Text {
+                        content: marker,
+                        bounds: Size::new(list::LIST_INDENT, line_height),
+                        size: text_size,
+                        line_height: self.line_height,
+                        font,
+                        align_x: text::Alignment::Right,
+                        align_y: alignment::Vertical::Top,
+                        shaping: text::Shaping::Advanced,
+                        wrapping: Wrapping::None,
+                        ellipsis: text::Ellipsis::None,
+                        letter_spacing: self.letter_spacing,
+                        font_features: self.font_features.clone(),
+                        font_variations: self.font_variations.clone(),
+                        hint_factor: renderer.scale_factor(),
+                    },
+                    Point::new(
+                        text_bounds.x + margin - list::LIST_INDENT,
+                        text_bounds.y + line_top,
+                    ),
+                    style.value,
+                    text_bounds,
+                );
+            }
         }
 
         let translation = text_bounds.position() - Point::ORIGIN;
