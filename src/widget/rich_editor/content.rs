@@ -277,9 +277,11 @@ impl<R: rich_editor::Renderer> Content<R> {
 
     /// Returns the visual line geometry for a paragraph line after layout.
     ///
-    /// Returns `(line_top, line_height, line_y_baseline)` or `None` if the
-    /// line doesn't exist or hasn't been laid out.
-    pub fn line_geometry(&self, line: usize) -> Option<(f32, f32, f32)> {
+    /// Returns `None` if the line doesn't exist or hasn't been laid out.
+    pub fn line_geometry(
+        &self,
+        line: usize,
+    ) -> Option<crate::core::text::rich_editor::LineGeometry> {
         use crate::core::text::rich_editor::Editor as _;
         self.0.borrow().editor.line_geometry(line)
     }

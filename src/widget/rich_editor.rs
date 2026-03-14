@@ -680,18 +680,18 @@ where
                     continue;
                 };
 
-                let Some((line_top, line_height, _)) = internal.editor.line_geometry(line_idx)
-                else {
+                let Some(geom) = internal.editor.line_geometry(line_idx) else {
                     continue;
                 };
 
                 let ordinal = list::count_ordinal(&internal.paragraph_styles, line_idx);
                 let marker = list::marker_text(list_style, ordinal);
-                let margin = list::compute_margin(para_style, list_indent);
 
-                // Position the marker box in the indent zone just left of the text.
-                // The marker zone spans [margin - list_indent, margin).
-                let marker_x = text_bounds.x + margin - list_indent;
+                // x_offset already includes margin + alignment correction,
+                // so place the marker one list_indent to the left of it.
+                let marker_x = text_bounds.x + geom.x_offset - list_indent;
+                let line_top = geom.line_top;
+                let line_height = geom.line_height;
 
                 renderer.fill_text(
                     Text {
