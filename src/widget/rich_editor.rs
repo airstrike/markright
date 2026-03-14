@@ -20,7 +20,7 @@ pub mod operation;
 pub mod style;
 
 pub use action::{
-    Action, Alignment, Cursor, Edit, FormatAction, Line, LineEnding, Motion, Position, Selection,
+    Action, Alignment, Cursor, Edit, Format, Line, LineEnding, Motion, Position, Selection,
 };
 pub use binding::{Binding, KeyPress};
 pub use content::{Content, StyleRun, StyledLine};

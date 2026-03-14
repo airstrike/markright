@@ -8,7 +8,7 @@ use iced::widget::operation::focus;
 use iced::widget::{button, container, row};
 use iced::{Background, Border, Element, Length, Point, Rectangle, Size, Task};
 
-use markright::widget::rich_editor::{self, Action, Content, Edit, FormatAction};
+use markright::widget::rich_editor::{self, Action, Alignment, Content, Format};
 
 use workspace::Id;
 
@@ -35,6 +35,7 @@ enum Message {
     ToggleBold,
     ToggleItalic,
     ToggleUnderline,
+    SetAlignment(Alignment),
     SetVAlign(alignment::Vertical),
 }
 
@@ -75,41 +76,48 @@ impl App {
         (Self { state, content }, Task::none())
     }
 
+    /// Perform an action on the currently-editing content, if any.
+    fn perform(&mut self, action: impl Into<Action>) {
+        if let Some(content) = self.editing_content() {
+            content.perform(action);
+        }
+    }
+
+    /// Returns a mutable reference to the content being edited, if any.
+    fn editing_content(&mut self) -> Option<&mut Content<iced::Renderer>> {
+        let id = self.state.editing()?;
+        self.content.get_mut(&id)
+    }
+
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::EditStarted(_) => focus("editor"),
-            Message::EditExited => Task::none(),
-            Message::Editor(action) => {
-                if let Some(id) = self.state.editing() {
-                    self.content.get_mut(&id).unwrap().perform(action);
+            Message::EditExited => {
+                if let Some(id) = self.state.editing()
+                    && self.content[&id].selection().is_some()
+                {
+                    self.perform(Action::Move(rich_editor::Motion::Right));
                 }
                 Task::none()
             }
+            Message::Editor(action) => {
+                self.perform(action);
+                Task::none()
+            }
             Message::ToggleBold => {
-                if let Some(id) = self.state.editing() {
-                    self.content
-                        .get_mut(&id)
-                        .unwrap()
-                        .perform(Action::Edit(Edit::Format(FormatAction::ToggleBold)));
-                }
+                self.perform(Format::ToggleBold);
                 focus("editor")
             }
             Message::ToggleItalic => {
-                if let Some(id) = self.state.editing() {
-                    self.content
-                        .get_mut(&id)
-                        .unwrap()
-                        .perform(Action::Edit(Edit::Format(FormatAction::ToggleItalic)));
-                }
+                self.perform(Format::ToggleItalic);
                 focus("editor")
             }
             Message::ToggleUnderline => {
-                if let Some(id) = self.state.editing() {
-                    self.content
-                        .get_mut(&id)
-                        .unwrap()
-                        .perform(Action::Edit(Edit::Format(FormatAction::ToggleUnderline)));
-                }
+                self.perform(Format::ToggleUnderline);
+                focus("editor")
+            }
+            Message::SetAlignment(a) => {
+                self.perform(Format::SetAlignment(a));
                 focus("editor")
             }
             Message::SetVAlign(v) => {
@@ -181,6 +189,7 @@ fn mini_toolbar(
     let bold_active = cursor.character.bold;
     let italic_active = cursor.character.italic;
     let underline_active = cursor.character.underline;
+    let h_align = cursor.paragraph.alignment;
 
     let bold_btn = button(icon::bold().size(14))
         .on_press(Message::ToggleBold)
@@ -195,6 +204,28 @@ fn mini_toolbar(
     let underline_btn = button(icon::underline().size(14))
         .on_press(Message::ToggleUnderline)
         .style(move |theme, status| toggle_btn_style(theme, status, underline_active))
+        .padding([4, 6]);
+
+    let align_left = button(icon::text_align_start().size(14))
+        .on_press(Message::SetAlignment(Alignment::Left))
+        .style(move |theme, status| toggle_btn_style(theme, status, h_align == Alignment::Left))
+        .padding([4, 6]);
+
+    let align_center = button(icon::text_align_center().size(14))
+        .on_press(Message::SetAlignment(Alignment::Center))
+        .style(move |theme, status| toggle_btn_style(theme, status, h_align == Alignment::Center))
+        .padding([4, 6]);
+
+    let align_right = button(icon::text_align_end().size(14))
+        .on_press(Message::SetAlignment(Alignment::Right))
+        .style(move |theme, status| toggle_btn_style(theme, status, h_align == Alignment::Right))
+        .padding([4, 6]);
+
+    let align_justify = button(icon::text_align_justify().size(14))
+        .on_press(Message::SetAlignment(Alignment::Justified))
+        .style(move |theme, status| {
+            toggle_btn_style(theme, status, h_align == Alignment::Justified)
+        })
         .padding([4, 6]);
 
     let v_top = button(icon::align_v_top().size(14))
@@ -219,9 +250,20 @@ fn mini_toolbar(
         .padding([4, 6]);
 
     container(
-        row![bold_btn, italic_btn, underline_btn, v_top, v_mid, v_bot]
-            .spacing(2)
-            .align_y(alignment::Vertical::Center),
+        row![
+            bold_btn,
+            italic_btn,
+            underline_btn,
+            align_left,
+            align_center,
+            align_right,
+            align_justify,
+            v_top,
+            v_mid,
+            v_bot,
+        ]
+        .spacing(2)
+        .align_y(alignment::Vertical::Center),
     )
     .padding([2, 6])
     .style(toolbar_container_style)

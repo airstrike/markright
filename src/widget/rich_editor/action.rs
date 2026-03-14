@@ -1,11 +1,11 @@
 //! Action types for the rich text editor — navigation, selection, and edits.
+use std::sync::Arc;
 
+pub use crate::core::text::editor::{Cursor, Line, LineEnding, Motion, Position, Selection};
 use crate::core::{Font, Point};
-use markright_document::paragraph;
 
 pub use markright_document::Alignment;
-
-use std::sync::Arc;
+use markright_document::paragraph;
 
 /// Top-level editor action -- navigation, selection, and edits.
 #[derive(Debug, Clone, PartialEq)]
@@ -60,13 +60,13 @@ pub enum Edit {
     /// Delete the next character.
     Delete,
     /// Apply a formatting change at the current cursor/selection.
-    Format(FormatAction),
+    Format(Format),
 }
 
 /// A formatting change applied at the current cursor or selection.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum FormatAction {
+pub enum Format {
     /// Toggle bold on the selection.
     ToggleBold,
     /// Toggle italic on the selection.
@@ -119,5 +119,17 @@ pub(crate) fn to_iced_action(action: &Action) -> Option<crate::core::text::edito
     }
 }
 
-// Re-export iced types that are part of our public API.
-pub use crate::core::text::editor::{Cursor, Line, LineEnding, Motion, Position, Selection};
+impl From<Format> for Edit {
+    fn from(format: Format) -> Self {
+        Edit::Format(format)
+    }
+}
+
+impl<T> From<T> for Action
+where
+    T: Into<Edit>,
+{
+    fn from(t: T) -> Self {
+        Action::Edit(t.into())
+    }
+}

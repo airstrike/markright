@@ -1,7 +1,7 @@
 //! Integration tests for undo/redo through Content::perform — the same
 //! code path used by the GUI.
 
-use markright::widget::rich_editor::{Action, Alignment, Content, Edit, FormatAction, Motion};
+use markright::widget::rich_editor::{Action, Alignment, Content, Edit, Format, Motion};
 
 const SAMPLE: &str = include_str!("../examples/editor/sample.txt");
 
@@ -11,16 +11,12 @@ fn content(text: &str) -> C {
     C::with_text(text)
 }
 
-fn fmt(f: FormatAction) -> Action {
-    Action::Edit(Edit::Format(f))
-}
-
 #[test]
 fn select_all_center_align_then_undo() {
     let c = content(SAMPLE);
 
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetAlignment(Alignment::Center)));
+    c.perform(Format::SetAlignment(Alignment::Center));
 
     assert_eq!(
         c.cursor_context().paragraph.alignment,
@@ -45,11 +41,11 @@ fn select_all_center_then_left_preserves_styles() {
 
     // Center-align
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetAlignment(Alignment::Center)));
+    c.perform(Format::SetAlignment(Alignment::Center));
 
     // Left-align
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetAlignment(Alignment::Left)));
+    c.perform(Format::SetAlignment(Alignment::Left));
 
     let after = c.cursor_context();
 
@@ -93,21 +89,21 @@ fn bold_italic_underline_are_additive_and_undo_independently() {
 
     // Bold
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
     let ctx = c.cursor_context();
     assert!(ctx.character.bold, "should be bold");
     assert!(!ctx.character.italic, "should not be italic yet");
 
     // Italic — should NOT clear bold
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::ToggleItalic));
+    c.perform(Format::ToggleItalic);
     let ctx = c.cursor_context();
     assert!(ctx.character.bold, "bold should be preserved");
     assert!(ctx.character.italic, "should be italic");
 
     // Underline — should NOT clear bold or italic
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::ToggleUnderline));
+    c.perform(Format::ToggleUnderline);
     let ctx = c.cursor_context();
     assert!(ctx.character.bold, "bold should be preserved");
     assert!(ctx.character.italic, "italic should be preserved");
@@ -157,7 +153,7 @@ fn redo_restores_undone_formatting() {
     let c = content("hello");
 
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
     assert!(c.cursor_context().character.bold, "should be bold");
 
     c.perform(Action::Undo);
@@ -172,7 +168,7 @@ fn new_edit_clears_redo() {
     let c = content("hello");
 
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
     c.perform(Action::Undo);
     assert!(c.can_redo(), "redo should be available after undo");
 
@@ -197,7 +193,7 @@ fn bold_partial_selection() {
         c.perform(Action::Select(Motion::Right));
     }
 
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     let styled = c.styled_line(0).expect("line 0 should exist");
     assert!(
@@ -234,7 +230,7 @@ fn format_partial_then_undo_restores_runs() {
     for _ in 0..5 {
         c.perform(Action::Select(Motion::Right));
     }
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     // Undo should restore the original uniform runs
     c.perform(Action::Undo);
@@ -263,7 +259,7 @@ fn type_then_format_then_undo_each() {
 
     // Step 1: bold all
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     // Step 2: type " world" at end
     c.perform(Action::Move(Motion::End));
@@ -398,7 +394,7 @@ fn alignment_undo_redo() {
 
     // Set center
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetAlignment(Alignment::Center)));
+    c.perform(Format::SetAlignment(Alignment::Center));
     assert_eq!(c.cursor_context().paragraph.alignment, Alignment::Center);
 
     // Undo → left

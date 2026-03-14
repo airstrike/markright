@@ -9,7 +9,7 @@ use iced::widget::operation::focus;
 use iced::widget::{column, combo_box, container, mouse_area, row, space, text};
 use iced::{Element, Fill, Font, Size, Task, window};
 
-use markright::widget::rich_editor::{self, Action, Content, Edit, FormatAction, cursor};
+use markright::widget::rich_editor::{self, Action, Content, Format, cursor};
 
 use theme::Theme;
 
@@ -122,15 +122,13 @@ impl App {
             }
             Message::FontSelected(name) => {
                 let font = self.fonts.font(&name);
-                self.content
-                    .perform(Action::Edit(Edit::Format(FormatAction::SetFont(font))));
+                self.content.perform(Format::SetFont(font));
                 self.rebuild_font_list(&name);
                 Task::batch([fonts::load(name).map(Message::Font), focus("editor")])
             }
             Message::SizeSelected(size_str) => {
                 if let Ok(size) = size_str.parse::<f32>() {
-                    self.content
-                        .perform(Action::Edit(Edit::Format(FormatAction::SetFontSize(size))));
+                    self.content.perform(Format::SetFontSize(size));
                 }
                 focus("editor")
             }

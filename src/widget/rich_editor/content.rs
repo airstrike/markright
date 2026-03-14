@@ -9,7 +9,7 @@ use markright_document::{History, Op, paragraph};
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use super::action::{self, Action, Edit, FormatAction};
+use super::action::{self, Action, Edit, Format};
 use super::cursor;
 use super::list;
 use super::operation;
@@ -84,9 +84,9 @@ impl<R: rich_editor::Renderer> Content<R> {
     }
 
     /// Perform an [`Action`] on the content.
-    pub fn perform(&self, action: Action) {
+    pub fn perform(&self, action: impl Into<Action>) {
         let mut internal = self.0.borrow_mut();
-        internal.perform(action);
+        internal.perform(action.into());
     }
 
     /// Returns the current cursor position.
@@ -426,7 +426,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
         self.history.end_group();
     }
 
-    fn update_pending_style(&mut self, fmt: &FormatAction) {
+    fn update_pending_style(&mut self, fmt: &Format) {
         let cursor = self.editor.cursor();
         let current = self.pending_style.get_or_insert_with(|| {
             self.editor.style_at(
@@ -435,18 +435,18 @@ impl<R: rich_editor::Renderer> Internal<R> {
             )
         });
         match fmt {
-            FormatAction::ToggleBold => current.bold = Some(!current.bold.unwrap_or(false)),
-            FormatAction::ToggleItalic => current.italic = Some(!current.italic.unwrap_or(false)),
-            FormatAction::ToggleUnderline => {
+            Format::ToggleBold => current.bold = Some(!current.bold.unwrap_or(false)),
+            Format::ToggleItalic => current.italic = Some(!current.italic.unwrap_or(false)),
+            Format::ToggleUnderline => {
                 current.underline = Some(!current.underline.unwrap_or(false));
             }
-            FormatAction::SetFont(font) => current.font = Some(*font),
-            FormatAction::SetFontSize(size) => current.size = Some(*size),
-            FormatAction::SetAlignment(_)
-            | FormatAction::SetList(_)
-            | FormatAction::IndentList
-            | FormatAction::DedentList
-            | FormatAction::SetLineSpacing(_) => {}
+            Format::SetFont(font) => current.font = Some(*font),
+            Format::SetFontSize(size) => current.size = Some(*size),
+            Format::SetAlignment(_)
+            | Format::SetList(_)
+            | Format::IndentList
+            | Format::DedentList
+            | Format::SetLineSpacing(_) => {}
         }
     }
 

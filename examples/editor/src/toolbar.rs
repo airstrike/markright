@@ -2,7 +2,7 @@ use iced::widget::{Space, button, combo_box, container, row, text};
 use iced::{Element, Length};
 
 use markright::paragraph;
-use markright::widget::rich_editor::{Action, Alignment, Edit, FormatAction, cursor};
+use markright::widget::rich_editor::{Action, Alignment, Format, cursor};
 
 use crate::icon;
 use crate::theme;
@@ -43,8 +43,6 @@ pub fn view<'a, Message>(
 where
     Message: Clone + 'a,
 {
-    let fmt = |f: FormatAction| Action::Edit(Edit::Format(f));
-
     let msg_undo = on_action(Action::Undo);
     let msg_redo = on_action(Action::Redo);
 
@@ -62,13 +60,13 @@ where
         redo_btn = redo_btn.on_press(msg_redo);
     }
 
-    let msg_bold = on_action(fmt(FormatAction::ToggleBold));
-    let msg_italic = on_action(fmt(FormatAction::ToggleItalic));
-    let msg_underline = on_action(fmt(FormatAction::ToggleUnderline));
-    let msg_align_left = on_action(fmt(FormatAction::SetAlignment(Alignment::Left)));
-    let msg_align_center = on_action(fmt(FormatAction::SetAlignment(Alignment::Center)));
-    let msg_align_right = on_action(fmt(FormatAction::SetAlignment(Alignment::Right)));
-    let msg_align_justify = on_action(fmt(FormatAction::SetAlignment(Alignment::Justified)));
+    let msg_bold = on_action(Format::ToggleBold.into());
+    let msg_italic = on_action(Format::ToggleItalic.into());
+    let msg_underline = on_action(Format::ToggleUnderline.into());
+    let msg_align_left = on_action(Format::SetAlignment(Alignment::Left).into());
+    let msg_align_center = on_action(Format::SetAlignment(Alignment::Center).into());
+    let msg_align_right = on_action(Format::SetAlignment(Alignment::Right).into());
+    let msg_align_justify = on_action(Format::SetAlignment(Alignment::Justified).into());
 
     let bold_btn = button(icon::bold().size(16))
         .padding([4, 8])
@@ -113,14 +111,13 @@ where
     let is_bullet = matches!(ctx.paragraph.style.list, Some(paragraph::List::Bullet(_)));
     let is_ordered = matches!(ctx.paragraph.style.list, Some(paragraph::List::Ordered(_)));
 
-    let msg_bullet = on_action(fmt(FormatAction::SetList(Some(paragraph::List::Bullet(
-        paragraph::Bullet::Disc,
-    )))));
-    let msg_ordered = on_action(fmt(FormatAction::SetList(Some(paragraph::List::Ordered(
-        paragraph::Number::Arabic,
-    )))));
-    let msg_indent = on_action(fmt(FormatAction::IndentList));
-    let msg_dedent = on_action(fmt(FormatAction::DedentList));
+    let msg_bullet =
+        on_action(Format::SetList(Some(paragraph::List::Bullet(paragraph::Bullet::Disc))).into());
+    let msg_ordered = on_action(
+        Format::SetList(Some(paragraph::List::Ordered(paragraph::Number::Arabic))).into(),
+    );
+    let msg_indent = on_action(Format::IndentList.into());
+    let msg_dedent = on_action(Format::DedentList.into());
 
     let bullet_btn = button(icon::list().size(16))
         .padding([4, 8])

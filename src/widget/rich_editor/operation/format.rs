@@ -5,7 +5,7 @@ use crate::core::text::rich_editor::{Editor, Style as RichStyle};
 use markright_document::{self as document, Alignment, Op, SpanAttr, paragraph};
 use std::ops::Range;
 
-use super::super::action::FormatAction;
+use super::super::action::Format;
 use super::super::list;
 use super::{Cursor, Position, ordered_positions};
 
@@ -18,14 +18,14 @@ use super::{Cursor, Position, ordered_positions};
 /// `paragraph_styles` is the current per-line paragraph style storage from Content.
 pub fn format<E: Editor>(
     editor: &mut E,
-    fmt: &FormatAction,
+    fmt: &Format,
     paragraph_styles: &[paragraph::Style],
 ) -> Vec<Op> {
     let cursor = editor.cursor();
     let has_selection = cursor.selection.is_some();
 
     match fmt {
-        FormatAction::ToggleBold => {
+        Format::ToggleBold => {
             if !has_selection {
                 return vec![];
             }
@@ -34,7 +34,7 @@ pub fn format<E: Editor>(
                 .unwrap_or(false);
             set_attr_in_selection(editor, SpanAttr::Bold(Some(!is_bold)))
         }
-        FormatAction::ToggleItalic => {
+        Format::ToggleItalic => {
             if !has_selection {
                 return vec![];
             }
@@ -43,7 +43,7 @@ pub fn format<E: Editor>(
                 .unwrap_or(false);
             set_attr_in_selection(editor, SpanAttr::Italic(Some(!is_italic)))
         }
-        FormatAction::ToggleUnderline => {
+        Format::ToggleUnderline => {
             if !has_selection {
                 return vec![];
             }
@@ -52,20 +52,20 @@ pub fn format<E: Editor>(
                 .unwrap_or(false);
             set_attr_in_selection(editor, SpanAttr::Underline(Some(!is_underline)))
         }
-        FormatAction::SetAlignment(alignment) => set_alignment(editor, *alignment),
-        FormatAction::SetFont(font) => {
+        Format::SetAlignment(alignment) => set_alignment(editor, *alignment),
+        Format::SetFont(font) => {
             if !has_selection {
                 return vec![];
             }
             set_attr_in_selection(editor, SpanAttr::Font(Some(*font)))
         }
-        FormatAction::SetFontSize(size) => {
+        Format::SetFontSize(size) => {
             if !has_selection {
                 return vec![];
             }
             set_attr_in_selection(editor, SpanAttr::Size(Some(*size)))
         }
-        FormatAction::SetList(list) => set_paragraph_field(editor, paragraph_styles, |style| {
+        Format::SetList(list) => set_paragraph_field(editor, paragraph_styles, |style| {
             let same_kind = matches!(
                 (&style.list, list),
                 (
@@ -88,7 +88,7 @@ pub fn format<E: Editor>(
                 }
             }
         }),
-        FormatAction::IndentList => set_paragraph_field(editor, paragraph_styles, |style| {
+        Format::IndentList => set_paragraph_field(editor, paragraph_styles, |style| {
             if style.list.is_some() {
                 // Inside a list: Tab demotes (increases nesting depth).
                 if style.level < 8 {
@@ -110,7 +110,7 @@ pub fn format<E: Editor>(
                 }
             }
         }),
-        FormatAction::DedentList => set_paragraph_field(editor, paragraph_styles, |style| {
+        Format::DedentList => set_paragraph_field(editor, paragraph_styles, |style| {
             if style.list.is_some() {
                 // Inside a list: Shift+Tab promotes (decreases nesting).
                 // Level 1 is the base list level — going below removes the list.
@@ -135,7 +135,7 @@ pub fn format<E: Editor>(
                 style.level -= 1;
             }
         }),
-        FormatAction::SetLineSpacing(spacing) => {
+        Format::SetLineSpacing(spacing) => {
             let spacing = *spacing;
             set_paragraph_field(editor, paragraph_styles, |style| {
                 style.line_spacing = Some(spacing);

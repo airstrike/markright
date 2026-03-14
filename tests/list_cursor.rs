@@ -6,7 +6,7 @@
 
 use markright::paragraph;
 use markright::widget::rich_editor::list;
-use markright::widget::rich_editor::{Action, Content, Edit, FormatAction};
+use markright::widget::rich_editor::{Action, Content, Edit, Format};
 
 type C = Content<iced::Renderer>;
 
@@ -18,14 +18,8 @@ fn content(text: &str) -> C {
     c
 }
 
-fn fmt(f: FormatAction) -> Action {
-    Action::Edit(Edit::Format(f))
-}
-
 fn set_bullet() -> Action {
-    fmt(FormatAction::SetList(Some(paragraph::List::Bullet(
-        paragraph::Bullet::Disc,
-    ))))
+    Format::SetList(Some(paragraph::List::Bullet(paragraph::Bullet::Disc))).into()
 }
 
 // -----------------------------------------------------------------------
@@ -202,7 +196,7 @@ fn toggle_bullet_off_at_any_level() {
     c.perform(set_bullet());
 
     // Indent to level 2 (Circle variant).
-    c.perform(fmt(FormatAction::IndentList));
+    c.perform(Format::IndentList);
     let ctx = c.cursor_context();
     assert_eq!(ctx.paragraph.style.level, 2);
     assert!(matches!(

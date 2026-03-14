@@ -1,7 +1,7 @@
 //! Integration tests for overlapping formatting operations, cursor font/size
 //! inspection, and undo/redo of overlapping format ranges.
 
-use markright::widget::rich_editor::{Action, Content, Edit, FormatAction, Motion};
+use markright::widget::rich_editor::{Action, Content, Format, Motion};
 
 use iced::Font;
 
@@ -9,10 +9,6 @@ type C = Content<iced::Renderer>;
 
 fn content(text: &str) -> C {
     C::with_text(text)
-}
-
-fn fmt(f: FormatAction) -> Action {
-    Action::Edit(Edit::Format(f))
 }
 
 /// Select a byte range on a single line: move Home, right `start` times,
@@ -46,7 +42,7 @@ fn cursor_reports_font_after_set_font() {
     let c = content("hello");
 
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
+    c.perform(Format::SetFont(Font::new("Fira Code")));
 
     // Move cursor to middle of text (Home + 3 rights)
     c.perform(Action::Move(Motion::Home));
@@ -66,7 +62,7 @@ fn cursor_reports_size_after_set_size() {
     let c = content("hello");
 
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetFontSize(24.0)));
+    c.perform(Format::SetFontSize(24.0));
 
     // Move cursor to middle of text
     c.perform(Action::Move(Motion::Home));
@@ -87,7 +83,7 @@ fn cursor_font_at_format_boundary() {
 
     // Select "hello" (chars 0..5) and set font
     select_range(&c, 0, 5);
-    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
+    c.perform(Format::SetFont(Font::new("Fira Code")));
 
     // Position 4 (inside "hello"): char_style_at reads char at index 4 ('o')
     let style_inside = char_style_at(&c, 4);
@@ -113,11 +109,11 @@ fn overlapping_bold_then_italic_creates_correct_runs() {
 
     // Bold "hello" (chars 0..5)
     select_range(&c, 0, 5);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     // Italic "lo wo" (chars 3..8)
     select_range(&c, 3, 5);
-    c.perform(fmt(FormatAction::ToggleItalic));
+    c.perform(Format::ToggleItalic);
 
     // Check individual character styles at representative positions:
     // pos 1 ("e"): bold, not italic
@@ -147,11 +143,11 @@ fn undo_overlapping_italic_preserves_bold() {
 
     // Bold "hello" (chars 0..5)
     select_range(&c, 0, 5);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     // Italic "lo wo" (chars 3..8)
     select_range(&c, 3, 5);
-    c.perform(fmt(FormatAction::ToggleItalic));
+    c.perform(Format::ToggleItalic);
 
     // Undo the italic
     c.perform(Action::Undo);
@@ -191,11 +187,11 @@ fn overlapping_bold_italic_full_undo_redo_cycle() {
 
     // Bold "abcd" (chars 0..4)
     select_range(&c, 0, 4);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     // Italic "cdef" (chars 2..6)
     select_range(&c, 2, 4);
-    c.perform(fmt(FormatAction::ToggleItalic));
+    c.perform(Format::ToggleItalic);
 
     // Verify initial state
     let s = char_style_at(&c, 1);
@@ -275,11 +271,11 @@ fn set_font_preserves_existing_bold() {
 
     // Bold everything
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     // Set font on everything
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
+    c.perform(Format::SetFont(Font::new("Fira Code")));
 
     // Check styled runs: should have both bold and font
     let styled = c.styled_line(0).expect("line 0 should exist");
@@ -313,11 +309,11 @@ fn set_bold_preserves_existing_font() {
 
     // Set font on everything
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
+    c.perform(Format::SetFont(Font::new("Fira Code")));
 
     // Bold everything
     c.perform(Action::SelectAll);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     // Check styled runs: should have both font and bold
     let styled = c.styled_line(0).expect("line 0 should exist");
@@ -344,15 +340,15 @@ fn three_overlapping_formats_undo_all() {
 
     // Bold "abcd" (chars 0..4)
     select_range(&c, 0, 4);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     // Italic "defg" (chars 3..7)
     select_range(&c, 3, 4);
-    c.perform(fmt(FormatAction::ToggleItalic));
+    c.perform(Format::ToggleItalic);
 
     // Underline "ghij" (chars 6..10)
     select_range(&c, 6, 4);
-    c.perform(fmt(FormatAction::ToggleUnderline));
+    c.perform(Format::ToggleUnderline);
 
     // Verify initial state at various positions
     // pos 1 ("b"): bold only
@@ -429,11 +425,11 @@ fn overlapping_font_and_bold_undo() {
 
     // SetFont on "hello" (chars 0..5)
     select_range(&c, 0, 5);
-    c.perform(fmt(FormatAction::SetFont(Font::new("Fira Code"))));
+    c.perform(Format::SetFont(Font::new("Fira Code")));
 
     // Bold "lo wo" (chars 3..8)
     select_range(&c, 3, 5);
-    c.perform(fmt(FormatAction::ToggleBold));
+    c.perform(Format::ToggleBold);
 
     // pos 1 ("e"): Fira Code, not bold
     let s = char_style_at(&c, 1);

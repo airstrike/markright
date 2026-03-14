@@ -1,6 +1,6 @@
 //! Key binding definitions — maps keyboard input to editor actions.
 
-use super::{Alignment, FormatAction, Motion, Status};
+use super::{Alignment, Format, Motion, Status};
 use crate::core::SmolStr;
 use crate::core::keyboard;
 use crate::core::keyboard::key;
@@ -37,7 +37,7 @@ pub enum Binding<Message> {
     /// Delete next character.
     Delete,
     /// Apply a formatting action (built-in shortcuts like Cmd+B).
-    Format(FormatAction),
+    Format(Format),
     /// Undo the last edit.
     Undo,
     /// Redo the last undone edit.
@@ -93,28 +93,28 @@ impl<Message> Binding<Message> {
             Some('y') if modifiers.command() => Some(Self::Redo),
             Some('z') if modifiers.command() => Some(Self::Undo),
             // Built-in formatting shortcuts.
-            Some('b') if modifiers.command() => Some(Self::Format(FormatAction::ToggleBold)),
-            Some('i') if modifiers.command() => Some(Self::Format(FormatAction::ToggleItalic)),
-            Some('u') if modifiers.command() => Some(Self::Format(FormatAction::ToggleUnderline)),
+            Some('b') if modifiers.command() => Some(Self::Format(Format::ToggleBold)),
+            Some('i') if modifiers.command() => Some(Self::Format(Format::ToggleItalic)),
+            Some('u') if modifiers.command() => Some(Self::Format(Format::ToggleUnderline)),
             // Alignment shortcuts.
             Some('l') if modifiers.command() => {
-                Some(Self::Format(FormatAction::SetAlignment(Alignment::Left)))
+                Some(Self::Format(Format::SetAlignment(Alignment::Left)))
             }
             Some('e') if modifiers.command() => {
-                Some(Self::Format(FormatAction::SetAlignment(Alignment::Center)))
+                Some(Self::Format(Format::SetAlignment(Alignment::Center)))
             }
             Some('r') if modifiers.command() => {
-                Some(Self::Format(FormatAction::SetAlignment(Alignment::Right)))
+                Some(Self::Format(Format::SetAlignment(Alignment::Right)))
             }
-            Some('j') if modifiers.command() => Some(Self::Format(FormatAction::SetAlignment(
-                Alignment::Justified,
-            ))),
+            Some('j') if modifiers.command() => {
+                Some(Self::Format(Format::SetAlignment(Alignment::Justified)))
+            }
             // List shortcuts (Cmd+Shift+7 = numbered, Cmd+Shift+8 = bullet).
             Some('7') if modifiers.command() && modifiers.shift() => Some(Self::Format(
-                FormatAction::SetList(Some(paragraph::List::Ordered(paragraph::Number::Arabic))),
+                Format::SetList(Some(paragraph::List::Ordered(paragraph::Number::Arabic))),
             )),
             Some('8') if modifiers.command() && modifiers.shift() => Some(Self::Format(
-                FormatAction::SetList(Some(paragraph::List::Bullet(paragraph::Bullet::Disc))),
+                Format::SetList(Some(paragraph::List::Bullet(paragraph::Bullet::Disc))),
             )),
             // Suppress all other Cmd+key combos — never produce an Insert.
             Some(_) if modifiers.command() => return None,
@@ -130,9 +130,9 @@ impl<Message> Binding<Message> {
 
         match modified_key.as_ref() {
             keyboard::Key::Named(key::Named::Tab) if modifiers.shift() => {
-                Some(Self::Format(FormatAction::DedentList))
+                Some(Self::Format(Format::DedentList))
             }
-            keyboard::Key::Named(key::Named::Tab) => Some(Self::Format(FormatAction::IndentList)),
+            keyboard::Key::Named(key::Named::Tab) => Some(Self::Format(Format::IndentList)),
             keyboard::Key::Named(key::Named::Enter) => Some(Self::Enter),
             keyboard::Key::Named(key::Named::Backspace) => Some(Self::Backspace),
             keyboard::Key::Named(key::Named::Delete)
