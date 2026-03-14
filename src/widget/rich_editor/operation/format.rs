@@ -6,6 +6,7 @@ use markright_document::{self as document, Alignment, Op, SpanAttr, paragraph};
 use std::ops::Range;
 
 use super::super::action::FormatAction;
+use super::super::list;
 use super::{Cursor, Position, ordered_positions};
 
 /// Apply a format action to the editor.
@@ -65,15 +66,74 @@ pub fn format<E: Editor>(
             set_attr_in_selection(editor, SpanAttr::Size(Some(*size)))
         }
         FormatAction::SetList(list) => set_paragraph_field(editor, paragraph_styles, |style| {
-            style.list = list.clone();
+            let same_kind = matches!(
+                (&style.list, list),
+                (
+                    Some(paragraph::List::Bullet(_)),
+                    Some(paragraph::List::Bullet(_))
+                ) | (
+                    Some(paragraph::List::Ordered(_)),
+                    Some(paragraph::List::Ordered(_))
+                )
+            );
+            if same_kind {
+                // Toggle off — same list kind already set.
+                style.list = None;
+                style.level = 0;
+            } else {
+                style.list = list.clone();
+                // Entering a list puts text at level 1 (bullet occupies level-0 margin).
+                if style.level == 0 {
+                    style.level = 1;
+                }
+            }
         }),
         FormatAction::IndentList => set_paragraph_field(editor, paragraph_styles, |style| {
-            if style.level < 8 {
-                style.level += 1;
+            if style.list.is_some() {
+                // Inside a list: Tab demotes (increases nesting depth).
+                if style.level < 8 {
+                    style.level += 1;
+                    match &mut style.list {
+                        Some(paragraph::List::Bullet(b)) => {
+                            *b = list::bullet_for_level(style.level.saturating_sub(1));
+                        }
+                        Some(paragraph::List::Ordered(n)) => {
+                            *n = list::number_for_level(style.level.saturating_sub(1));
+                        }
+                        _ => {}
+                    }
+                }
+            } else {
+                // No list: Tab just indents.
+                if style.level < 8 {
+                    style.level += 1;
+                }
             }
         }),
         FormatAction::DedentList => set_paragraph_field(editor, paragraph_styles, |style| {
-            style.level = style.level.saturating_sub(1);
+            if style.list.is_some() {
+                // Inside a list: Shift+Tab promotes (decreases nesting).
+                // Level 1 is the base list level — going below removes the list.
+                if style.level > 1 {
+                    style.level -= 1;
+                    match &mut style.list {
+                        Some(paragraph::List::Bullet(b)) => {
+                            *b = list::bullet_for_level(style.level.saturating_sub(1));
+                        }
+                        Some(paragraph::List::Ordered(n)) => {
+                            *n = list::number_for_level(style.level.saturating_sub(1));
+                        }
+                        _ => {}
+                    }
+                } else {
+                    // At base list level — remove the list entirely.
+                    style.list = None;
+                    style.level = 0;
+                }
+            } else if style.level > 0 {
+                // No list: Shift+Tab just dedents.
+                style.level -= 1;
+            }
         }),
         FormatAction::SetLineSpacing(spacing) => {
             let spacing = *spacing;

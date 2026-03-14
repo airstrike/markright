@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "document", "gfonts", "examples/*"]
+members = [".", "document", "examples/*"]
 
 [workspace.dependencies]
 cosmic-text = "0.18"
