@@ -84,6 +84,9 @@ where
     font_variations: Vec<crate::core::font::Variation>,
     class: Theme::Class<'a>,
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
+    on_blur: Option<Message>,
+    #[allow(clippy::type_complexity)]
+    key_binding: Option<Box<dyn Fn(KeyPress) -> Option<BindingType<Message>> + 'a>>,
     last_status: Option<Status>,
 }
 
@@ -112,6 +115,8 @@ where
             font_variations: Vec::new(),
             class: <Theme as Catalog>::default(),
             on_action: None,
+            on_blur: None,
+            key_binding: None,
             last_status: None,
         }
     }
@@ -157,6 +162,24 @@ where
     /// If not set, the editor is disabled.
     pub fn on_action(mut self, on_action: impl Fn(Action) -> Message + 'a) -> Self {
         self.on_action = Some(Box::new(on_action));
+        self
+    }
+
+    /// Sets the message to emit when the editor loses focus.
+    pub fn on_blur(mut self, on_blur: Message) -> Self {
+        self.on_blur = Some(on_blur);
+        self
+    }
+
+    /// Sets a custom key binding handler.
+    ///
+    /// The closure receives a [`KeyPress`] and returns an optional
+    /// [`Binding`]. Return `None` to fall through to the default bindings.
+    pub fn key_binding(
+        mut self,
+        key_binding: impl Fn(KeyPress) -> Option<BindingType<Message>> + 'a,
+    ) -> Self {
+        self.key_binding = Some(Box::new(key_binding));
         self
     }
 
@@ -308,6 +331,7 @@ impl widget_operation::Focusable for State {
 impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer>
     for RichEditor<'_, Message, Theme, Renderer>
 where
+    Message: Clone,
     Theme: Catalog,
     Renderer: rich_editor::Renderer<Font = Font>,
 {
@@ -437,9 +461,14 @@ where
             _ => {}
         }
 
-        if let Some(update) =
-            Update::from_event(event, state, layout.bounds(), self.padding, cursor)
-        {
+        if let Some(update) = Update::from_event(
+            event,
+            state,
+            layout.bounds(),
+            self.padding,
+            cursor,
+            self.key_binding.as_deref(),
+        ) {
             match update {
                 Update::Click(click) => {
                     let action = match click.kind() {
@@ -498,14 +527,22 @@ where
                         content: &Content<R>,
                         state: &mut State,
                         on_action: &dyn Fn(Action) -> Message,
+                        on_blur: &Option<Message>,
                         shell: &mut Shell<'_, Message>,
-                    ) {
+                    ) where
+                        Message: Clone,
+                    {
                         let mut publish = |action| shell.publish(on_action(action));
 
                         match binding {
                             BindingType::Unfocus => {
-                                state.focus = None;
-                                state.drag_click = None;
+                                if state.focus.is_some() {
+                                    state.focus = None;
+                                    state.drag_click = None;
+                                    if let Some(on_blur) = on_blur {
+                                        shell.publish(on_blur.clone());
+                                    }
+                                }
                             }
                             BindingType::Copy => {
                                 if let Some(selection) = content.selection() {
@@ -559,7 +596,9 @@ where
                             }
                             BindingType::Sequence(sequence) => {
                                 for binding in sequence {
-                                    apply_binding(binding, content, state, on_action, shell);
+                                    apply_binding(
+                                        binding, content, state, on_action, on_blur, shell,
+                                    );
                                 }
                             }
                             BindingType::Custom(message) => {
@@ -572,7 +611,14 @@ where
                         shell.capture_event();
                     }
 
-                    apply_binding(binding, self.content, state, on_action, shell);
+                    apply_binding(
+                        binding,
+                        self.content,
+                        state,
+                        on_action,
+                        &self.on_blur,
+                        shell,
+                    );
 
                     if let Some(focus) = &mut state.focus {
                         focus.updated_at = Instant::now();
@@ -815,6 +861,7 @@ impl<Message> Update<Message> {
         bounds: Rectangle,
         padding: Padding,
         cursor: mouse::Cursor,
+        key_binding: Option<&dyn Fn(KeyPress) -> Option<BindingType<Message>>>,
     ) -> Option<Self> {
         let binding = |binding| Some(Self::Binding(binding));
 
@@ -899,7 +946,10 @@ impl<Message> Update<Message> {
                     status,
                 };
 
-                BindingType::from_key_press(key_press).map(Self::Binding)
+                key_binding
+                    .and_then(|f| f(key_press.clone()))
+                    .or_else(|| BindingType::from_key_press(key_press))
+                    .map(Self::Binding)
             }
             _ => None,
         }
@@ -909,7 +959,7 @@ impl<Message> Update<Message> {
 impl<'a, Message, Theme, Renderer> From<RichEditor<'a, Message, Theme, Renderer>>
     for Element<'a, Message, Theme, Renderer>
 where
-    Message: 'a,
+    Message: Clone + 'a,
     Theme: Catalog + 'a,
     Renderer: rich_editor::Renderer<Font = Font>,
 {
