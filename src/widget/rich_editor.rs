@@ -85,6 +85,7 @@ where
     class: Theme::Class<'a>,
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
     on_blur: Option<Message>,
+    interaction: Option<mouse::Interaction>,
     #[allow(clippy::type_complexity)]
     key_binding: Option<Box<dyn Fn(KeyPress) -> Option<BindingType<Message>> + 'a>>,
     last_status: Option<Status>,
@@ -116,6 +117,7 @@ where
             class: <Theme as Catalog>::default(),
             on_action: None,
             on_blur: None,
+            interaction: None,
             key_binding: None,
             last_status: None,
         }
@@ -168,6 +170,14 @@ where
     /// Sets the message to emit when the editor loses focus.
     pub fn on_blur(mut self, on_blur: Message) -> Self {
         self.on_blur = Some(on_blur);
+        self
+    }
+
+    /// Sets the mouse cursor shown when hovering over a read-only editor.
+    ///
+    /// By default, a read-only editor (no `on_action`) shows [`NotAllowed`](mouse::Interaction::NotAllowed).
+    pub fn interaction(mut self, interaction: mouse::Interaction) -> Self {
+        self.interaction = Some(interaction);
         self
     }
 
@@ -824,7 +834,7 @@ where
 
         if cursor.is_over(layout.bounds()) {
             if is_disabled {
-                mouse::Interaction::NotAllowed
+                self.interaction.unwrap_or(mouse::Interaction::NotAllowed)
             } else {
                 mouse::Interaction::Text
             }
