@@ -65,6 +65,12 @@ pub fn format<E: Editor>(
             }
             set_attr_in_selection(editor, SpanAttr::Size(Some(*size)))
         }
+        Format::SetColor(color) => {
+            if !has_selection {
+                return vec![];
+            }
+            set_attr_in_selection(editor, SpanAttr::Color(*color))
+        }
         Format::SetList(list) => set_paragraph_field(editor, paragraph_styles, |style| {
             let same_kind = matches!(
                 (&style.list, list),

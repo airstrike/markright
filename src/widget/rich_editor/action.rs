@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 pub use crate::core::text::editor::{Cursor, Line, LineEnding, Motion, Position, Selection};
-use crate::core::{Font, Point};
+use crate::core::{Color, Font, Point};
 
 pub use markright_document::Alignment;
 use markright_document::paragraph;
@@ -85,6 +85,8 @@ pub enum Format {
     IndentList,
     /// Decrease list indentation level.
     DedentList,
+    /// Set the text color for the selection (None = default/inherited).
+    SetColor(Option<Color>),
     /// Set line spacing for the current line(s).
     SetLineSpacing(paragraph::Spacing),
 }

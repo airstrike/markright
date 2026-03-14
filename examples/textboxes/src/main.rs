@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use iced::alignment;
 use iced::widget::operation::focus;
 use iced::widget::{button, container, row};
-use iced::{Background, Border, Element, Length, Point, Rectangle, Size, Task};
+use iced::{Background, Border, Color, Element, Length, Point, Rectangle, Size, Task};
 
 use markright::widget::rich_editor::{self, Action, Alignment, Content, Format};
 
@@ -37,6 +37,7 @@ enum Message {
     ToggleUnderline,
     SetAlignment(Alignment),
     SetVAlign(alignment::Vertical),
+    SetColor(Option<Color>),
 }
 
 impl App {
@@ -126,6 +127,10 @@ impl App {
                 }
                 focus("editor")
             }
+            Message::SetColor(color) => {
+                self.perform(Format::SetColor(color));
+                focus("editor")
+            }
         }
     }
 
@@ -182,6 +187,47 @@ impl App {
     }
 }
 
+const COLOR_SWATCHES: &[(Option<Color>, &str)] = &[
+    (None, "Default"),
+    (Some(Color::BLACK), "Black"),
+    (
+        Some(Color {
+            r: 0.8,
+            g: 0.15,
+            b: 0.15,
+            a: 1.0,
+        }),
+        "Red",
+    ),
+    (
+        Some(Color {
+            r: 0.1,
+            g: 0.5,
+            b: 0.9,
+            a: 1.0,
+        }),
+        "Blue",
+    ),
+    (
+        Some(Color {
+            r: 0.15,
+            g: 0.65,
+            b: 0.25,
+            a: 1.0,
+        }),
+        "Green",
+    ),
+    (
+        Some(Color {
+            r: 0.7,
+            g: 0.4,
+            b: 0.0,
+            a: 1.0,
+        }),
+        "Orange",
+    ),
+];
+
 fn mini_toolbar(
     cursor: &rich_editor::cursor::Context,
     v_align: alignment::Vertical,
@@ -190,6 +236,7 @@ fn mini_toolbar(
     let italic_active = cursor.character.italic;
     let underline_active = cursor.character.underline;
     let h_align = cursor.paragraph.alignment;
+    let current_color = cursor.character.color;
 
     let bold_btn = button(icon::bold().size(14))
         .on_press(Message::ToggleBold)
@@ -249,25 +296,54 @@ fn mini_toolbar(
         })
         .padding([4, 6]);
 
-    container(
-        row![
-            bold_btn,
-            italic_btn,
-            underline_btn,
-            align_left,
-            align_center,
-            align_right,
-            align_justify,
-            v_top,
-            v_mid,
-            v_bot,
-        ]
-        .spacing(2)
-        .align_y(alignment::Vertical::Center),
-    )
-    .padding([2, 6])
-    .style(toolbar_container_style)
-    .into()
+    let mut toolbar_row = row![
+        bold_btn,
+        italic_btn,
+        underline_btn,
+        align_left,
+        align_center,
+        align_right,
+        align_justify,
+        v_top,
+        v_mid,
+        v_bot,
+    ]
+    .spacing(2)
+    .align_y(alignment::Vertical::Center);
+
+    for &(color, _label) in COLOR_SWATCHES {
+        let active = current_color == color;
+        toolbar_row = toolbar_row.push(
+            button(
+                container("")
+                    .width(10)
+                    .height(10)
+                    .style(move |_theme| container::Style {
+                        background: Some(Background::Color(
+                            color.unwrap_or(Color::from_rgb(0.5, 0.5, 0.5)),
+                        )),
+                        border: Border {
+                            color: if active {
+                                Color::WHITE
+                            } else {
+                                Color::TRANSPARENT
+                            },
+                            width: if active { 1.5 } else { 0.0 },
+                            radius: 2.0.into(),
+                        },
+                        ..Default::default()
+                    }),
+            )
+            .on_press(Message::SetColor(color))
+            .style(move |theme, status| toggle_btn_style(theme, status, active))
+            .padding([4, 3]),
+        );
+    }
+
+    container(toolbar_row)
+        .padding([2, 6])
+        .style(toolbar_container_style)
+        .into()
 }
 
 // --- Styles ---

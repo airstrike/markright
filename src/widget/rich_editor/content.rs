@@ -442,6 +442,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
             }
             Format::SetFont(font) => current.font = Some(*font),
             Format::SetFontSize(size) => current.size = Some(*size),
+            Format::SetColor(color) => current.color = *color,
             Format::SetAlignment(_)
             | Format::SetList(_)
             | Format::IndentList
