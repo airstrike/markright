@@ -30,7 +30,7 @@ struct App {
 #[derive(Debug, Clone)]
 enum Message {
     EditStarted(#[allow(dead_code)] Id),
-    EditExited,
+    EditExited(Id),
     Editor(Action),
     ToggleBold,
     ToggleItalic,
@@ -92,11 +92,11 @@ impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::EditStarted(_) => focus("editor"),
-            Message::EditExited => {
-                if let Some(id) = self.state.editing()
-                    && self.content[&id].selection().is_some()
+            Message::EditExited(id) => {
+                if let Some(content) = self.content.get(&id)
+                    && content.selection().is_some()
                 {
-                    self.perform(Action::Move(rich_editor::Motion::Right));
+                    content.perform(Action::Move(rich_editor::Motion::Right));
                 }
                 Task::none()
             }

@@ -234,7 +234,7 @@ pub struct Workspace<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer
     elements: Vec<Element<'a, Message, Theme, Renderer>>,
     extra: Vec<(Point, Size, Element<'a, Message, Theme, Renderer>)>,
     on_edit: Option<Box<dyn Fn(Id) -> Message + 'a>>,
-    on_edit_exit: Option<Message>,
+    on_edit_exit: Option<Box<dyn Fn(Id) -> Message + 'a>>,
     on_move: Option<Box<dyn Fn(Id, Rectangle) -> Message + 'a>>,
 }
 
@@ -244,8 +244,8 @@ impl<'a, Message, Theme, Renderer> Workspace<'a, Message, Theme, Renderer> {
         self
     }
 
-    pub fn on_edit_exit(mut self, msg: Message) -> Self {
-        self.on_edit_exit = Some(msg);
+    pub fn on_edit_exit(mut self, f: impl Fn(Id) -> Message + 'a) -> Self {
+        self.on_edit_exit = Some(Box::new(f));
         self
     }
 
@@ -461,16 +461,21 @@ where
                     if let Some(i) = hit {
                         let (&id, _) = self.state.boxes.get_index(i).unwrap();
 
-                        // If editing this box, skip — the editor handled it in Phase 1.
+                        // If editing this box, re-focus the editor (click may have
+                        // landed in container padding outside the editor bounds).
                         if matches!(interaction, Interaction::Editing { id: eid } if eid == id) {
+                            if let Some(ref on_edit) = self.on_edit {
+                                shell.publish(on_edit(id));
+                            }
+                            shell.capture_event();
                             return;
                         }
 
                         // Exit edit mode if we were editing a different box.
-                        if matches!(interaction, Interaction::Editing { .. })
-                            && let Some(ref msg) = self.on_edit_exit
+                        if let Interaction::Editing { id: eid } = interaction
+                            && let Some(ref on_exit) = self.on_edit_exit
                         {
-                            shell.publish(msg.clone());
+                            shell.publish(on_exit(eid));
                         }
 
                         if shift {
@@ -508,10 +513,10 @@ where
                         // Clicked empty space.
                         widget_state.last_click = None;
 
-                        if matches!(interaction, Interaction::Editing { .. })
-                            && let Some(ref msg) = self.on_edit_exit
+                        if let Interaction::Editing { id: eid } = interaction
+                            && let Some(ref on_exit) = self.on_edit_exit
                         {
-                            shell.publish(msg.clone());
+                            shell.publish(on_exit(eid));
                         }
 
                         if !shift {
@@ -622,10 +627,10 @@ where
                 key: keyboard::Key::Named(keyboard::key::Named::Escape),
                 ..
             }) => {
-                if matches!(interaction, Interaction::Editing { .. }) {
+                if let Interaction::Editing { id } = interaction {
                     self.state.interaction.set(Interaction::Idle);
-                    if let Some(ref msg) = self.on_edit_exit {
-                        shell.publish(msg.clone());
+                    if let Some(ref on_exit) = self.on_edit_exit {
+                        shell.publish(on_exit(id));
                     }
                     shell.capture_event();
                 }
