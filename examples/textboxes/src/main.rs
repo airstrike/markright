@@ -1,14 +1,16 @@
-mod icon;
-mod workspace;
-
 use std::collections::HashMap;
 
-use iced::alignment;
+use iced::alignment::{self, Vertical::*};
 use iced::widget::operation::focus;
 use iced::widget::{button, container, row};
-use iced::{Background, Border, Color, Element, Length, Point, Rectangle, Size, Task};
+use iced::{Color, Element, Length, Point, Rectangle, Size, Task, color};
 
+use function::*;
 use markright::widget::rich_editor::{self, Action, Alignment, Content, Format};
+
+mod function;
+mod icon;
+mod workspace;
 
 use workspace::Id;
 
@@ -47,7 +49,7 @@ impl App {
 
         let id = state.insert(
             Rectangle::new(Point::new(50.0, 80.0), Size::new(280.0, 160.0)),
-            alignment::Vertical::Top,
+            Top,
         );
         content.insert(
             id,
@@ -58,7 +60,7 @@ impl App {
 
         let id = state.insert(
             Rectangle::new(Point::new(400.0, 120.0), Size::new(260.0, 140.0)),
-            alignment::Vertical::Center,
+            Center,
         );
         content.insert(
             id,
@@ -67,7 +69,7 @@ impl App {
 
         let id = state.insert(
             Rectangle::new(Point::new(200.0, 340.0), Size::new(320.0, 120.0)),
-            alignment::Vertical::Bottom,
+            Bottom,
         );
         content.insert(
             id,
@@ -94,10 +96,8 @@ impl App {
         match message {
             Message::EditStarted(_) => focus("editor"),
             Message::EditExited(id) => {
-                if let Some(content) = self.content.get(&id)
-                    && content.selection().is_some()
-                {
-                    content.perform(Action::Move(rich_editor::Motion::Right));
+                if let Some(content) = self.content.get(&id) {
+                    content.perform(Action::Deselect);
                 }
                 Task::none()
             }
@@ -142,14 +142,14 @@ impl App {
                 rich_editor::rich_editor(content)
                     .id("editor")
                     .on_action(Message::Editor)
-                    .style(editor_style)
+                    .style(theme::editor::style)
                     .padding(8)
                     .height(Length::Shrink)
                     .size(BASE_SIZE)
                     .into()
             } else {
                 rich_editor::rich_editor::<Message, _, _>(content)
-                    .style(editor_style)
+                    .style(theme::editor::style)
                     .padding(8)
                     .height(Length::Shrink)
                     .size(BASE_SIZE)
@@ -157,9 +157,9 @@ impl App {
             };
 
             let box_style = if bx.is_editing() {
-                textbox_style_active
+                theme::textbox::active
             } else {
-                textbox_style_idle
+                theme::textbox::idle
             };
 
             container(editor)
@@ -190,43 +190,17 @@ impl App {
 const COLOR_SWATCHES: &[(Option<Color>, &str)] = &[
     (None, "Default"),
     (Some(Color::BLACK), "Black"),
-    (
-        Some(Color {
-            r: 0.8,
-            g: 0.15,
-            b: 0.15,
-            a: 1.0,
-        }),
-        "Red",
-    ),
-    (
-        Some(Color {
-            r: 0.1,
-            g: 0.5,
-            b: 0.9,
-            a: 1.0,
-        }),
-        "Blue",
-    ),
-    (
-        Some(Color {
-            r: 0.15,
-            g: 0.65,
-            b: 0.25,
-            a: 1.0,
-        }),
-        "Green",
-    ),
-    (
-        Some(Color {
-            r: 0.7,
-            g: 0.4,
-            b: 0.0,
-            a: 1.0,
-        }),
-        "Orange",
-    ),
+    (Some(color!(0xCC2626)), "Red"),
+    (Some(color!(0x1A80E6)), "Blue"),
+    (Some(color!(0x26A640)), "Green"),
+    (Some(color!(0xB36600)), "Orange"),
 ];
+
+fn btn<'a>(label: iced::widget::Text<'a>, active: bool) -> iced::widget::Button<'a, Message> {
+    button(label.size(14))
+        .style(theme::toolbar::button.with(active))
+        .padding([4, 6])
+}
 
 fn mini_toolbar(
     cursor: &rich_editor::cursor::Context,
@@ -238,63 +212,22 @@ fn mini_toolbar(
     let h_align = cursor.paragraph.alignment;
     let current_color = cursor.character.color;
 
-    let bold_btn = button(icon::bold().size(14))
-        .on_press(Message::ToggleBold)
-        .style(move |theme, status| toggle_btn_style(theme, status, bold_active))
-        .padding([4, 6]);
+    let bold_btn = btn(icon::bold(), bold_active).on_press(Message::ToggleBold);
+    let italic_btn = btn(icon::italic(), italic_active).on_press(Message::ToggleItalic);
+    let underline_btn = btn(icon::underline(), underline_active).on_press(Message::ToggleUnderline);
 
-    let italic_btn = button(icon::italic().size(14))
-        .on_press(Message::ToggleItalic)
-        .style(move |theme, status| toggle_btn_style(theme, status, italic_active))
-        .padding([4, 6]);
+    let align_left = btn(icon::text_align_start(), h_align == Alignment::Left)
+        .on_press(Message::SetAlignment(Alignment::Left));
+    let align_center = btn(icon::text_align_center(), h_align == Alignment::Center)
+        .on_press(Message::SetAlignment(Alignment::Center));
+    let align_right = btn(icon::text_align_end(), h_align == Alignment::Right)
+        .on_press(Message::SetAlignment(Alignment::Right));
+    let align_justify = btn(icon::text_align_justify(), h_align == Alignment::Justified)
+        .on_press(Message::SetAlignment(Alignment::Justified));
 
-    let underline_btn = button(icon::underline().size(14))
-        .on_press(Message::ToggleUnderline)
-        .style(move |theme, status| toggle_btn_style(theme, status, underline_active))
-        .padding([4, 6]);
-
-    let align_left = button(icon::text_align_start().size(14))
-        .on_press(Message::SetAlignment(Alignment::Left))
-        .style(move |theme, status| toggle_btn_style(theme, status, h_align == Alignment::Left))
-        .padding([4, 6]);
-
-    let align_center = button(icon::text_align_center().size(14))
-        .on_press(Message::SetAlignment(Alignment::Center))
-        .style(move |theme, status| toggle_btn_style(theme, status, h_align == Alignment::Center))
-        .padding([4, 6]);
-
-    let align_right = button(icon::text_align_end().size(14))
-        .on_press(Message::SetAlignment(Alignment::Right))
-        .style(move |theme, status| toggle_btn_style(theme, status, h_align == Alignment::Right))
-        .padding([4, 6]);
-
-    let align_justify = button(icon::text_align_justify().size(14))
-        .on_press(Message::SetAlignment(Alignment::Justified))
-        .style(move |theme, status| {
-            toggle_btn_style(theme, status, h_align == Alignment::Justified)
-        })
-        .padding([4, 6]);
-
-    let v_top = button(icon::align_v_top().size(14))
-        .on_press(Message::SetVAlign(alignment::Vertical::Top))
-        .style(move |theme, status| {
-            toggle_btn_style(theme, status, v_align == alignment::Vertical::Top)
-        })
-        .padding([4, 6]);
-
-    let v_mid = button(icon::align_v_center().size(14))
-        .on_press(Message::SetVAlign(alignment::Vertical::Center))
-        .style(move |theme, status| {
-            toggle_btn_style(theme, status, v_align == alignment::Vertical::Center)
-        })
-        .padding([4, 6]);
-
-    let v_bot = button(icon::align_v_bottom().size(14))
-        .on_press(Message::SetVAlign(alignment::Vertical::Bottom))
-        .style(move |theme, status| {
-            toggle_btn_style(theme, status, v_align == alignment::Vertical::Bottom)
-        })
-        .padding([4, 6]);
+    let v_top = btn(icon::align_v_top(), v_align == Top).on_press(Message::SetVAlign(Top));
+    let v_mid = btn(icon::align_v_center(), v_align == Center).on_press(Message::SetVAlign(Center));
+    let v_bot = btn(icon::align_v_bottom(), v_align == Bottom).on_press(Message::SetVAlign(Bottom));
 
     let mut toolbar_row = row![
         bold_btn,
@@ -309,7 +242,7 @@ fn mini_toolbar(
         v_bot,
     ]
     .spacing(2)
-    .align_y(alignment::Vertical::Center);
+    .align_y(Center);
 
     for &(color, _label) in COLOR_SWATCHES {
         let active = current_color == color;
@@ -318,125 +251,146 @@ fn mini_toolbar(
                 container("")
                     .width(10)
                     .height(10)
-                    .style(move |_theme| container::Style {
-                        background: Some(Background::Color(
-                            color.unwrap_or(Color::from_rgb(0.5, 0.5, 0.5)),
-                        )),
-                        border: Border {
-                            color: if active {
-                                Color::WHITE
-                            } else {
-                                Color::TRANSPARENT
-                            },
-                            width: if active { 1.5 } else { 0.0 },
-                            radius: 2.0.into(),
-                        },
-                        ..Default::default()
-                    }),
+                    .style(move |_| theme::toolbar::swatch(color, active)),
             )
             .on_press(Message::SetColor(color))
-            .style(move |theme, status| toggle_btn_style(theme, status, active))
+            .style(theme::toolbar::button.with(active))
             .padding([4, 3]),
         );
     }
 
     container(toolbar_row)
         .padding([2, 6])
-        .style(toolbar_container_style)
+        .style(theme::toolbar::group)
         .into()
 }
 
-// --- Styles ---
+mod theme {
+    use iced::widget::{button, container};
+    use iced::{Background, Border};
+    use markright::widget::rich_editor;
 
-fn editor_style(theme: &iced::Theme, status: rich_editor::Status) -> rich_editor::Style {
-    let palette = theme.palette();
-    let selection = if matches!(status, rich_editor::Status::Focused { .. }) {
-        palette.primary.base.color.scale_alpha(0.4)
-    } else {
-        palette.primary.base.color.scale_alpha(0.2)
-    };
-    rich_editor::Style {
-        background: Background::Color(iced::Color::TRANSPARENT),
-        border: Border::default(),
-        placeholder: palette.background.strong.color,
-        value: palette.background.base.text,
-        selection,
-    }
-}
+    pub mod editor {
+        use super::*;
 
-fn textbox_style_idle(theme: &iced::Theme) -> container::Style {
-    let palette = theme.palette();
-    container::Style {
-        background: Some(Background::Color(palette.background.weak.color)),
-        border: Border {
-            color: palette.background.strong.color,
-            width: 1.0,
-            radius: 6.0.into(),
-        },
-        ..Default::default()
-    }
-}
-
-fn textbox_style_active(theme: &iced::Theme) -> container::Style {
-    let palette = theme.palette();
-    container::Style {
-        background: Some(Background::Color(palette.background.base.color)),
-        border: Border {
-            color: palette.primary.base.color.scale_alpha(0.6),
-            width: 2.0,
-            radius: 6.0.into(),
-        },
-        ..Default::default()
-    }
-}
-
-fn toolbar_container_style(theme: &iced::Theme) -> container::Style {
-    let palette = theme.palette();
-    container::Style {
-        background: Some(Background::Color(palette.background.weak.color)),
-        border: Border {
-            color: palette.background.strong.color,
-            width: 1.0,
-            radius: 4.0.into(),
-        },
-        ..Default::default()
-    }
-}
-
-fn toggle_btn_style(theme: &iced::Theme, status: button::Status, active: bool) -> button::Style {
-    let palette = theme.palette();
-    if active {
-        button::Style {
-            background: Some(Background::Color(palette.primary.base.color)),
-            text_color: palette.primary.base.text,
-            border: Border {
-                radius: 4.0.into(),
-                ..Border::default()
-            },
-            ..Default::default()
+        pub fn style(theme: &iced::Theme, status: rich_editor::Status) -> rich_editor::Style {
+            let palette = theme.palette();
+            let selection = if matches!(status, rich_editor::Status::Focused { .. }) {
+                palette.primary.base.color.scale_alpha(0.4)
+            } else {
+                palette.primary.base.color.scale_alpha(0.2)
+            };
+            rich_editor::Style {
+                background: Background::Color(iced::Color::TRANSPARENT),
+                border: Border::default(),
+                placeholder: palette.background.strong.color,
+                value: palette.background.base.text,
+                selection,
+            }
         }
-    } else {
-        match status {
-            button::Status::Hovered => button::Style {
+    }
+
+    pub mod textbox {
+        use super::*;
+
+        pub fn idle(theme: &iced::Theme) -> container::Style {
+            let palette = theme.palette();
+            container::Style {
+                background: Some(Background::Color(palette.background.weak.color)),
+                border: Border {
+                    color: palette.background.strong.color,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                ..Default::default()
+            }
+        }
+
+        pub fn active(theme: &iced::Theme) -> container::Style {
+            let palette = theme.palette();
+            container::Style {
+                background: Some(Background::Color(palette.background.base.color)),
+                border: Border {
+                    color: palette.primary.base.color.scale_alpha(0.6),
+                    width: 2.0,
+                    radius: 6.0.into(),
+                },
+                ..Default::default()
+            }
+        }
+    }
+
+    pub mod toolbar {
+        use super::*;
+        use iced::Color;
+
+        pub fn group(theme: &iced::Theme) -> container::Style {
+            let palette = theme.palette();
+            container::Style {
+                background: Some(Background::Color(palette.background.weak.color)),
+                border: Border {
+                    color: palette.background.strong.color,
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }
+        }
+
+        pub fn swatch(color: Option<Color>, active: bool) -> container::Style {
+            container::Style {
                 background: Some(Background::Color(
-                    palette.background.base.text.scale_alpha(0.1),
+                    color.unwrap_or(Color::from_rgb(0.5, 0.5, 0.5)),
                 )),
-                text_color: palette.background.base.text,
                 border: Border {
-                    radius: 4.0.into(),
-                    ..Border::default()
+                    color: if active {
+                        Color::WHITE
+                    } else {
+                        Color::TRANSPARENT
+                    },
+                    width: if active { 1.5 } else { 0.0 },
+                    radius: 2.0.into(),
                 },
                 ..Default::default()
-            },
-            _ => button::Style {
-                background: None,
-                text_color: palette.background.base.text,
-                border: Border {
-                    radius: 4.0.into(),
-                    ..Border::default()
-                },
-                ..Default::default()
-            },
+            }
+        }
+
+        pub fn button(theme: &iced::Theme, status: button::Status, active: bool) -> button::Style {
+            let palette = theme.palette();
+            if active {
+                button::Style {
+                    background: Some(Background::Color(palette.primary.base.color)),
+                    text_color: palette.primary.base.text,
+                    border: Border {
+                        radius: 4.0.into(),
+                        ..Border::default()
+                    },
+                    ..Default::default()
+                }
+            } else {
+                match status {
+                    button::Status::Hovered => button::Style {
+                        background: Some(Background::Color(
+                            palette.background.base.text.scale_alpha(0.1),
+                        )),
+                        text_color: palette.background.base.text,
+                        border: Border {
+                            radius: 4.0.into(),
+                            ..Border::default()
+                        },
+                        ..Default::default()
+                    },
+                    _ => button::Style {
+                        background: None,
+                        text_color: palette.background.base.text,
+                        border: Border {
+                            radius: 4.0.into(),
+                            ..Border::default()
+                        },
+                        ..Default::default()
+                    },
+                }
+            }
         }
     }
 }

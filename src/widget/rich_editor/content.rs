@@ -327,6 +327,13 @@ impl<R: rich_editor::Renderer> Internal<R> {
     fn perform(&mut self, action: Action) {
         match action {
             Action::Edit(edit) => self.perform_edit(edit),
+            Action::Deselect => {
+                if self.editor.copy().is_some() {
+                    self.editor.perform(crate::core::text::editor::Action::Move(
+                        crate::core::text::editor::Motion::Right,
+                    ));
+                }
+            }
             Action::Undo => self.perform_undo(),
             Action::Redo => self.perform_redo(),
             ref other => {
