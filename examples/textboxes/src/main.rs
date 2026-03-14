@@ -231,7 +231,7 @@ fn mini_toolbar(
 // --- Styles ---
 
 fn editor_style(theme: &iced::Theme, status: rich_editor::Status) -> rich_editor::Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
     let selection = if matches!(status, rich_editor::Status::Focused { .. }) {
         palette.primary.base.color.scale_alpha(0.4)
     } else {
@@ -247,7 +247,7 @@ fn editor_style(theme: &iced::Theme, status: rich_editor::Status) -> rich_editor
 }
 
 fn textbox_style_idle(theme: &iced::Theme) -> container::Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
     container::Style {
         background: Some(Background::Color(palette.background.weak.color)),
         border: Border {
@@ -260,7 +260,7 @@ fn textbox_style_idle(theme: &iced::Theme) -> container::Style {
 }
 
 fn textbox_style_active(theme: &iced::Theme) -> container::Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
     container::Style {
         background: Some(Background::Color(palette.background.base.color)),
         border: Border {
@@ -273,7 +273,7 @@ fn textbox_style_active(theme: &iced::Theme) -> container::Style {
 }
 
 fn toolbar_container_style(theme: &iced::Theme) -> container::Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
     container::Style {
         background: Some(Background::Color(palette.background.weak.color)),
         border: Border {
@@ -286,7 +286,7 @@ fn toolbar_container_style(theme: &iced::Theme) -> container::Style {
 }
 
 fn toggle_btn_style(theme: &iced::Theme, status: button::Status, active: bool) -> button::Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
     if active {
         button::Style {
             background: Some(Background::Color(palette.primary.base.color)),

@@ -18,4 +18,4 @@ iced.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]
-iced_lucide = { git = "https://github.com/A-Disruption/iced_lucide" }
+iced_lucide = { git = "https://github.com/airstrike/iced_lucide" }

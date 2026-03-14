@@ -15,7 +15,7 @@ mod action;
 mod binding;
 mod content;
 pub mod cursor;
-mod list;
+pub mod list;
 pub mod operation;
 pub mod style;
 
@@ -672,6 +672,7 @@ where
             // Draw list markers (bullets/numbers) in the margin space
             let text_size = self.text_size.unwrap_or_else(|| renderer.default_size());
             let line_count = internal.editor.line_count();
+            let list_indent = internal.list_indent;
 
             for line_idx in 0..line_count {
                 let para_style = internal.paragraph_style(line_idx);
@@ -686,16 +687,20 @@ where
 
                 let ordinal = list::count_ordinal(&internal.paragraph_styles, line_idx);
                 let marker = list::marker_text(list_style, ordinal);
-                let margin = list::compute_margin(para_style);
+                let margin = list::compute_margin(para_style, list_indent);
+
+                // Position the marker box in the indent zone just left of the text.
+                // The marker zone spans [margin - list_indent, margin).
+                let marker_x = text_bounds.x + margin - list_indent;
 
                 renderer.fill_text(
                     Text {
                         content: marker,
-                        bounds: Size::new(list::LIST_INDENT, line_height),
+                        bounds: Size::new(list_indent, line_height),
                         size: text_size,
                         line_height: self.line_height,
                         font,
-                        align_x: text::Alignment::Right,
+                        align_x: text::Alignment::Center,
                         align_y: alignment::Vertical::Top,
                         shaping: text::Shaping::Advanced,
                         wrapping: Wrapping::None,
@@ -705,12 +710,9 @@ where
                         font_variations: self.font_variations.clone(),
                         hint_factor: renderer.scale_factor(),
                     },
-                    Point::new(
-                        text_bounds.x + margin - list::LIST_INDENT,
-                        text_bounds.y + line_top,
-                    ),
+                    Point::new(marker_x, text_bounds.y + line_top),
                     style.value,
-                    text_bounds,
+                    bounds,
                 );
             }
         }

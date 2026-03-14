@@ -17,4 +17,4 @@ iced.workspace = true
 indexmap = "2"
 
 [build-dependencies]
-iced_lucide = { git = "https://github.com/A-Disruption/iced_lucide" }
+iced_lucide = { git = "https://github.com/airstrike/iced_lucide" }

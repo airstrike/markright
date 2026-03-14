@@ -61,6 +61,8 @@ pub(crate) struct Internal<R: rich_editor::Renderer> {
     /// Per-line paragraph styles (spacing, indent, level, list).
     /// Kept in sync with the editor's line count.
     pub(crate) paragraph_styles: Vec<paragraph::Style>,
+    /// Pixels per indent level for list items.
+    pub(crate) list_indent: f32,
 }
 
 impl<R: rich_editor::Renderer> Content<R> {
@@ -77,6 +79,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             history: History::new(),
             default_font: None,
             paragraph_styles: vec![paragraph::Style::default()],
+            list_indent: list::DEFAULT_LIST_INDENT,
         }))
     }
 
@@ -226,6 +229,16 @@ impl<R: rich_editor::Renderer> Content<R> {
         self.0.borrow().history.can_redo()
     }
 
+    /// Sets the list indent (pixels per level). Default is 20.
+    pub fn set_list_indent(&self, indent: f32) {
+        self.0.borrow_mut().list_indent = indent;
+    }
+
+    /// Returns the current list indent.
+    pub fn list_indent(&self) -> f32 {
+        self.0.borrow().list_indent
+    }
+
     /// Sets the document-level default font.
     ///
     /// This font is used as a fallback when a span has no explicit font set.
@@ -234,6 +247,53 @@ impl<R: rich_editor::Renderer> Content<R> {
         let mut internal = self.0.borrow_mut();
         internal.default_font = Some(font);
         internal.apply_default_font_to_all();
+    }
+
+    /// Trigger a layout pass so that geometry queries return up-to-date values.
+    ///
+    /// In the real app this happens during the widget's `layout()` phase.
+    /// Call this in tests before querying visual positions.
+    pub fn update_layout(&self, bounds: crate::core::Size)
+    where
+        <<R as rich_editor::Renderer>::RichEditor as rich_editor::Editor>::Font: Default,
+    {
+        use crate::core::text::rich_editor::Editor as _;
+        use crate::core::text::{LineHeight, Wrapping};
+        use crate::core::{Em, Pixels};
+
+        let mut internal = self.0.borrow_mut();
+        internal.editor.update(
+            bounds,
+            Default::default(),
+            Pixels(16.0),
+            LineHeight::default(),
+            Em::ZERO,
+            Vec::new(),
+            Vec::new(),
+            Wrapping::Word,
+            None,
+        );
+    }
+
+    /// Returns the visual line geometry for a paragraph line after layout.
+    ///
+    /// Returns `(line_top, line_height, line_y_baseline)` or `None` if the
+    /// line doesn't exist or hasn't been laid out.
+    pub fn line_geometry(&self, line: usize) -> Option<(f32, f32, f32)> {
+        use crate::core::text::rich_editor::Editor as _;
+        self.0.borrow().editor.line_geometry(line)
+    }
+
+    /// Returns the caret rectangle from the editor's selection state.
+    ///
+    /// Call `update_layout` first to ensure the layout is current.
+    pub fn caret_rect(&self) -> Option<crate::core::Rectangle> {
+        use crate::core::text::rich_editor::Editor as _;
+        let internal = self.0.borrow();
+        match internal.editor.selection() {
+            crate::core::text::editor::Selection::Caret(rect) => Some(rect),
+            _ => None,
+        }
     }
 }
 
@@ -306,7 +366,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 self.pending_style = None;
             }
             Edit::Backspace => {
-                let ops = operation::backspace(&mut self.editor);
+                let ops = self.backspace_with_list_aware();
                 self.sync_paragraph_styles_for_ops(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
@@ -420,7 +480,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
             self.paragraph_styles
                 .resize(line + 1, paragraph::Style::default());
         }
-        let margin = list::compute_margin(&style);
+        let margin = list::compute_margin(&style, self.list_indent);
         self.paragraph_styles[line] = style;
         self.editor.set_margin_left(line, margin);
     }
@@ -449,7 +509,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
             self.paragraph_styles
                 .resize(line + 1, paragraph::Style::default());
         }
-        let margin = list::compute_margin(&style);
+        let margin = list::compute_margin(&style, self.list_indent);
         self.paragraph_styles.insert(line + 1, style);
         self.editor.set_margin_left(line + 1, margin);
     }
@@ -460,7 +520,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
         if line + 1 < self.paragraph_styles.len() {
             self.paragraph_styles.remove(line + 1);
         }
-        let margin = list::compute_margin(self.paragraph_style(line));
+        let margin = list::compute_margin(self.paragraph_style(line), self.list_indent);
         self.editor.set_margin_left(line, margin);
     }
 
@@ -483,6 +543,49 @@ impl<R: rich_editor::Renderer> Internal<R> {
             self.paragraph_styles
                 .splice(insert_at..insert_at, new_styles);
         }
+    }
+
+    /// Backspace that is list-aware: at column 0 with no selection, if the
+    /// current line has a list style or indent level, dedent/remove list
+    /// first instead of merging with the previous line.
+    fn backspace_with_list_aware(&mut self) -> Vec<Op> {
+        let cursor = self.editor.cursor();
+        if cursor.selection.is_none() && cursor.position.column == 0 {
+            let line = cursor.position.line;
+            let style = self.paragraph_style(line).clone();
+            if style.list.is_some() || style.level > 0 {
+                let old_style = style.clone();
+                let mut new_style = style;
+                if new_style.list.is_some() {
+                    if new_style.level > 1 {
+                        // Nested list — promote one level.
+                        new_style.level -= 1;
+                        match &mut new_style.list {
+                            Some(paragraph::List::Bullet(b)) => {
+                                *b = list::bullet_for_level(new_style.level.saturating_sub(1));
+                            }
+                            Some(paragraph::List::Ordered(n)) => {
+                                *n = list::number_for_level(new_style.level.saturating_sub(1));
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        // Base list level — remove list entirely.
+                        new_style.list = None;
+                        new_style.level = 0;
+                    }
+                } else {
+                    // Plain indented text — dedent.
+                    new_style.level -= 1;
+                }
+                return vec![Op::SetParagraphStyle {
+                    line,
+                    style: new_style,
+                    old_style,
+                }];
+            }
+        }
+        operation::backspace(&mut self.editor)
     }
 
     /// Apply the default font to all spans that have no explicit font set.

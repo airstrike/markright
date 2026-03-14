@@ -1,5 +1,5 @@
 use iced::color;
-use iced::theme::Palette;
+use iced::theme::palette::Seed;
 
 /// Theme selection for the editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -12,7 +12,7 @@ pub enum Theme {
 impl Theme {
     /// Build an iced Theme from this choice.
     pub fn to_theme(self) -> iced::Theme {
-        iced::Theme::custom(self.name().to_string(), self.palette())
+        iced::Theme::custom(self.name().to_string(), self.seed())
     }
 
     fn name(self) -> &'static str {
@@ -22,9 +22,9 @@ impl Theme {
         }
     }
 
-    fn palette(self) -> Palette {
+    fn seed(self) -> Seed {
         match self {
-            Self::Light => Palette {
+            Self::Light => Seed {
                 background: color!(0xf2eede),
                 text: color!(0x555555),
                 primary: color!(0x1a1a1a), // Dark gray
@@ -32,7 +32,7 @@ impl Theme {
                 warning: color!(0x216609), // Green
                 danger: color!(0xcc3e28),  // Red-orange
             },
-            Self::Dark => Palette {
+            Self::Dark => Seed {
                 background: color!(0x1f1e1a), // Warm dark background
                 text: color!(0xd4c8b0),       // Warm muted paper color
                 primary: color!(0xe8dcc0),    // Warm light paper color
@@ -64,7 +64,7 @@ pub mod button {
     /// Toolbar toggle button -- highlighted when active.
     pub fn toolbar_toggle(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
         move |theme, status| {
-            let palette = theme.extended_palette();
+            let palette = theme.palette();
             if active {
                 button::Style {
                     background: Some(Background::Color(palette.primary.base.color)),
@@ -102,7 +102,7 @@ pub mod button {
 
     /// Icon-only button (transparent background, visually muted when disabled).
     pub fn icon(theme: &Theme, status: button::Status) -> button::Style {
-        let palette = theme.extended_palette();
+        let palette = theme.palette();
         let text_color = match status {
             button::Status::Disabled => palette.background.base.text.scale_alpha(0.25),
             button::Status::Hovered => palette.primary.base.color,
@@ -122,7 +122,7 @@ pub mod container {
 
     /// Toolbar container with subtle background.
     pub fn toolbar(theme: &Theme) -> container::Style {
-        let palette = theme.extended_palette();
+        let palette = theme.palette();
         container::Style {
             background: Some(Background::Color(palette.background.weak.color)),
             border: Border {
@@ -136,7 +136,7 @@ pub mod container {
 
     /// Subtle group container for toolbar button clusters.
     pub fn group(theme: &Theme) -> container::Style {
-        let palette = theme.extended_palette();
+        let palette = theme.palette();
         container::Style {
             background: Some(Background::Color(
                 palette.background.base.text.scale_alpha(0.06),
@@ -151,7 +151,7 @@ pub mod container {
 
     /// Debug panel — subtle left border, slightly inset background.
     pub fn debug_panel(theme: &Theme) -> container::Style {
-        let palette = theme.extended_palette();
+        let palette = theme.palette();
         container::Style {
             background: Some(Background::Color(palette.background.weak.color)),
             border: Border {
@@ -170,7 +170,7 @@ pub mod text {
 
     /// Muted text color for the status bar.
     pub fn status_bar(theme: &Theme) -> text::Style {
-        let palette = theme.extended_palette();
+        let palette = theme.palette();
         text::Style {
             color: Some(palette.background.weak.text),
         }
@@ -183,7 +183,7 @@ pub mod combo_box {
 
     /// Toolbar combo_box input — transparent at rest, subtle border on hover/focus.
     pub fn toolbar(theme: &Theme, status: text_input::Status) -> text_input::Style {
-        let palette = theme.extended_palette();
+        let palette = theme.palette();
         let (background, border) = match status {
             text_input::Status::Focused { .. } => (
                 Background::Color(palette.background.base.text.scale_alpha(0.06)),
@@ -221,7 +221,7 @@ pub mod combo_box {
 
     /// Toolbar combo_box dropdown menu — matches toolbar palette.
     pub fn toolbar_menu(theme: &Theme) -> menu::Style {
-        let palette = theme.extended_palette();
+        let palette = theme.palette();
         menu::Style {
             background: Background::Color(palette.background.weak.color),
             border: Border {
@@ -243,7 +243,7 @@ pub mod text_editor {
 
     /// Editor with no focus border.
     pub fn borderless(theme: &Theme, status: Status) -> Style {
-        let palette = theme.extended_palette();
+        let palette = theme.palette();
         let selection = if matches!(status, Status::Focused { .. }) {
             palette.primary.base.color.scale_alpha(0.4)
         } else {

@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 62a25911db26b2ff1cf9049afc82b76df5e09965d8a524de4c7cccfd5df91c17
+// de3d5c7b83885c98980912f5f25eb6a3a33c5a3370fac54ae5df7070aaeb804b
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -13,7 +13,11 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("bold", "\u{E05D}"),
     ("clipboard_copy", "\u{E225}"),
     ("heading", "\u{E384}"),
+    ("indent_decrease", "\u{E107}"),
+    ("indent_increase", "\u{E108}"),
     ("italic", "\u{E0FB}"),
+    ("list", "\u{E106}"),
+    ("list_ordered", "\u{E1D1}"),
     ("moon", "\u{E11E}"),
     ("redo", "\u{E143}"),
     ("sun", "\u{E178}"),
@@ -37,8 +41,24 @@ pub fn heading<'a>() -> Text<'a> {
     icon("\u{E384}")
 }
 
+pub fn indent_decrease<'a>() -> Text<'a> {
+    icon("\u{E107}")
+}
+
+pub fn indent_increase<'a>() -> Text<'a> {
+    icon("\u{E108}")
+}
+
 pub fn italic<'a>() -> Text<'a> {
     icon("\u{E0FB}")
+}
+
+pub fn list<'a>() -> Text<'a> {
+    icon("\u{E106}")
+}
+
+pub fn list_ordered<'a>() -> Text<'a> {
+    icon("\u{E1D1}")
 }
 
 pub fn moon<'a>() -> Text<'a> {
@@ -85,7 +105,7 @@ pub fn undo<'a>() -> Text<'a> {
 /// }
 /// ```
 pub fn render(codepoint: &str) -> Text<'_> {
-    text(codepoint).font(Font::with_name("lucide"))
+    text(codepoint).font(Font::with_family("lucide"))
 }
 
 fn icon(codepoint: &str) -> Text<'_> {

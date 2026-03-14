@@ -1,6 +1,7 @@
 use iced::widget::{Space, button, combo_box, container, row, text};
 use iced::{Element, Length};
 
+use markright::paragraph;
 use markright::widget::rich_editor::{Action, Alignment, Edit, FormatAction, cursor};
 
 use crate::icon;
@@ -109,6 +110,38 @@ where
         .style(theme::button::toolbar_toggle(is_justify))
         .on_press(msg_align_justify);
 
+    let is_bullet = matches!(ctx.paragraph.style.list, Some(paragraph::List::Bullet(_)));
+    let is_ordered = matches!(ctx.paragraph.style.list, Some(paragraph::List::Ordered(_)));
+
+    let msg_bullet = on_action(fmt(FormatAction::SetList(Some(paragraph::List::Bullet(
+        paragraph::Bullet::Disc,
+    )))));
+    let msg_ordered = on_action(fmt(FormatAction::SetList(Some(paragraph::List::Ordered(
+        paragraph::Number::Arabic,
+    )))));
+    let msg_indent = on_action(fmt(FormatAction::IndentList));
+    let msg_dedent = on_action(fmt(FormatAction::DedentList));
+
+    let bullet_btn = button(icon::list().size(16))
+        .padding([4, 8])
+        .style(theme::button::toolbar_toggle(is_bullet))
+        .on_press(msg_bullet);
+
+    let ordered_btn = button(icon::list_ordered().size(16))
+        .padding([4, 8])
+        .style(theme::button::toolbar_toggle(is_ordered))
+        .on_press(msg_ordered);
+
+    let indent_btn = button(icon::indent_increase().size(16))
+        .padding([4, 8])
+        .style(theme::button::icon)
+        .on_press(msg_indent);
+
+    let dedent_btn = button(icon::indent_decrease().size(16))
+        .padding([4, 8])
+        .style(theme::button::icon)
+        .on_press(msg_dedent);
+
     let theme_icon = if is_dark {
         icon::sun().size(16)
     } else {
@@ -123,6 +156,7 @@ where
 
     let history_group = group(row![undo_btn, redo_btn]);
     let format_group = group(row![bold_btn, italic_btn, underline_btn]);
+    let list_group = group(row![bullet_btn, ordered_btn, dedent_btn, indent_btn]);
     let align_group = group(row![
         align_left_btn,
         align_center_btn,
@@ -160,6 +194,7 @@ where
     let mut toolbar_row = row![
         history_group,
         format_group,
+        list_group,
         align_group,
         font_group,
         Space::new().width(Length::Fill),

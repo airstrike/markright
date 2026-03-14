@@ -258,7 +258,7 @@ pub fn view<'a, Message: Clone + 'a>(
         .on_press(on_copy(debug_str.clone()));
 
     let debug_text = text(debug_str)
-        .font(iced::Font::with_name("Fira Code"))
+        .font(iced::Font::with_family("Fira Code"))
         .size(SIZE)
         .line_height(1.0)
         .font_feature(font::Feature::off(LIGA));

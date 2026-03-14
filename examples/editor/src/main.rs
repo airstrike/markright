@@ -28,7 +28,7 @@ fn main() -> iced::Result {
         .font(icon::FONT)
         .font(MONO_FONT)
         .font(FIRA_CODE)
-        .default_font(Font::with_name("IBM Plex Sans"))
+        .default_font(Font::with_family("IBM Plex Sans"))
         .run()
 }
 
@@ -170,7 +170,7 @@ impl App {
                 }
                 fonts::Message::Loaded(_name, Ok(())) => {
                     self.content
-                        .set_default_font(Font::with_name("IBM Plex Sans"));
+                        .set_default_font(Font::with_family("IBM Plex Sans"));
                     focus("editor")
                 }
                 fonts::Message::Loaded(name, Err(e)) => {

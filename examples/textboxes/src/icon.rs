@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// f7410ca4e9c300683404609e4f31a7ad76febace837d00df3698cd67ee8fddf6
+// b33fc52304287957de17326d3e0c08967452f545efe65fa99568378ee54f32f1
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -10,24 +10,24 @@ pub const FONT: &[u8] = include_bytes!("../fonts/lucide.ttf");
 /// Use this to populate an icon-picker widget.
 #[allow(dead_code)]
 pub const ALL_ICONS: &[(&str, &str)] = &[
-    ("align_v_bottom", "\u{E26F}"),
-    ("align_v_center", "\u{E26D}"),
-    ("align_v_top", "\u{E271}"),
+    ("align_v_bottom", "\u{E278}"),
+    ("align_v_center", "\u{E27A}"),
+    ("align_v_top", "\u{E279}"),
     ("bold", "\u{E05D}"),
     ("italic", "\u{E0FB}"),
     ("underline", "\u{E19A}"),
 ];
 
 pub fn align_v_bottom<'a>() -> Text<'a> {
-    icon("\u{E26F}")
+    icon("\u{E278}")
 }
 
 pub fn align_v_center<'a>() -> Text<'a> {
-    icon("\u{E26D}")
+    icon("\u{E27A}")
 }
 
 pub fn align_v_top<'a>() -> Text<'a> {
-    icon("\u{E271}")
+    icon("\u{E279}")
 }
 
 pub fn bold<'a>() -> Text<'a> {
@@ -50,7 +50,7 @@ pub fn underline<'a>() -> Text<'a> {
 /// }
 /// ```
 pub fn render(codepoint: &str) -> Text<'_> {
-    text(codepoint).font(Font::with_name("lucide"))
+    text(codepoint).font(Font::with_family("lucide"))
 }
 
 fn icon(codepoint: &str) -> Text<'_> {
