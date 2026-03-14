@@ -232,7 +232,7 @@ pub fn workspace<'a, Message, Theme, Renderer>(
 pub struct Workspace<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer> {
     state: &'a State,
     elements: Vec<Element<'a, Message, Theme, Renderer>>,
-    extra: Vec<(Point, Size, Element<'a, Message, Theme, Renderer>)>,
+    extra: Vec<(Point, Element<'a, Message, Theme, Renderer>)>,
     on_edit: Option<Box<dyn Fn(Id) -> Message + 'a>>,
     on_edit_exit: Option<Box<dyn Fn(Id) -> Message + 'a>>,
     on_move: Option<Box<dyn Fn(Id, Rectangle) -> Message + 'a>>,
@@ -257,10 +257,9 @@ impl<'a, Message, Theme, Renderer> Workspace<'a, Message, Theme, Renderer> {
     pub fn push(
         mut self,
         position: Point,
-        size: Size,
         element: impl Into<Element<'a, Message, Theme, Renderer>>,
     ) -> Self {
-        self.extra.push((position, size, element.into()));
+        self.extra.push((position, element.into()));
         self
     }
 
@@ -321,7 +320,7 @@ where
         self.elements
             .iter()
             .map(Tree::new)
-            .chain(self.extra.iter().map(|(_, _, e)| Tree::new(e)))
+            .chain(self.extra.iter().map(|(_, e)| Tree::new(e)))
             .collect()
     }
 
@@ -329,7 +328,7 @@ where
         let all: Vec<&Element<'_, _, _, _>> = self
             .elements
             .iter()
-            .chain(self.extra.iter().map(|(_, _, e)| e))
+            .chain(self.extra.iter().map(|(_, e)| e))
             .collect();
         tree.diff_children(&all);
     }
@@ -367,14 +366,17 @@ where
             self.extra
                 .iter_mut()
                 .zip(extra_trees)
-                .map(|((pos, size, elem), child_tree)| {
-                    let child_limits = layout::Limits::new(Size::ZERO, *size)
-                        .width(size.width)
-                        .height(size.height);
+                .map(|((pos, elem), child_tree)| {
+                    let child_limits = layout::Limits::new(Size::ZERO, limits.max());
 
-                    elem.as_widget_mut()
-                        .layout(child_tree, renderer, &child_limits)
-                        .move_to(*pos)
+                    let node = elem
+                        .as_widget_mut()
+                        .layout(child_tree, renderer, &child_limits);
+
+                    // Treat `pos` as the center-x anchor: shift left by half the
+                    // element's intrinsic width so it's centered on that point.
+                    let centered = Point::new(pos.x - node.size().width / 2.0, pos.y);
+                    node.move_to(centered)
                 });
 
         let nodes: Vec<_> = box_nodes.chain(extra_nodes).collect();
@@ -415,7 +417,7 @@ where
                     viewport,
                 );
             } else {
-                self.extra[i - n].2.as_widget_mut().update(
+                self.extra[i - n].1.as_widget_mut().update(
                     &mut tree.children[i],
                     event,
                     child_layout,
@@ -765,7 +767,7 @@ where
         }
 
         // Extra elements on top — each in its own layer.
-        for (((_, _, elem), child_tree), child_layout) in self
+        for (((_, elem), child_tree), child_layout) in self
             .extra
             .iter()
             .zip(&tree.children[n..])
@@ -814,7 +816,7 @@ where
             if i >= n {
                 // Extra element — delegate to child.
                 let extra_idx = i - n;
-                let child_interaction = self.extra[extra_idx].2.as_widget().mouse_interaction(
+                let child_interaction = self.extra[extra_idx].1.as_widget().mouse_interaction(
                     &tree.children[i],
                     layouts[i],
                     cursor,
@@ -859,7 +861,7 @@ where
             for ((elem, child_tree), child_layout) in self
                 .elements
                 .iter_mut()
-                .chain(self.extra.iter_mut().map(|(_, _, e)| e))
+                .chain(self.extra.iter_mut().map(|(_, e)| e))
                 .zip(&mut tree.children)
                 .zip(layout.children())
             {
@@ -896,7 +898,7 @@ where
             }
         }
 
-        for ((_, _, elem), child_tree) in self.extra.iter_mut().zip(extra_trees) {
+        for ((_, elem), child_tree) in self.extra.iter_mut().zip(extra_trees) {
             let child_layout = layouts.next().unwrap();
             if let Some(o) = elem.as_widget_mut().overlay(
                 child_tree,

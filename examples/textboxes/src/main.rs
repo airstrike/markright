@@ -167,13 +167,13 @@ impl App {
         .on_edit(Message::EditStarted)
         .on_edit_exit(Message::EditExited);
 
-        // Mini-toolbar above the active box.
+        // Mini-toolbar above the active box, centered on it.
         if let Some(id) = self.state.editing() {
             let bounds = self.state.bounds(id);
             let ctx = self.content[&id].cursor_context();
+            let center_x = bounds.x + bounds.width / 2.0;
             ws = ws.push(
-                Point::new(bounds.x, bounds.y - TOOLBAR_H - 4.0),
-                Size::new(bounds.width, TOOLBAR_H),
+                Point::new(center_x, bounds.y - TOOLBAR_H - 4.0),
                 mini_toolbar(&ctx, self.state.v_align(id)),
             );
         }
