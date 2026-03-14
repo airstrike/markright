@@ -6,7 +6,7 @@
 
 use markright::paragraph;
 use markright::widget::rich_editor::list;
-use markright::widget::rich_editor::{Action, Content, Edit, Format};
+use markright::widget::rich_editor::{Content, Edit, Format};
 
 type C = Content<iced::Renderer>;
 
@@ -18,24 +18,18 @@ fn content(text: &str) -> C {
     c
 }
 
-fn set_bullet() -> Action {
-    Format::SetList(Some(paragraph::List::Bullet(paragraph::Bullet::Disc))).into()
+fn set_bullet() -> Format {
+    Format::SetList(Some(paragraph::List::Bullet(paragraph::Bullet::Disc)))
 }
-
-// -----------------------------------------------------------------------
-// Step 1–3: blank doc → toggle bullets → cursor x should have moved
-// -----------------------------------------------------------------------
 
 #[test]
 fn toggle_bullet_on_empty_line_sets_level_and_list() {
     let c = content("");
 
-    // Step 2: note initial state — no list, level 0.
     let ctx = c.cursor_context();
     assert!(ctx.paragraph.style.list.is_none(), "initially no list");
     assert_eq!(ctx.paragraph.style.level, 0, "initially level 0");
 
-    // Step 3: toggle bullets on.
     c.perform(set_bullet());
     c.update_layout(BOUNDS);
 
@@ -49,7 +43,6 @@ fn toggle_bullet_on_empty_line_sets_level_and_list() {
         "should be level 1 after toggle"
     );
 
-    // The margin should be hanging + 1*indent = 2*DEFAULT_LIST_INDENT = 40.
     let expected_margin = 2.0 * c.list_indent();
     let actual_margin = list::compute_margin(&ctx.paragraph.style, c.list_indent());
     assert_eq!(
@@ -63,11 +56,9 @@ fn toggle_bullet_moves_cursor_x() {
     let c = content("");
     c.update_layout(BOUNDS);
 
-    // Step 2: note initial cursor x position.
     let before = c.caret_rect().expect("should have caret");
     let x_before = before.x;
 
-    // Step 3: toggle bullets on — cursor x should move right.
     c.perform(set_bullet());
     c.update_layout(BOUNDS);
 
@@ -76,13 +67,9 @@ fn toggle_bullet_moves_cursor_x() {
 
     assert!(
         x_after > x_before,
-        "step 3: cursor x should move right after toggling bullet (before={x_before}, after={x_after})"
+        "cursor x should move right after toggling bullet (before={x_before}, after={x_after})"
     );
 }
-
-// -----------------------------------------------------------------------
-// Step 4: bullet should draw on empty line (line_geometry must return Some)
-// -----------------------------------------------------------------------
 
 #[test]
 fn empty_bullet_line_has_geometry() {
@@ -90,23 +77,18 @@ fn empty_bullet_line_has_geometry() {
     c.perform(set_bullet());
     c.update_layout(BOUNDS);
 
-    // line_geometry must return Some for the bullet marker to draw.
     let geom = c.line_geometry(0);
     assert!(
         geom.is_some(),
-        "step 4: empty bullet line must have line_geometry for marker to draw"
+        "empty bullet line must have line_geometry for marker to draw"
     );
 }
-
-// -----------------------------------------------------------------------
-// Step 5: type 'a' — cursor moves correctly, bullet draws.
-// -----------------------------------------------------------------------
 
 #[test]
 fn type_after_bullet_toggle_preserves_list() {
     let c = content("");
     c.perform(set_bullet());
-    c.perform(Action::Edit(Edit::Insert('a')));
+    c.perform(Edit::Insert('a'));
     c.update_layout(BOUNDS);
 
     let ctx = c.cursor_context();
@@ -118,16 +100,12 @@ fn type_after_bullet_toggle_preserves_list() {
     assert_eq!(ctx.position.column, 1, "cursor should be after 'a'");
 }
 
-// -----------------------------------------------------------------------
-// Step 6: hit Enter — should create new bullet paragraph.
-// -----------------------------------------------------------------------
-
 #[test]
 fn enter_creates_new_bullet_paragraph() {
     let c = content("");
     c.perform(set_bullet());
-    c.perform(Action::Edit(Edit::Insert('a')));
-    c.perform(Action::Edit(Edit::Enter));
+    c.perform(Edit::Insert('a'));
+    c.perform(Edit::Enter);
     c.update_layout(BOUNDS);
 
     assert_eq!(c.line_count(), 2, "should have 2 lines after Enter");
@@ -138,38 +116,51 @@ fn enter_creates_new_bullet_paragraph() {
 
     assert!(
         matches!(ctx.paragraph.style.list, Some(paragraph::List::Bullet(_))),
-        "new line should have bullet list (step 6)"
+        "new line should have bullet list"
     );
     assert_eq!(ctx.paragraph.style.level, 1, "new line should be level 1");
 
-    // New empty bullet line should also have line geometry for the marker to draw.
     let geom = c.line_geometry(1);
     assert!(
         geom.is_some(),
-        "step 6: new empty bullet line must have line_geometry for marker to draw"
+        "new empty bullet line must have line_geometry for marker to draw"
     );
 }
 
-// -----------------------------------------------------------------------
-// Step 7: cursor on new empty bullet line should NOT be at x=0.
-// -----------------------------------------------------------------------
+#[test]
+fn new_bullet_line_x_offset_matches_original() {
+    let c = content("");
+    c.perform(set_bullet());
+    c.perform(Edit::Insert('a'));
+    c.update_layout(BOUNDS);
+
+    let geom0 = c.line_geometry(0).expect("line 0 should have geometry");
+
+    c.perform(Edit::Enter);
+    c.update_layout(BOUNDS);
+
+    let geom1 = c.line_geometry(1).expect("line 1 should have geometry");
+
+    assert_eq!(
+        geom0.x_offset, geom1.x_offset,
+        "new bullet line x_offset ({}) should match original ({})",
+        geom1.x_offset, geom0.x_offset
+    );
+}
 
 #[test]
 fn cursor_x_on_new_bullet_line_reflects_margin() {
     let c = content("");
     c.update_layout(BOUNDS);
 
-    // Baseline: cursor x on a plain empty line.
     let plain_caret = c.caret_rect().expect("should have caret");
     let x_plain = plain_caret.x;
 
-    // Now make a bullet line, type, and Enter.
     c.perform(set_bullet());
-    c.perform(Action::Edit(Edit::Insert('a')));
-    c.perform(Action::Edit(Edit::Enter));
+    c.perform(Edit::Insert('a'));
+    c.perform(Edit::Enter);
     c.update_layout(BOUNDS);
 
-    // Cursor is now on line 1, col 0 — an empty bulleted line.
     let ctx = c.cursor_context();
     assert_eq!(ctx.position.line, 1);
     assert_eq!(ctx.position.column, 0);
@@ -181,21 +172,63 @@ fn cursor_x_on_new_bullet_line_reflects_margin() {
 
     assert!(
         x_bullet > x_plain,
-        "step 7: cursor x on empty bullet line ({x_bullet}) should be > plain line ({x_plain})"
+        "cursor x on empty bullet line ({x_bullet}) should be > plain line ({x_plain})"
     );
 }
 
-// -----------------------------------------------------------------------
-// Toggle off: clicking bullet button when already in a bullet list
-// (regardless of bullet variant or level) should remove the list.
-// -----------------------------------------------------------------------
+#[test]
+fn enter_on_right_aligned_bullet_preserves_alignment() {
+    use markright::widget::rich_editor::Alignment;
+
+    let c = content("");
+    c.perform(set_bullet());
+    c.perform(Format::SetAlignment(Alignment::Right));
+    c.perform(Edit::Insert('A'));
+    c.perform(Edit::Insert('p'));
+    c.perform(Edit::Insert('p'));
+    c.perform(Edit::Insert('l'));
+    c.perform(Edit::Insert('e'));
+    c.update_layout(BOUNDS);
+
+    c.perform(Edit::Enter);
+    c.perform(Edit::Insert('B'));
+    c.perform(Edit::Insert('a'));
+    c.perform(Edit::Insert('n'));
+    c.perform(Edit::Insert('a'));
+    c.perform(Edit::Insert('n'));
+    c.perform(Edit::Insert('a'));
+    c.update_layout(BOUNDS);
+
+    let geom1 = c.line_geometry(1).expect("line 1 geometry");
+
+    // Both lines are right-aligned bullets — x_offset should be well past the
+    // margin (40px), near the right edge. Without the alignment fix, the new
+    // line would have x_offset ≈ 40 (left-aligned).
+    let margin = list::compute_margin(&c.cursor_context().paragraph.style, c.list_indent());
+    assert!(
+        geom1.x_offset > margin * 2.0,
+        "new line should be right-aligned (x_offset={} should be >> margin={})",
+        geom1.x_offset,
+        margin
+    );
+
+    let ctx = c.cursor_context();
+    assert!(
+        matches!(ctx.paragraph.style.list, Some(paragraph::List::Bullet(_))),
+        "new line should still have bullet list"
+    );
+    assert_eq!(
+        ctx.paragraph.alignment,
+        Alignment::Right,
+        "new line should be right-aligned"
+    );
+}
 
 #[test]
 fn toggle_bullet_off_at_any_level() {
     let c = content("");
     c.perform(set_bullet());
 
-    // Indent to level 2 (Circle variant).
     c.perform(Format::IndentList);
     let ctx = c.cursor_context();
     assert_eq!(ctx.paragraph.style.level, 2);

@@ -505,9 +505,10 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     /// Sync paragraph_styles after a SplitLine: clone the style at `line` and
-    /// insert it after, then sync margins for both lines.
+    /// insert it after, then sync margins and alignment for the new line.
     fn sync_paragraph_split(&mut self, line: usize) {
         let style = self.paragraph_style(line).clone();
+        let alignment = self.editor.paragraph_style(line).alignment;
         if line + 1 > self.paragraph_styles.len() {
             self.paragraph_styles
                 .resize(line + 1, paragraph::Style::default());
@@ -515,6 +516,9 @@ impl<R: rich_editor::Renderer> Internal<R> {
         let margin = list::compute_margin(&style, self.list_indent);
         self.paragraph_styles.insert(line + 1, style);
         self.editor.set_margin_left(line + 1, margin);
+        if let Some(alignment) = alignment {
+            self.editor.set_alignment(line + 1, alignment);
+        }
     }
 
     /// Sync paragraph_styles after a MergeLine: remove the style at `line + 1`
