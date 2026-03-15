@@ -13,7 +13,7 @@ wgpu = ["iced/wgpu"]
 
 [dependencies]
 markright = { path = "../.." }
-fount = { path = "../../../fount" }
+fount = { git = "https://github.com/airstrike/fount", rev = "c60adc0" }
 iced.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

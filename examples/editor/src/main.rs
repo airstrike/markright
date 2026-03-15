@@ -107,7 +107,7 @@ impl App {
                         let font = self.fonts.font(&name);
                         self.content.perform(Format::SetFont(font));
                         self.toolbar.rebuild_font_list(&self.fonts, &name);
-                        if self.fonts.has_family(&name) {
+                        if self.fonts.system_families().contains(&name) {
                             focus("editor")
                         } else {
                             Task::batch([fonts::load(name).map(Message::Font), focus("editor")])
