@@ -138,23 +138,16 @@ impl App {
         let mut ws = workspace::workspace(&self.state, |id, bx| {
             let content = &self.content[&id];
 
-            let editor: Element<'_, Message> = if bx.is_editing() {
-                rich_editor::rich_editor(content)
-                    .id("editor")
-                    .on_action(Message::Editor)
-                    .style(theme::editor::style)
-                    .padding(8)
-                    .height(Length::Shrink)
-                    .size(BASE_SIZE)
-                    .into()
-            } else {
-                rich_editor::rich_editor::<Message, _, _>(content)
-                    .style(theme::editor::style)
-                    .padding(8)
-                    .height(Length::Shrink)
-                    .size(BASE_SIZE)
-                    .into()
-            };
+            let mut editor = rich_editor::rich_editor(content)
+                .style(theme::editor::style)
+                .padding(8)
+                .height(Length::Fill)
+                .align_y(bx.v_align())
+                .size(BASE_SIZE);
+
+            if bx.is_editing() {
+                editor = editor.id("editor").on_action(Message::Editor);
+            }
 
             let box_style = if bx.is_editing() {
                 theme::textbox::active
@@ -163,7 +156,6 @@ impl App {
             };
 
             container(editor)
-                .align_y(bx.v_align())
                 .width(bx.bounds().width)
                 .height(bx.bounds().height)
                 .style(box_style)

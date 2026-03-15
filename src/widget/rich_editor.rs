@@ -85,6 +85,7 @@ where
     class: Theme::Class<'a>,
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
     on_blur: Option<Message>,
+    align_y: alignment::Vertical,
     interaction: Option<mouse::Interaction>,
     #[allow(clippy::type_complexity)]
     key_binding: Option<Box<dyn Fn(KeyPress) -> Option<BindingType<Message>> + 'a>>,
@@ -117,6 +118,7 @@ where
             class: <Theme as Catalog>::default(),
             on_action: None,
             on_blur: None,
+            align_y: alignment::Vertical::Top,
             interaction: None,
             key_binding: None,
             last_status: None,
@@ -156,6 +158,15 @@ where
     /// Sets the maximum height of the [`RichEditor`].
     pub fn max_height(mut self, max_height: impl Into<Pixels>) -> Self {
         self.max_height = max_height.into().0;
+        self
+    }
+
+    /// Sets the vertical alignment of the content within the editor bounds.
+    ///
+    /// Only has an effect when the editor has more space than its content
+    /// (e.g. with a fixed or `Fill` height). Defaults to [`Top`](alignment::Vertical::Top).
+    pub fn align_y(mut self, align_y: impl Into<alignment::Vertical>) -> Self {
+        self.align_y = align_y.into();
         self
     }
 
@@ -260,10 +271,9 @@ where
             return InputMethod::Disabled;
         };
 
-        let bounds = layout.bounds();
         let internal = self.content.0.borrow_mut();
 
-        let text_bounds = bounds.shrink(self.padding);
+        let text_bounds = layout.children().next().expect("content node").bounds();
         let translation = text_bounds.position() - Point::ORIGIN;
 
         let caret = match internal.editor.selection() {
@@ -397,20 +407,23 @@ where
             renderer.scale_factor(),
         );
 
-        match self.height {
-            Length::Fill | Length::FillPortion(_) | Length::Fixed(_) => {
-                layout::Node::new(limits.max())
-            }
-            Length::Shrink => {
-                let min_bounds = internal.editor.min_bounds();
-                layout::Node::new(
-                    limits
-                        .height(min_bounds.height)
-                        .max()
-                        .expand(Size::new(0.0, self.padding.y())),
+        let min_bounds = internal.editor.min_bounds();
+        let align_y = self.align_y;
+
+        layout::positioned(
+            &limits,
+            self.width,
+            self.height,
+            self.padding,
+            |limits| layout::Node::new(limits.resolve(self.width, self.height, min_bounds)),
+            |content, space| {
+                content.align(
+                    crate::core::Alignment::Start,
+                    crate::core::Alignment::from(align_y),
+                    space,
                 )
-            }
-        }
+            },
+        )
     }
 
     fn update(
@@ -471,11 +484,17 @@ where
             _ => {}
         }
 
+        let content_bounds = layout.children().next().expect("content node").bounds();
+        let content_offset = {
+            let p = content_bounds.position() - layout.bounds().position();
+            Vector::new(p.x, p.y)
+        };
+
         if let Some(update) = Update::from_event(
             event,
             state,
             layout.bounds(),
-            self.padding,
+            content_offset,
             cursor,
             self.key_binding.as_deref(),
         ) {
@@ -691,7 +710,7 @@ where
             style.background,
         );
 
-        let text_bounds = bounds.shrink(self.padding);
+        let text_bounds = layout.children().next().expect("content node").bounds();
 
         if internal.editor.is_empty() {
             if let Some(placeholder) = self.placeholder.clone() {
@@ -869,7 +888,7 @@ impl<Message> Update<Message> {
         event: &Event,
         state: &State,
         bounds: Rectangle,
-        padding: Padding,
+        content_offset: Vector,
         cursor: mouse::Cursor,
         key_binding: Option<&dyn Fn(KeyPress) -> Option<BindingType<Message>>>,
     ) -> Option<Self> {
@@ -879,8 +898,7 @@ impl<Message> Update<Message> {
             Event::Mouse(event) => match event {
                 mouse::Event::ButtonPressed(mouse::Button::Left) => {
                     if let Some(cursor_position) = cursor.position_in(bounds) {
-                        let cursor_position =
-                            cursor_position - Vector::new(padding.left, padding.top);
+                        let cursor_position = cursor_position - content_offset;
                         let click = mouse::Click::new(
                             cursor_position,
                             mouse::Button::Left,
@@ -896,8 +914,7 @@ impl<Message> Update<Message> {
                 mouse::Event::ButtonReleased(mouse::Button::Left) => Some(Self::Release),
                 mouse::Event::CursorMoved { .. } => match state.drag_click {
                     Some(mouse::click::Kind::Single) => {
-                        let cursor_position =
-                            cursor.position_in(bounds)? - Vector::new(padding.left, padding.top);
+                        let cursor_position = cursor.position_in(bounds)? - content_offset;
                         Some(Self::Drag(cursor_position))
                     }
                     _ => None,
