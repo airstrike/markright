@@ -1,7 +1,7 @@
 //! Integration tests for overlapping formatting operations, cursor font/size
 //! inspection, and undo/redo of overlapping format ranges.
 
-use markright::widget::rich_editor::{Action, Content, Format, Motion};
+use markright::widget::rich_editor::{Action, Content, Edit, Format, Motion};
 
 use iced::Font;
 
@@ -482,5 +482,106 @@ fn overlapping_font_and_bold_undo() {
             pos
         );
         assert!(!s.bold, "pos {} should not be bold after full undo", pos);
+    }
+}
+
+// ── New line inherits span style ──────────────────────────────────────
+
+#[test]
+fn new_line_inherits_font_from_previous_line() {
+    let c = content("hello");
+
+    // Set the entire buffer to Palatino
+    c.perform(Action::SelectAll);
+    c.perform(Format::SetFont(Font::new("Palatino")));
+
+    // Move to end, press Enter, type on the new line
+    c.perform(Action::Move(Motion::End));
+    c.perform(Edit::Enter);
+    c.perform(Edit::Insert('a'));
+
+    let ctx = c.cursor_context();
+    assert_eq!(
+        ctx.character.font,
+        Some(Font::new("Palatino")),
+        "text typed on a new line should inherit the font from the previous line"
+    );
+}
+
+#[test]
+fn empty_line_retains_format_after_cursor_leaves_and_returns() {
+    let c = content("apple\n\nbanana");
+
+    // Arrow down to line 1 (empty line)
+    c.perform(Action::Move(Motion::Down));
+
+    // Toggle bold on the empty line
+    c.perform(Format::ToggleBold);
+
+    // Arrow down to line 2, then back up to line 1
+    c.perform(Action::Move(Motion::Down));
+    c.perform(Action::Move(Motion::Up));
+
+    // Type on the empty line — should be bold
+    c.perform(Edit::Insert('a'));
+    c.perform(Edit::Insert('v'));
+    c.perform(Edit::Insert('o'));
+
+    let ctx = c.cursor_context();
+    assert!(
+        ctx.character.bold,
+        "text typed on an empty line should be bold after leaving and returning"
+    );
+}
+
+#[test]
+fn select_all_font_persists_to_empty_paragraph() {
+    let c = content("apple\n\nbanana");
+
+    // Set entire buffer to Palatino
+    c.perform(Action::SelectAll);
+    c.perform(Format::SetFont(Font::new("Palatino")));
+
+    // Navigate to line 0 then down to line 1 (the empty paragraph)
+    c.perform(Action::Move(Motion::Up));
+    c.perform(Action::Move(Motion::Up));
+    c.perform(Action::Move(Motion::Down));
+
+    // Verify we're on line 1
+    assert_eq!(
+        c.cursor_context().position.line,
+        1,
+        "cursor should be on line 1"
+    );
+
+    // Before typing, the empty paragraph should already have Palatino
+    assert_eq!(
+        c.cursor_context().character.font,
+        Some(Font::new("Palatino")),
+        "empty paragraph should report Palatino before typing"
+    );
+
+    // Type on the empty paragraph
+    c.perform(Edit::Insert('a'));
+    c.perform(Edit::Insert('v'));
+    c.perform(Edit::Insert('o'));
+    c.perform(Edit::Insert('c'));
+    c.perform(Edit::Insert('a'));
+    c.perform(Edit::Insert('d'));
+    c.perform(Edit::Insert('o'));
+
+    // Every span on every line should be Palatino
+    for line_idx in 0..c.line_count() {
+        let styled = c.styled_line(line_idx).expect("line should exist");
+        for run in &styled.runs {
+            assert_eq!(
+                run.style.font,
+                Some(Font::new("Palatino")),
+                "line {} run {:?} should have Palatino, got {:?}",
+                line_idx,
+                run.range,
+                run.style.font,
+            );
+        }
     }
 }

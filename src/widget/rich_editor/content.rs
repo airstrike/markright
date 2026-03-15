@@ -367,13 +367,15 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 self.pending_style = None;
             }
             Edit::Enter => {
+                // Capture the style at the cursor so the new line inherits it.
+                let style = self.resolve_style();
                 let mut ops = self.delete_selection_if_any();
                 self.sync_paragraph_styles_for_ops(&ops);
                 let op = operation::enter(&mut self.editor);
                 self.sync_paragraph_styles_for_ops(std::slice::from_ref(&op));
                 ops.push(op);
                 self.record_group(ops);
-                self.pending_style = None;
+                self.pending_style = Some(style);
             }
             Edit::Backspace => {
                 let ops = self.backspace_with_list_aware();
@@ -394,6 +396,14 @@ impl<R: rich_editor::Renderer> Internal<R> {
                     self.record_group(ops);
                 } else {
                     self.update_pending_style(fmt);
+                    // Persist to the paragraph's span attrs so the style
+                    // survives cursor movement. For non-empty lines
+                    // set_span_style on 0..0 is a no-op; for empty
+                    // paragraphs it writes to the line's default attrs.
+                    if let Some(ref style) = self.pending_style {
+                        let line = self.editor.cursor().position.line;
+                        self.editor.set_span_style(line, 0..0, style);
+                    }
                 }
             }
         }

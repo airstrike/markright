@@ -183,9 +183,7 @@ fn set_attr_range<E: Editor>(
             editor.line(line).map(|l| l.text.len()).unwrap_or(0)
         };
 
-        if col_start < col_end {
-            ops.push(set_attr_on_line(editor, line, col_start..col_end, attr));
-        }
+        ops.push(set_attr_on_line(editor, line, col_start..col_end, attr));
     }
 
     ops
