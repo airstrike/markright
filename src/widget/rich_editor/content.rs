@@ -524,7 +524,13 @@ impl<R: rich_editor::Renderer> Internal<R> {
         self.paragraph_styles.insert(line + 1, style);
         self.editor.set_margin_left(line + 1, margin);
         if let Some(alignment) = alignment {
-            self.editor.set_alignment(line + 1, alignment);
+            self.editor.set_paragraph_style(
+                line + 1,
+                &rich_editor::ParagraphStyle {
+                    alignment: Some(alignment),
+                    ..Default::default()
+                },
+            );
         }
     }
 

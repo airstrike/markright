@@ -85,6 +85,7 @@ where
     class: Theme::Class<'a>,
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
     on_blur: Option<Message>,
+    align_x: text::Alignment,
     align_y: alignment::Vertical,
     interaction: Option<mouse::Interaction>,
     #[allow(clippy::type_complexity)]
@@ -118,6 +119,7 @@ where
             class: <Theme as Catalog>::default(),
             on_action: None,
             on_blur: None,
+            align_x: text::Alignment::Default,
             align_y: alignment::Vertical::Top,
             interaction: None,
             key_binding: None,
@@ -158,6 +160,15 @@ where
     /// Sets the maximum height of the [`RichEditor`].
     pub fn max_height(mut self, max_height: impl Into<Pixels>) -> Self {
         self.max_height = max_height.into().0;
+        self
+    }
+
+    /// Sets the default horizontal text alignment.
+    ///
+    /// Used for the placeholder and for content lines that don't have an
+    /// explicit paragraph alignment set. Defaults to [`Default`](text::Alignment::Default).
+    pub fn align_x(mut self, align_x: impl Into<text::Alignment>) -> Self {
+        self.align_x = align_x.into();
         self
     }
 
@@ -406,6 +417,8 @@ where
             self.wrapping,
             renderer.scale_factor(),
         );
+
+        internal.editor.align_x(self.align_x);
 
         let min_bounds = internal.editor.min_bounds();
         let align_y = self.align_y;
@@ -721,8 +734,8 @@ where
                         size: self.text_size.unwrap_or_else(|| renderer.default_size()),
                         line_height: self.line_height,
                         font,
-                        align_x: text::Alignment::Default,
-                        align_y: alignment::Vertical::Top,
+                        align_x: self.align_x,
+                        align_y: self.align_y,
                         shaping: text::Shaping::Advanced,
                         wrapping: self.wrapping,
                         ellipsis: text::Ellipsis::None,

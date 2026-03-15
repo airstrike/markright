@@ -8,7 +8,7 @@ mod edit;
 mod format;
 
 use crate::core::text::editor as iced_editor;
-use crate::core::text::rich_editor::Editor;
+use crate::core::text::rich_editor::{Editor, ParagraphStyle};
 use markright_document::{self as document, Alignment, Op, SpanAttr};
 use std::sync::Arc;
 
@@ -110,7 +110,13 @@ pub fn apply_op<E: Editor>(editor: &mut E, op: &Op) {
         Op::SetAlignment {
             line, alignment, ..
         } => {
-            editor.set_alignment(*line, alignment.to_iced());
+            editor.set_paragraph_style(
+                *line,
+                &ParagraphStyle {
+                    alignment: Some(alignment.to_iced()),
+                    ..Default::default()
+                },
+            );
         }
         Op::DeleteRange {
             start_line,

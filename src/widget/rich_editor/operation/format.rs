@@ -1,7 +1,7 @@
 //! Formatting operations — bold, italic, underline, alignment, font, size,
 //! list style, indentation, and line spacing.
 
-use crate::core::text::rich_editor::{Editor, Style as RichStyle};
+use crate::core::text::rich_editor::{Editor, ParagraphStyle, Style as RichStyle};
 use markright_document::{self as document, Alignment, Op, SpanAttr, paragraph};
 use std::ops::Range;
 
@@ -244,7 +244,13 @@ fn set_alignment<E: Editor>(editor: &mut E, alignment: Alignment) -> Vec<Op> {
     lines
         .map(|line| {
             let old_alignment = Alignment::from_iced(editor.paragraph_style(line).alignment);
-            editor.set_alignment(line, alignment.to_iced());
+            editor.set_paragraph_style(
+                line,
+                &ParagraphStyle {
+                    alignment: Some(alignment.to_iced()),
+                    ..Default::default()
+                },
+            );
             Op::SetAlignment {
                 line,
                 alignment,
