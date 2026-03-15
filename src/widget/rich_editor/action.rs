@@ -89,6 +89,8 @@ pub enum Format {
     DedentList,
     /// Set the text color for the selection (None = default/inherited).
     SetColor(Option<Color>),
+    /// Set letter spacing for the selection.
+    SetLetterSpacing(f32),
     /// Set line spacing for the current line(s).
     SetLineSpacing(paragraph::Spacing),
 }

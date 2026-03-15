@@ -21,6 +21,7 @@ pub struct Character {
     pub font: Option<Font>,
     pub size: Option<f32>,
     pub color: Option<Color>,
+    pub letter_spacing: Option<f32>,
 }
 
 /// Per-paragraph formatting at cursor.

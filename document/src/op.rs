@@ -53,6 +53,7 @@ pub enum SpanAttr {
     Font(Option<Font>),
     Size(Option<f32>),
     Color(Option<Color>),
+    LetterSpacing(Option<f32>),
 }
 
 impl SpanAttr {
@@ -66,6 +67,7 @@ impl SpanAttr {
             SpanAttr::Font(_) => SpanAttr::Font(style.font),
             SpanAttr::Size(_) => SpanAttr::Size(style.size),
             SpanAttr::Color(_) => SpanAttr::Color(style.color),
+            SpanAttr::LetterSpacing(_) => SpanAttr::LetterSpacing(style.letter_spacing),
         }
     }
 
@@ -80,6 +82,7 @@ impl SpanAttr {
             SpanAttr::Font(v) => result.font = *v,
             SpanAttr::Size(v) => result.size = *v,
             SpanAttr::Color(v) => result.color = *v,
+            SpanAttr::LetterSpacing(v) => result.letter_spacing = *v,
         }
         result
     }

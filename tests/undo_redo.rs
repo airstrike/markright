@@ -131,6 +131,28 @@ fn bold_italic_underline_are_additive_and_undo_independently() {
     );
 }
 
+#[test]
+fn letter_spacing_applies_to_selection() {
+    let c = content("hello");
+
+    c.perform(Action::SelectAll);
+    c.perform(Format::SetLetterSpacing(2.0));
+
+    let ctx = c.cursor_context();
+    assert_eq!(
+        ctx.character.letter_spacing,
+        Some(2.0),
+        "letter spacing should be 2.0 after applying to selection"
+    );
+
+    c.perform(Action::Undo);
+    let ctx = c.cursor_context();
+    assert_eq!(
+        ctx.character.letter_spacing, None,
+        "letter spacing should be None after undo"
+    );
+}
+
 // ── Redo ────────────────────────────────────────────────────────────────
 
 #[test]

@@ -168,6 +168,7 @@ impl<R: rich_editor::Renderer> Content<R> {
                 font: char_style.font.or(internal.default_font),
                 size: char_style.size,
                 color: char_style.color,
+                letter_spacing: char_style.letter_spacing,
             },
             paragraph: cursor::Paragraph {
                 alignment: super::Alignment::from_iced(para_style.alignment),
@@ -452,6 +453,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
             Format::SetFont(font) => current.font = Some(*font),
             Format::SetFontSize(size) => current.size = Some(*size),
             Format::SetColor(color) => current.color = *color,
+            Format::SetLetterSpacing(ls) => current.letter_spacing = Some(*ls),
             Format::SetAlignment(_)
             | Format::SetList(_)
             | Format::IndentList

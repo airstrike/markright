@@ -71,6 +71,12 @@ pub fn format<E: Editor>(
             }
             set_attr_in_selection(editor, SpanAttr::Color(*color))
         }
+        Format::SetLetterSpacing(ls) => {
+            if !has_selection {
+                return vec![];
+            }
+            set_attr_in_selection(editor, SpanAttr::LetterSpacing(Some(*ls)))
+        }
         Format::SetList(list) => set_paragraph_field(editor, paragraph_styles, |style| {
             let same_kind = matches!(
                 (&style.list, list),
