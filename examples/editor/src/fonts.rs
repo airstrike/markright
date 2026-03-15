@@ -2,25 +2,33 @@
 //!
 //! Delegates to `fount` for Google Fonts catalog browsing and on-demand
 //! downloading with disk caching. Handles iced font registration.
+//! Also enumerates system fonts at startup via `iced::font::list()`.
 
 use iced::Task;
+use iced::font::Family;
 
 /// Messages emitted by the font subsystem.
 #[derive(Debug, Clone)]
 pub enum Message {
     /// The catalog finished loading (or failed).
     CatalogLoaded(Result<fount::Catalog, fount::Error>),
+    /// System font families were enumerated.
+    SystemFontsLoaded(Vec<Family>),
     /// A font variant finished loading (or failed). Carries the family name.
     Loaded(String, Result<(), fount::Error>),
 }
 
-/// Fetch the catalog and load the default font in parallel.
+/// Fetch the catalog, enumerate system fonts, and load the default font.
 pub fn init() -> Task<Message> {
     Task::batch([
         Task::future(fount::google::catalog(
             fount::google::DEFAULT_CATALOG_MAX_AGE,
         ))
         .map(Message::CatalogLoaded),
+        iced::font::list()
+            .map(Result::ok)
+            .and_then(Task::done)
+            .map(Message::SystemFontsLoaded),
         load("IBM Plex Sans".into()),
     ])
 }

@@ -35,6 +35,7 @@ fn main() -> iced::Result {
 struct App {
     content: Content<iced::Renderer>,
     fonts: fount::Fount,
+    system_fonts: Vec<String>,
     recent_fonts: Vec<String>,
     font_list: combo_box::State<String>,
     size_list: combo_box::State<String>,
@@ -73,6 +74,7 @@ impl App {
             Self {
                 content: Content::with_text(sample),
                 fonts: fount::Fount::new(),
+                system_fonts: Vec::new(),
                 recent_fonts: Vec::new(),
                 font_list,
                 size_list,
@@ -95,11 +97,18 @@ impl App {
             self.recent_fonts.insert(0, promote.to_string());
         }
 
-        let mut names = self
+        let mut names: Vec<String> = self
             .fonts
             .google_catalog()
             .map(|c| c.top(100))
             .unwrap_or_default();
+
+        // Merge in system fonts.
+        for name in &self.system_fonts {
+            if !names.contains(name) {
+                names.push(name.clone());
+            }
+        }
 
         names.sort();
 
@@ -124,7 +133,12 @@ impl App {
                 let font = self.fonts.font(&name);
                 self.content.perform(Format::SetFont(font));
                 self.rebuild_font_list(&name);
-                Task::batch([fonts::load(name).map(Message::Font), focus("editor")])
+                if self.system_fonts.contains(&name) {
+                    // Already available via the system font database.
+                    focus("editor")
+                } else {
+                    Task::batch([fonts::load(name).map(Message::Font), focus("editor")])
+                }
             }
             Message::SizeSelected(size_str) => {
                 if let Ok(size) = size_str.parse::<f32>() {
@@ -157,6 +171,17 @@ impl App {
             }
             Message::CopyDebug(s) => clipboard::write(s).discard(),
             Message::Font(msg) => match msg {
+                fonts::Message::SystemFontsLoaded(families) => {
+                    self.system_fonts = families
+                        .into_iter()
+                        .map(|f| f.to_string())
+                        .filter(|name| !name.starts_with('.'))
+                        .collect();
+                    self.system_fonts.sort();
+                    self.system_fonts.dedup();
+                    self.rebuild_font_list("");
+                    focus("editor")
+                }
                 fonts::Message::CatalogLoaded(Ok(catalog)) => {
                     self.fonts.set_google_catalog(catalog);
                     self.rebuild_font_list("");
