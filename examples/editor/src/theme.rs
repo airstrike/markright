@@ -58,59 +58,93 @@ impl Theme {
 }
 
 pub mod button {
-    use iced::widget::button;
-    use iced::{Background, Border, Theme};
+    use iced::widget::button::{Status, Style};
+    use iced::{Theme, border};
 
     /// Toolbar toggle button -- highlighted when active.
-    pub fn toolbar_toggle(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    pub fn toolbar_toggle(active: bool) -> impl Fn(&Theme, Status) -> Style {
         move |theme, status| {
             let palette = theme.palette();
-            if active {
-                button::Style {
-                    background: Some(Background::Color(palette.primary.base.color)),
-                    text_color: palette.primary.base.text,
-                    border: Border {
-                        radius: 4.0.into(),
-                        ..Border::default()
-                    },
-                    ..Default::default()
-                }
-            } else {
-                match status {
-                    button::Status::Hovered => button::Style {
-                        background: Some(Background::Color(palette.background.weak.color)),
-                        text_color: palette.background.base.text,
-                        border: Border {
-                            radius: 4.0.into(),
-                            ..Border::default()
-                        },
-                        ..Default::default()
-                    },
-                    _ => button::Style {
-                        background: None,
-                        text_color: palette.background.base.text,
-                        border: Border {
-                            radius: 4.0.into(),
-                            ..Border::default()
-                        },
-                        ..Default::default()
-                    },
-                }
+            let active = Style {
+                background: if active {
+                    Some(palette.background.stronger.color.into())
+                } else {
+                    None
+                },
+                text_color: palette.background.base.text,
+                border: border::rounded(4.0),
+                ..Default::default()
+            };
+            match status {
+                Status::Active => active,
+                Status::Hovered => Style {
+                    background: Some(palette.background.strongest.color.into()),
+                    text_color: active.text_color,
+                    ..active
+                },
+                Status::Pressed => Style {
+                    background: Some(palette.background.strong.color.into()),
+                    text_color: palette.background.strongest.text,
+                    ..active
+                },
+                Status::Disabled => Style {
+                    background: None,
+                    text_color: active.text_color.scale_alpha(0.2),
+                    ..active
+                },
             }
         }
     }
 
     /// Icon-only button (transparent background, visually muted when disabled).
-    pub fn icon(theme: &Theme, status: button::Status) -> button::Style {
+    pub fn icon(theme: &Theme, status: Status) -> Style {
         let palette = theme.palette();
-        let text_color = match status {
-            button::Status::Disabled => palette.background.base.text.scale_alpha(0.25),
-            button::Status::Hovered => palette.primary.base.color,
-            _ => palette.background.base.text,
-        };
-        button::Style {
+        let active = Style {
             background: None,
-            text_color,
+            text_color: palette.background.weak.text.scale_alpha(0.8),
+            border: border::rounded(4.0),
+            ..Default::default()
+        };
+
+        match status {
+            Status::Active => active,
+            Status::Hovered => Style {
+                background: Some(palette.background.strongest.color.into()),
+                text_color: palette.background.base.text,
+                ..active
+            },
+            Status::Pressed => Style {
+                background: Some(palette.background.strong.color.into()),
+                text_color: palette.background.strongest.text,
+                ..active
+            },
+            Status::Disabled => Style {
+                text_color: palette.background.weakest.text.scale_alpha(0.2),
+                ..active
+            },
+        }
+    }
+}
+
+pub mod swatch {
+    use iced::widget::container;
+    use iced::{Background, Border, Color};
+
+    /// Fully-round color swatch with active ring.
+    pub fn style(color: Option<Color>, active: bool) -> container::Style {
+        container::Style {
+            background: Some(Background::Color(
+                color.unwrap_or(Color::from_rgb(0.5, 0.5, 0.5)),
+            )),
+            border: Border {
+                radius: 100.0.into(),
+                width: 1.0,
+                color: if active {
+                    Color::WHITE
+                } else {
+                    Color::TRANSPARENT
+                },
+            },
             ..Default::default()
         }
     }
@@ -118,15 +152,15 @@ pub mod button {
 
 pub mod container {
     use iced::widget::container;
-    use iced::{Background, Border, Theme};
+    use iced::{Border, Theme};
 
     /// Toolbar container with subtle background.
     pub fn toolbar(theme: &Theme) -> container::Style {
         let palette = theme.palette();
         container::Style {
-            background: Some(Background::Color(palette.background.weak.color)),
+            background: Some(palette.background.strong.color.scale_alpha(0.4).into()),
             border: Border {
-                color: palette.background.strong.color,
+                color: palette.background.stronger.color,
                 width: 0.0,
                 radius: 0.0.into(),
             },
@@ -138,9 +172,7 @@ pub mod container {
     pub fn group(theme: &Theme) -> container::Style {
         let palette = theme.palette();
         container::Style {
-            background: Some(Background::Color(
-                palette.background.base.text.scale_alpha(0.06),
-            )),
+            background: Some(palette.background.strong.color.scale_alpha(0.4).into()),
             border: Border {
                 radius: 4.0.into(),
                 ..Border::default()
@@ -153,7 +185,7 @@ pub mod container {
     pub fn debug_panel(theme: &Theme) -> container::Style {
         let palette = theme.palette();
         container::Style {
-            background: Some(Background::Color(palette.background.weak.color)),
+            background: Some(palette.background.weak.color.into()),
             border: Border {
                 color: palette.background.strong.color,
                 width: 1.0,

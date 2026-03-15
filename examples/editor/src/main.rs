@@ -1,13 +1,14 @@
 mod debug;
 mod fonts;
 mod icon;
+mod pull;
 mod theme;
 mod toolbar;
 
 use iced::clipboard;
 use iced::widget::operation::focus;
 use iced::widget::{column, combo_box, container, mouse_area, row, space, text};
-use iced::{Element, Fill, Font, Size, Task, window};
+use iced::{Color, Element, Fill, Font, Size, Subscription, Task, window};
 
 use markright::widget::rich_editor::{self, Action, Content, Format, cursor};
 
@@ -24,11 +25,13 @@ fn main() -> iced::Result {
 
     iced::application(App::new, App::update, App::view)
         .title("Markright")
+        .window_size([1200.0, 800.0])
         .theme(App::theme)
         .font(icon::FONT)
         .font(MONO_FONT)
         .font(FIRA_CODE)
         .default_font(Font::with_family("IBM Plex Sans"))
+        .subscription(App::subscription)
         .run()
 }
 
@@ -44,6 +47,7 @@ struct App {
     letter_spacing_input: String,
     line_height: f32,
     line_height_input: String,
+    pull: Option<pull::Pull>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +64,8 @@ enum Message {
     LetterSpacingSubmit,
     LineHeightInput(String),
     LineHeightSubmit,
+    SetColor(Option<Color>),
+    Pull(pull::Message),
 }
 
 impl App {
@@ -87,9 +93,10 @@ impl App {
                 size_list,
                 theme_choice: Theme::default(),
                 show_debug: false,
-                letter_spacing_input: "0".into(),
+                letter_spacing_input: "0.00".into(),
                 line_height: 1.3,
                 line_height_input: "1.3".into(),
+                pull: None,
             },
             init_task,
         )
@@ -97,6 +104,10 @@ impl App {
 
     fn theme(&self) -> iced::Theme {
         self.theme_choice.to_theme()
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        pull::subscription(&self.pull).map(Message::Pull)
     }
 
     /// Rebuild the font combo-box: recently-used first, then the rest
@@ -139,8 +150,8 @@ impl App {
                 self.content.perform(action);
                 let ctx = self.content.cursor_context();
                 self.letter_spacing_input = match ctx.character.letter_spacing {
-                    Some(ls) => format!("{ls}"),
-                    None => "0".into(),
+                    Some(ls) => format!("{ls:.2}"),
+                    None => "0.00".into(),
                 };
                 focus("editor")
             }
@@ -216,6 +227,10 @@ impl App {
                     focus("editor")
                 }
             },
+            Message::SetColor(color) => {
+                self.content.perform(Format::SetColor(color));
+                focus("editor")
+            }
             Message::FocusEditor => focus("editor"),
             Message::LetterSpacingInput(s) => {
                 self.letter_spacing_input = s;
@@ -237,6 +252,37 @@ impl App {
                 }
                 focus("editor")
             }
+            Message::Pull(msg) => match msg {
+                pull::Message::Start(pull::Kind::LetterSpacing) => {
+                    let current = self.letter_spacing_input.parse::<f32>().unwrap_or(0.0);
+                    self.pull = Some(pull::Pull::letter_spacing(current));
+                    Task::none()
+                }
+                pull::Message::Start(pull::Kind::LineHeight) => {
+                    self.pull = Some(pull::Pull::line_height(self.line_height));
+                    Task::none()
+                }
+                pull::Message::Move(position) => {
+                    if let Some(ref mut pull) = self.pull {
+                        let value = pull.moved(position);
+                        match pull {
+                            pull::Pull::LetterSpacing(_) => {
+                                self.letter_spacing_input = format!("{value:.2}");
+                                self.content.perform(Format::SetLetterSpacing(value));
+                            }
+                            pull::Pull::LineHeight(_) => {
+                                self.line_height = value;
+                                self.line_height_input = format!("{value}");
+                            }
+                        }
+                    }
+                    Task::none()
+                }
+                pull::Message::End => {
+                    self.pull.take();
+                    focus("editor")
+                }
+            },
         }
     }
 
@@ -312,6 +358,8 @@ fn toolbar<'a>(
         Message::LetterSpacingSubmit,
         Message::LineHeightInput,
         Message::LineHeightSubmit,
+        Message::Pull,
+        Message::SetColor,
         Message::ToggleTheme,
         Message::ToggleDebug,
     )

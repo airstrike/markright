@@ -1,11 +1,24 @@
-use iced::widget::{Space, button, combo_box, container, row, text, text_input};
-use iced::{Element, Length};
+use iced::widget::{Space, button, combo_box, container, mouse_area, row, text, text_input};
+use iced::{Color, Element, Length, color, mouse};
 
 use markright::paragraph;
 use markright::widget::rich_editor::{Action, Alignment, Format, cursor};
 
 use crate::icon;
 use crate::theme;
+
+const GROUP_SPACING: f32 = 1.0;
+const TOOLBAR_SPACING: f32 = 6.0;
+
+const COLOR_SWATCHES: &[Option<Color>] = &[
+    None,
+    Some(Color::BLACK),
+    Some(color!(0xcc3e28)), // red
+    Some(color!(0xb36600)), // orange
+    Some(color!(0x216609)), // green
+    Some(color!(0x1e6fcc)), // blue
+    Some(color!(0x5c21a5)), // purple
+];
 
 /// Wrap content in a subtle group container with fixed height matching buttons.
 fn group<'a, Message: 'a>(
@@ -43,6 +56,8 @@ pub fn view<'a, Message>(
     on_letter_spacing_submit: Message,
     on_line_height_input: impl Fn(String) -> Message + 'a,
     on_line_height_submit: Message,
+    on_pull: impl Fn(crate::pull::Message) -> Message + 'a,
+    on_color: impl Fn(Option<Color>) -> Message + 'a,
     on_toggle_theme: Message,
     on_toggle_debug: Message,
 ) -> Element<'a, Message>
@@ -157,15 +172,19 @@ where
 
     let size = ctx.character.size.unwrap_or(crate::BASE_SIZE);
 
-    let history_group = group(row![undo_btn, redo_btn]);
-    let format_group = group(row![bold_btn, italic_btn, underline_btn]);
-    let list_group = group(row![bullet_btn, ordered_btn, dedent_btn, indent_btn]);
-    let align_group = group(row![
-        align_left_btn,
-        align_center_btn,
-        align_right_btn,
-        align_justify_btn,
-    ]);
+    let history_group = group(row![undo_btn, redo_btn].spacing(GROUP_SPACING));
+    let format_group = group(row![bold_btn, italic_btn, underline_btn].spacing(GROUP_SPACING));
+    let list_group =
+        group(row![bullet_btn, ordered_btn, dedent_btn, indent_btn].spacing(GROUP_SPACING));
+    let align_group = group(
+        row![
+            align_left_btn,
+            align_center_btn,
+            align_right_btn,
+            align_justify_btn,
+        ]
+        .spacing(GROUP_SPACING),
+    );
     let current_font = font_name(ctx.character.font);
     let font_selector = combo_box(font_list, "Font…", Some(&current_font), on_font_selected)
         .width(140)
@@ -183,24 +202,34 @@ where
 
     let font_group = group(
         row![font_selector, size_selector]
-            .spacing(4)
+            .spacing(GROUP_SPACING)
             .align_y(iced::Alignment::Center),
     );
 
-    let letter_spacing_label = container(icon::whole_word().size(16)).padding([0, 4]);
+    let letter_spacing_label = mouse_area(container(icon::whole_word().size(16)).padding([0, 4]))
+        .interaction(mouse::Interaction::ResizingHorizontally)
+        .on_press(on_pull(crate::pull::Message::Start(
+            crate::pull::Kind::LetterSpacing,
+        )));
+
     let letter_spacing_input = text_input("0", letter_spacing)
         .on_input(on_letter_spacing_input)
         .on_submit(on_letter_spacing_submit)
-        .width(36)
+        .width(48)
         .size(12)
         .align_x(iced::Alignment::End)
         .style(theme::combo_box::toolbar);
 
-    let line_height_label = container(icon::list_chevrons_up_down().size(16)).padding([0, 4]);
+    let line_height_label =
+        mouse_area(container(icon::list_chevrons_up_down().size(16)).padding([0, 4]))
+            .interaction(mouse::Interaction::ResizingVertically)
+            .on_press(on_pull(crate::pull::Message::Start(
+                crate::pull::Kind::LineHeight,
+            )));
     let line_height_input = text_input("1", line_height)
         .on_input(on_line_height_input)
         .on_submit(on_line_height_submit)
-        .width(36)
+        .width(48)
         .size(12)
         .align_x(iced::Alignment::End)
         .style(theme::combo_box::toolbar);
@@ -212,16 +241,38 @@ where
             line_height_label,
             line_height_input,
         ]
-        .spacing(4)
+        .spacing(GROUP_SPACING)
         .align_y(iced::Alignment::Center),
     );
+
+    let current_color = ctx.character.color;
+
+    // FIXME: stop collecting. row() takes an iterator. just pass an iterator
+    let mut swatch_row = row![]
+        .spacing(GROUP_SPACING * 2.0)
+        .align_y(iced::Alignment::Center);
+    for &color in COLOR_SWATCHES {
+        let active = current_color == color;
+        swatch_row = swatch_row
+            .push(
+                button(
+                    container("")
+                        .width(12)
+                        .height(12)
+                        .style(move |_| theme::swatch::style(color, active)),
+                )
+                .on_press(on_color(color))
+                .style(theme::button::icon)
+                .padding([4, 2]),
+            )
+            .padding([0, 2]);
+    }
+    let color_group = group(swatch_row);
 
     let debug_btn = button(text("{*}").size(12))
         .padding([4, 8])
         .style(theme::button::icon)
         .on_press(on_toggle_debug);
-
-    let toolbar_spacing = 6.0;
 
     let mut toolbar_row = row![
         history_group,
@@ -230,14 +281,15 @@ where
         align_group,
         font_group,
         spacing_group,
+        color_group,
         Space::new().width(Length::Fill),
         group(row![debug_btn, theme_toggle]),
     ]
-    .spacing(toolbar_spacing)
+    .spacing(TOOLBAR_SPACING)
     .align_y(iced::Alignment::Center);
 
     if show_debug {
-        toolbar_row = toolbar_row.push(Space::new().width(crate::debug::PANEL_W - toolbar_spacing));
+        toolbar_row = toolbar_row.push(Space::new().width(crate::debug::PANEL_W - TOOLBAR_SPACING));
     }
 
     container(toolbar_row)
