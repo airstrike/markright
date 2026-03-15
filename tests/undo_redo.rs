@@ -135,17 +135,28 @@ fn bold_italic_underline_are_additive_and_undo_independently() {
 fn letter_spacing_applies_to_selection() {
     let c = content("hello");
 
+    // Set a font first (like the app does via set_default_font), then apply
+    // letter spacing. This catches the bug where style_to_attrs drops
+    // letter_spacing when the font branch rebuilds attrs from scratch.
+    c.perform(Action::SelectAll);
+    c.perform(Format::SetFont(iced::Font::with_family("Helvetica")));
+
     c.perform(Action::SelectAll);
     c.perform(Format::SetLetterSpacing(2.0));
+
+    // Move cursor so we read style from the span, not from pending_style
+    c.perform(Action::Move(Motion::Home));
 
     let ctx = c.cursor_context();
     assert_eq!(
         ctx.character.letter_spacing,
         Some(2.0),
-        "letter spacing should be 2.0 after applying to selection"
+        "letter spacing should be 2.0 after applying to selection with explicit font"
     );
 
     c.perform(Action::Undo);
+    // Move cursor again to read from span
+    c.perform(Action::Move(Motion::Home));
     let ctx = c.cursor_context();
     assert_eq!(
         ctx.character.letter_spacing, None,
