@@ -1,4 +1,4 @@
-use iced::widget::{Space, button, combo_box, container, row, text};
+use iced::widget::{Space, button, combo_box, container, row, text, text_input};
 use iced::{Element, Length};
 
 use markright::paragraph;
@@ -30,6 +30,8 @@ pub fn view<'a, Message>(
     ctx: &cursor::Context,
     font_list: &'a combo_box::State<String>,
     size_list: &'a combo_box::State<String>,
+    letter_spacing: &str,
+    line_height: &str,
     is_dark: bool,
     can_undo: bool,
     can_redo: bool,
@@ -37,6 +39,10 @@ pub fn view<'a, Message>(
     on_action: impl Fn(Action) -> Message + 'a,
     on_font_selected: impl Fn(String) -> Message + 'a,
     on_size_selected: impl Fn(String) -> Message + 'a,
+    on_letter_spacing_input: impl Fn(String) -> Message + 'a,
+    on_letter_spacing_submit: Message,
+    on_line_height_input: impl Fn(String) -> Message + 'a,
+    on_line_height_submit: Message,
     on_toggle_theme: Message,
     on_toggle_debug: Message,
 ) -> Element<'a, Message>
@@ -181,6 +187,35 @@ where
             .align_y(iced::Alignment::Center),
     );
 
+    let letter_spacing_label = container(icon::whole_word().size(16)).padding([0, 4]);
+    let letter_spacing_input = text_input("0", letter_spacing)
+        .on_input(on_letter_spacing_input)
+        .on_submit(on_letter_spacing_submit)
+        .width(36)
+        .size(12)
+        .align_x(iced::Alignment::End)
+        .style(theme::combo_box::toolbar);
+
+    let line_height_label = container(icon::list_chevrons_up_down().size(16)).padding([0, 4]);
+    let line_height_input = text_input("1", line_height)
+        .on_input(on_line_height_input)
+        .on_submit(on_line_height_submit)
+        .width(36)
+        .size(12)
+        .align_x(iced::Alignment::End)
+        .style(theme::combo_box::toolbar);
+
+    let spacing_group = group(
+        row![
+            letter_spacing_label,
+            letter_spacing_input,
+            line_height_label,
+            line_height_input,
+        ]
+        .spacing(4)
+        .align_y(iced::Alignment::Center),
+    );
+
     let debug_btn = button(text("{*}").size(12))
         .padding([4, 8])
         .style(theme::button::icon)
@@ -194,6 +229,7 @@ where
         list_group,
         align_group,
         font_group,
+        spacing_group,
         Space::new().width(Length::Fill),
         group(row![debug_btn, theme_toggle]),
     ]

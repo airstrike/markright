@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// de3d5c7b83885c98980912f5f25eb6a3a33c5a3370fac54ae5df7070aaeb804b
+// 1beef4477d1bb82aacb03ef1a6e3893e61cb48b004185185e6aa851724fa839d
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -17,6 +17,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("indent_increase", "\u{E108}"),
     ("italic", "\u{E0FB}"),
     ("list", "\u{E106}"),
+    ("list_chevrons_up_down", "\u{E696}"),
     ("list_ordered", "\u{E1D1}"),
     ("moon", "\u{E11E}"),
     ("redo", "\u{E143}"),
@@ -27,6 +28,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("text_align_start", "\u{E185}"),
     ("underline", "\u{E19A}"),
     ("undo", "\u{E19B}"),
+    ("whole_word", "\u{E3DF}"),
 ];
 
 pub fn bold<'a>() -> Text<'a> {
@@ -55,6 +57,10 @@ pub fn italic<'a>() -> Text<'a> {
 
 pub fn list<'a>() -> Text<'a> {
     icon("\u{E106}")
+}
+
+pub fn list_chevrons_up_down<'a>() -> Text<'a> {
+    icon("\u{E696}")
 }
 
 pub fn list_ordered<'a>() -> Text<'a> {
@@ -95,6 +101,10 @@ pub fn underline<'a>() -> Text<'a> {
 
 pub fn undo<'a>() -> Text<'a> {
     icon("\u{E19B}")
+}
+
+pub fn whole_word<'a>() -> Text<'a> {
+    icon("\u{E3DF}")
 }
 
 /// Render any Lucide icon by its codepoint string.

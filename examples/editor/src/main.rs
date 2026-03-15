@@ -41,6 +41,9 @@ struct App {
     size_list: combo_box::State<String>,
     theme_choice: Theme,
     show_debug: bool,
+    letter_spacing_input: String,
+    line_height: f32,
+    line_height_input: String,
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +56,10 @@ enum Message {
     ToggleDebug,
     CopyDebug(String),
     FocusEditor,
+    LetterSpacingInput(String),
+    LetterSpacingSubmit,
+    LineHeightInput(String),
+    LineHeightSubmit,
 }
 
 impl App {
@@ -80,6 +87,9 @@ impl App {
                 size_list,
                 theme_choice: Theme::default(),
                 show_debug: false,
+                letter_spacing_input: "0".into(),
+                line_height: 1.3,
+                line_height_input: "1.3".into(),
             },
             init_task,
         )
@@ -127,6 +137,11 @@ impl App {
         match message {
             Message::Editor(action) => {
                 self.content.perform(action);
+                let ctx = self.content.cursor_context();
+                self.letter_spacing_input = match ctx.character.letter_spacing {
+                    Some(ls) => format!("{ls}"),
+                    None => "0".into(),
+                };
                 focus("editor")
             }
             Message::FontSelected(name) => {
@@ -202,6 +217,26 @@ impl App {
                 }
             },
             Message::FocusEditor => focus("editor"),
+            Message::LetterSpacingInput(s) => {
+                self.letter_spacing_input = s;
+                Task::none()
+            }
+            Message::LetterSpacingSubmit => {
+                if let Ok(v) = self.letter_spacing_input.parse::<f32>() {
+                    self.content.perform(Format::SetLetterSpacing(v));
+                }
+                focus("editor")
+            }
+            Message::LineHeightInput(s) => {
+                self.line_height_input = s;
+                Task::none()
+            }
+            Message::LineHeightSubmit => {
+                if let Ok(v) = self.line_height_input.parse::<f32>() {
+                    self.line_height = v;
+                }
+                focus("editor")
+            }
         }
     }
 
@@ -213,6 +248,8 @@ impl App {
             &cursor,
             &self.font_list,
             &self.size_list,
+            &self.letter_spacing_input,
+            &self.line_height_input,
             self.theme_choice.is_dark(),
             can_undo,
             can_redo,
@@ -226,7 +263,8 @@ impl App {
                 .on_action(Message::Editor)
                 .style(theme::text_editor::borderless)
                 .padding(20)
-                .size(BASE_SIZE),
+                .size(BASE_SIZE)
+                .line_height(self.line_height),
             mouse_area(space().height(Fill).width(Fill)).on_press(Message::FocusEditor),
         ];
 
@@ -250,6 +288,8 @@ fn toolbar<'a>(
     cursor: &cursor::Context,
     font_list: &'a combo_box::State<String>,
     size_list: &'a combo_box::State<String>,
+    letter_spacing: &str,
+    line_height: &str,
     is_dark: bool,
     can_undo: bool,
     can_redo: bool,
@@ -259,6 +299,8 @@ fn toolbar<'a>(
         cursor,
         font_list,
         size_list,
+        letter_spacing,
+        line_height,
         is_dark,
         can_undo,
         can_redo,
@@ -266,6 +308,10 @@ fn toolbar<'a>(
         Message::Editor,
         Message::FontSelected,
         Message::SizeSelected,
+        Message::LetterSpacingInput,
+        Message::LetterSpacingSubmit,
+        Message::LineHeightInput,
+        Message::LineHeightSubmit,
         Message::ToggleTheme,
         Message::ToggleDebug,
     )
