@@ -10,7 +10,8 @@ use iced::widget::operation::focus;
 use iced::widget::{column, container, mouse_area, row, space, text};
 use iced::{Element, Fill, Font, Size, Subscription, Task, window};
 
-use markright::widget::rich_editor::{self, Content, Format, cursor};
+use markright::widget::rich_editor;
+use markright::widget::rich_editor::{Content, Format, cursor};
 
 use theme::Theme;
 
@@ -161,8 +162,7 @@ impl App {
                     focus("editor")
                 }
                 fonts::Message::Loaded(_name, Ok(())) => {
-                    self.content
-                        .set_default_font(Font::with_family("IBM Plex Sans"));
+                    self.content.font(Font::with_family("IBM Plex Sans"));
                     focus("editor")
                 }
                 fonts::Message::Loaded(name, Err(e)) => {
@@ -192,7 +192,7 @@ impl App {
         let status_bar = status_bar(&cursor);
 
         let editor = column![
-            rich_editor::rich_editor(&self.content)
+            rich_editor(&self.content)
                 .id("editor")
                 .on_action(Message::Editor)
                 .style(theme::text_editor::borderless)
@@ -202,14 +202,14 @@ impl App {
             mouse_area(space().height(Fill).width(Fill)).on_press(Message::FocusEditor),
         ];
 
-        let body: Element<'_, Message> = if self.toolbar.show_debug() {
+        let body = if !self.toolbar.show_debug() {
+            Element::from(container(editor).width(Fill).height(Fill))
+        } else {
             let debug_panel = container(debug::view(&self.content, Message::CopyDebug))
                 .style(theme::container::debug_panel)
                 .height(Fill);
 
             row![container(editor).width(Fill).height(Fill), debug_panel,].into()
-        } else {
-            container(editor).width(Fill).height(Fill).into()
         };
 
         let content = column![tools, body, status_bar].width(Fill).height(Fill);

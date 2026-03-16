@@ -70,7 +70,6 @@ where
     id: Option<widget::Id>,
     content: &'a Content<Renderer>,
     placeholder: Option<text::Fragment<'a>>,
-    font: Option<Renderer::Font>,
     text_size: Option<Pixels>,
     line_height: LineHeight,
     width: Length,
@@ -104,7 +103,6 @@ where
             id: None,
             content,
             placeholder: None,
-            font: None,
             text_size: None,
             line_height: LineHeight::default(),
             width: Length::Fill,
@@ -212,12 +210,6 @@ where
         key_binding: impl Fn(KeyPress) -> Option<BindingType<Message>> + 'a,
     ) -> Self {
         self.key_binding = Some(Box::new(key_binding));
-        self
-    }
-
-    /// Sets the [`Font`] of the [`RichEditor`].
-    pub fn font(mut self, font: impl Into<Renderer::Font>) -> Self {
-        self.font = Some(font.into());
         self
     }
 
@@ -396,7 +388,7 @@ where
         let mut internal = self.content.0.borrow_mut();
         let _state = tree.state.downcast_mut::<State>();
 
-        let font = self.font.unwrap_or_else(|| renderer.default_font());
+        let font = renderer.default_font();
 
         let limits = limits
             .width(self.width)
@@ -710,7 +702,7 @@ where
         let internal = self.content.0.borrow();
         let state = tree.state.downcast_ref::<State>();
 
-        let font = self.font.unwrap_or_else(|| renderer.default_font());
+        let font = renderer.default_font();
 
         let style = theme.style(&self.class, self.last_status.unwrap_or(Status::Active));
 

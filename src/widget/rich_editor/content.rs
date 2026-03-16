@@ -55,9 +55,9 @@ pub(crate) struct Internal<R: rich_editor::Renderer> {
     pending_style: Option<RichStyle>,
     /// Undo/redo history of document operations.
     history: History,
-    /// Document-level default font, used as fallback when a span has no
-    /// explicit font set.
-    default_font: Option<Font>,
+    /// Document-level default style — fills in `None` span fields during
+    /// `resolve_style` and `cursor_context`.
+    default_style: RichStyle,
     /// Per-line paragraph styles (spacing, indent, level, list).
     /// Kept in sync with the editor's line count.
     pub(crate) paragraph_styles: Vec<paragraph::Style>,
@@ -77,7 +77,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             editor: R::RichEditor::with_text(text),
             pending_style: None,
             history: History::new(),
-            default_font: None,
+            default_style: RichStyle::default(),
             paragraph_styles: vec![paragraph::Style::default()],
             list_indent: list::DEFAULT_LIST_INDENT,
         }))
@@ -143,7 +143,7 @@ impl<R: rich_editor::Renderer> Content<R> {
         let internal = self.0.borrow();
         let editor_cursor = internal.editor.cursor();
 
-        let char_style = if let Some(ref pending) = internal.pending_style {
+        let mut char_style = if let Some(ref pending) = internal.pending_style {
             pending.clone()
         } else if let Some(ref sel) = editor_cursor.selection {
             // With a selection: read from the first non-empty content character
@@ -154,6 +154,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             let col = editor_cursor.position.column;
             internal.editor.style_at(line, col.saturating_sub(1))
         };
+        internal.fill_from_defaults(&mut char_style);
 
         let line = editor_cursor.position.line;
         let para_style = internal.editor.paragraph_style(line);
@@ -165,7 +166,7 @@ impl<R: rich_editor::Renderer> Content<R> {
                 bold: char_style.bold.unwrap_or(false),
                 italic: char_style.italic.unwrap_or(false),
                 underline: char_style.underline.unwrap_or(false),
-                font: char_style.font.or(internal.default_font),
+                font: char_style.font,
                 size: char_style.size,
                 color: char_style.color,
                 letter_spacing: char_style.letter_spacing,
@@ -240,14 +241,51 @@ impl<R: rich_editor::Renderer> Content<R> {
         self.0.borrow().list_indent
     }
 
-    /// Sets the document-level default font.
+    /// Sets the document-level default style.
     ///
-    /// This font is used as a fallback when a span has no explicit font set.
-    /// Existing spans without an explicit font are updated immediately.
-    pub fn set_default_font(&self, font: Font) {
-        let mut internal = self.0.borrow_mut();
-        internal.default_font = Some(font);
-        internal.apply_default_font_to_all();
+    /// Any `Some` fields act as fallbacks when a span's own field is `None`.
+    pub fn default_style(&self, style: RichStyle) {
+        self.0.borrow_mut().default_style = style;
+    }
+
+    /// Sets the default font.
+    pub fn font(&self, font: impl Into<Font>) {
+        self.0.borrow_mut().default_style.font = Some(font.into());
+    }
+
+    /// Sets the default bold state.
+    pub fn bold(&self, bold: bool) {
+        self.0.borrow_mut().default_style.bold = Some(bold);
+    }
+
+    /// Sets the default italic state.
+    pub fn italic(&self, italic: bool) {
+        self.0.borrow_mut().default_style.italic = Some(italic);
+    }
+
+    /// Sets the default underline state.
+    pub fn underline(&self, underline: bool) {
+        self.0.borrow_mut().default_style.underline = Some(underline);
+    }
+
+    /// Sets the default strikethrough state.
+    pub fn strikethrough(&self, strikethrough: bool) {
+        self.0.borrow_mut().default_style.strikethrough = Some(strikethrough);
+    }
+
+    /// Sets the default text color.
+    pub fn color(&self, color: Option<crate::core::Color>) {
+        self.0.borrow_mut().default_style.color = color;
+    }
+
+    /// Sets the default font size.
+    pub fn size(&self, size: impl Into<crate::core::Pixels>) {
+        self.0.borrow_mut().default_style.size = Some(size.into().0);
+    }
+
+    /// Sets the default letter spacing.
+    pub fn letter_spacing(&self, letter_spacing: impl Into<crate::core::Em>) {
+        self.0.borrow_mut().default_style.letter_spacing = Some(letter_spacing.into().0);
     }
 
     /// Trigger a layout pass so that geometry queries return up-to-date values.
@@ -429,10 +467,37 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 cursor.position.column.saturating_sub(1),
             )
         });
-        if style.font.is_none() {
-            style.font = self.default_font;
-        }
+        self.fill_from_defaults(&mut style);
         style
+    }
+
+    /// Fill any `None` fields in `style` from `self.default_style`.
+    fn fill_from_defaults(&self, style: &mut RichStyle) {
+        let d = &self.default_style;
+        if style.bold.is_none() {
+            style.bold = d.bold;
+        }
+        if style.italic.is_none() {
+            style.italic = d.italic;
+        }
+        if style.underline.is_none() {
+            style.underline = d.underline;
+        }
+        if style.strikethrough.is_none() {
+            style.strikethrough = d.strikethrough;
+        }
+        if style.font.is_none() {
+            style.font = d.font;
+        }
+        if style.size.is_none() {
+            style.size = d.size;
+        }
+        if style.color.is_none() {
+            style.color = d.color;
+        }
+        if style.letter_spacing.is_none() {
+            style.letter_spacing = d.letter_spacing;
+        }
     }
 
     fn record_group(&mut self, ops: Vec<Op>) {
@@ -618,28 +683,6 @@ impl<R: rich_editor::Renderer> Internal<R> {
             }
         }
         operation::backspace(&mut self.editor)
-    }
-
-    /// Apply the default font to all spans that have no explicit font set.
-    fn apply_default_font_to_all(&mut self) {
-        let Some(font) = self.default_font else {
-            return;
-        };
-        let line_count = self.editor.line_count();
-        for line in 0..line_count {
-            let len = self.editor.line(line).map(|l| l.text.len()).unwrap_or(0);
-            if len == 0 {
-                continue;
-            }
-            let runs = markright_document::read_style_runs(&self.editor, line, 0..len);
-            for run in runs {
-                if run.style.font.is_none() {
-                    let mut style = run.style;
-                    style.font = Some(font);
-                    self.editor.set_span_style(line, run.range, &style);
-                }
-            }
-        }
     }
 
     fn perform_undo(&mut self) {

@@ -135,7 +135,7 @@ fn bold_italic_underline_are_additive_and_undo_independently() {
 fn letter_spacing_applies_to_selection() {
     let c = content("hello");
 
-    // Set a font first (like the app does via set_default_font), then apply
+    // Set a font first (like the app does via content.font()), then apply
     // letter spacing. This catches the bug where style_to_attrs drops
     // letter_spacing when the font branch rebuilds attrs from scratch.
     c.perform(Action::SelectAll);
