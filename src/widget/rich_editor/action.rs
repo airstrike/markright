@@ -91,6 +91,8 @@ pub enum Format {
     SetColor(Option<Color>),
     /// Set letter spacing for the selection.
     SetLetterSpacing(f32),
+    /// Set line height for the current line(s).
+    SetLineHeight(crate::core::text::LineHeight),
     /// Set line spacing for the current line(s).
     SetLineSpacing(paragraph::Spacing),
 }

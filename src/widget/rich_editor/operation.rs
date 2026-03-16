@@ -176,6 +176,17 @@ pub fn apply_op<E: Editor>(editor: &mut E, op: &Op) {
         // vector lives in Content, not in the iced editor. Content handles this
         // op directly (Phase 2).
         Op::SetParagraphStyle { .. } => {}
+        Op::SetLineHeight {
+            line, line_height, ..
+        } => {
+            editor.set_paragraph_style(
+                *line,
+                &ParagraphStyle {
+                    line_height: *line_height,
+                    ..Default::default()
+                },
+            );
+        }
     }
 }
 
@@ -237,6 +248,16 @@ pub fn capture_op_state<E: Editor>(editor: &E, op: &Op) -> Op {
                 line: *line,
                 alignment: *alignment,
                 old_alignment,
+            }
+        }
+        Op::SetLineHeight {
+            line, line_height, ..
+        } => {
+            let old_line_height = editor.paragraph_style(*line).line_height;
+            Op::SetLineHeight {
+                line: *line,
+                line_height: *line_height,
+                old_line_height,
             }
         }
         // Range ops and paragraph style ops are self-contained — no state capture needed.

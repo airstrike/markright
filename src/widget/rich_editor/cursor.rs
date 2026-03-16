@@ -1,6 +1,7 @@
 //! Cursor context types — formatting state at the current cursor position.
 
 use super::action::Alignment;
+use crate::core::text::LineHeight;
 use crate::core::{Color, Font};
 use markright_document::paragraph;
 
@@ -29,6 +30,8 @@ pub struct Character {
 pub struct Paragraph {
     pub alignment: Alignment,
     pub spacing_after: f32,
+    /// Line height, or None if using the buffer default.
+    pub line_height: Option<LineHeight>,
     /// Document-model paragraph style (spacing, indent, level, list).
     pub style: paragraph::Style,
 }
@@ -38,6 +41,7 @@ impl Default for Paragraph {
         Self {
             alignment: Alignment::Left,
             spacing_after: 0.0,
+            line_height: None,
             style: paragraph::Style::default(),
         }
     }

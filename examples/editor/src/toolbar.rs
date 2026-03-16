@@ -64,6 +64,11 @@ impl State {
             Some(ls) => format!("{ls:.2}"),
             None => "0.00".into(),
         };
+        self.line_height_input = match ctx.paragraph.line_height {
+            Some(markright::LineHeight::Relative(r)) => format!("{r:.1}"),
+            Some(markright::LineHeight::Absolute(px)) => format!("{:.1}", px.0),
+            None => "1.3".into(),
+        };
     }
 
     /// Rebuild the font combo-box: recently-used first, then the rest
@@ -115,8 +120,6 @@ pub enum Action {
     Pending(rich_editor::Action),
     /// Font was selected — App handles loading + format application.
     FontSelected(String),
-    /// Line height changed — App updates its own line_height.
-    SetLineHeight(f32),
     /// Toggle application theme.
     ToggleTheme,
     /// Toggle debug panel. `opening` = new state.
@@ -155,7 +158,7 @@ pub fn update(state: &mut State, message: Message) -> Action {
         }
         Message::LineHeightSubmit => {
             if let Ok(v) = state.line_height_input.parse::<f32>() {
-                Action::SetLineHeight(v)
+                Action::Editor(Format::SetLineHeight(v.into()).into())
             } else {
                 Action::FocusEditor
             }
@@ -182,7 +185,7 @@ pub fn update(state: &mut State, message: Message) -> Action {
                         }
                         pull::Pull::LineHeight(_) => {
                             state.line_height_input = format!("{value}");
-                            Action::SetLineHeight(value)
+                            Action::Pending(Format::SetLineHeight(value.into()).into())
                         }
                     }
                 } else {

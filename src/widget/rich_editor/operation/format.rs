@@ -1,6 +1,7 @@
 //! Formatting operations — bold, italic, underline, alignment, font, size,
 //! list style, indentation, and line spacing.
 
+use crate::core::text::LineHeight;
 use crate::core::text::rich_editor::{Editor, ParagraphStyle, Style as RichStyle};
 use markright_document::{self as document, Alignment, Op, SpanAttr, paragraph};
 use std::ops::Range;
@@ -147,6 +148,7 @@ pub fn format<E: Editor>(
                 style.level -= 1;
             }
         }),
+        Format::SetLineHeight(lh) => set_line_height(editor, *lh),
         Format::SetLineSpacing(spacing) => {
             let spacing = *spacing;
             set_paragraph_field(editor, paragraph_styles, |style| {
@@ -234,6 +236,34 @@ fn set_attr_on_line<E: Editor>(
         attr: attr.clone(),
         old_values,
     }
+}
+
+/// Set line height on lines covered by the current cursor/selection.
+fn set_line_height<E: Editor>(editor: &mut E, line_height: LineHeight) -> Vec<Op> {
+    let cursor = editor.cursor();
+    let lines = if let Some(ref sel) = cursor.selection {
+        let (start, end) = ordered_positions(&cursor.position, sel);
+        start.line..=end.line
+    } else {
+        cursor.position.line..=cursor.position.line
+    };
+    lines
+        .map(|line| {
+            let old_line_height = editor.paragraph_style(line).line_height;
+            editor.set_paragraph_style(
+                line,
+                &ParagraphStyle {
+                    line_height: Some(line_height),
+                    ..Default::default()
+                },
+            );
+            Op::SetLineHeight {
+                line,
+                line_height: Some(line_height),
+                old_line_height,
+            }
+        })
+        .collect()
 }
 
 /// Set alignment on lines covered by the current cursor/selection.

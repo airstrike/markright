@@ -41,7 +41,6 @@ struct App {
     toolbar: toolbar::State,
     fonts: fount::Fount,
     theme_choice: Theme,
-    line_height: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -65,7 +64,6 @@ impl App {
                 toolbar: toolbar::State::default(),
                 fonts: fount::Fount::new(),
                 theme_choice: Theme::default(),
-                line_height: 1.3,
             },
             init_task,
         )
@@ -114,10 +112,6 @@ impl App {
                             Task::batch([fonts::load(name).map(Message::Font), focus("editor")])
                         }
                     }
-                    toolbar::Action::SetLineHeight(v) => {
-                        self.line_height = v;
-                        Task::none()
-                    }
                     toolbar::Action::ToggleTheme => {
                         self.theme_choice = self.theme_choice.toggle();
                         focus("editor")
@@ -161,10 +155,7 @@ impl App {
                     eprintln!("Catalog loading failed: {e}");
                     focus("editor")
                 }
-                fonts::Message::Loaded(_name, Ok(())) => {
-                    self.content.font(Font::with_family("IBM Plex Sans"));
-                    focus("editor")
-                }
+                fonts::Message::Loaded(_name, Ok(())) => focus("editor"),
                 fonts::Message::Loaded(name, Err(e)) => {
                     eprintln!("Font loading failed ({name}): {e}");
                     focus("editor")
@@ -197,8 +188,7 @@ impl App {
                 .on_action(Message::Editor)
                 .style(theme::text_editor::borderless)
                 .padding(20)
-                .size(BASE_SIZE)
-                .line_height(self.line_height),
+                .size(BASE_SIZE),
             mouse_area(space().height(Fill).width(Fill)).on_press(Message::FocusEditor),
         ];
 

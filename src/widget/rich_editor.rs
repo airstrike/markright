@@ -35,7 +35,7 @@ use crate::core::layout::{self, Layout};
 use crate::core::mouse;
 use crate::core::renderer;
 use crate::core::text::editor::Selection as EditorSelection;
-use crate::core::text::rich_editor::{self, Editor as RichEditorTrait};
+use crate::core::text::rich_editor::{self, Editor as RichEditorTrait, Style as RichStyle};
 use crate::core::text::{self, LineHeight, Text, Wrapping};
 use crate::core::time::{Duration, Instant};
 use crate::core::widget::operation as widget_operation;
@@ -48,7 +48,7 @@ use crate::core::{
 use std::sync::Arc;
 
 use action::Edit as ActionEdit;
-use binding::{Binding as BindingType, Ime};
+use binding::Ime;
 
 /// Creates a new [`RichEditor`] with the given [`Content`].
 pub fn rich_editor<'a, Message, Theme, Renderer>(
@@ -81,6 +81,7 @@ where
     letter_spacing: crate::core::Em,
     font_features: Vec<crate::core::font::Feature>,
     font_variations: Vec<crate::core::font::Variation>,
+    default_style: RichStyle,
     class: Theme::Class<'a>,
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
     on_blur: Option<Message>,
@@ -88,7 +89,7 @@ where
     align_y: alignment::Vertical,
     interaction: Option<mouse::Interaction>,
     #[allow(clippy::type_complexity)]
-    key_binding: Option<Box<dyn Fn(KeyPress) -> Option<BindingType<Message>> + 'a>>,
+    key_binding: Option<Box<dyn Fn(KeyPress) -> Option<Binding<Message>> + 'a>>,
     last_status: Option<Status>,
 }
 
@@ -114,6 +115,7 @@ where
             letter_spacing: crate::core::Em::default(),
             font_features: Vec::new(),
             font_variations: Vec::new(),
+            default_style: RichStyle::default(),
             class: <Theme as Catalog>::default(),
             on_action: None,
             on_blur: None,
@@ -207,7 +209,7 @@ where
     /// [`Binding`]. Return `None` to fall through to the default bindings.
     pub fn key_binding(
         mut self,
-        key_binding: impl Fn(KeyPress) -> Option<BindingType<Message>> + 'a,
+        key_binding: impl Fn(KeyPress) -> Option<Binding<Message>> + 'a,
     ) -> Self {
         self.key_binding = Some(Box::new(key_binding));
         self
@@ -240,6 +242,42 @@ where
     /// Sets the letter spacing of the [`RichEditor`].
     pub fn letter_spacing(mut self, letter_spacing: impl Into<crate::core::Em>) -> Self {
         self.letter_spacing = letter_spacing.into();
+        self
+    }
+
+    /// Sets the default font for new text.
+    pub fn font(mut self, font: impl Into<Font>) -> Self {
+        self.default_style.font = Some(font.into());
+        self
+    }
+
+    /// Sets the default bold state for new text.
+    pub fn bold(mut self, bold: bool) -> Self {
+        self.default_style.bold = Some(bold);
+        self
+    }
+
+    /// Sets the default italic state for new text.
+    pub fn italic(mut self, italic: bool) -> Self {
+        self.default_style.italic = Some(italic);
+        self
+    }
+
+    /// Sets the default underline state for new text.
+    pub fn underline(mut self, underline: bool) -> Self {
+        self.default_style.underline = Some(underline);
+        self
+    }
+
+    /// Sets the default strikethrough state for new text.
+    pub fn strikethrough(mut self, strikethrough: bool) -> Self {
+        self.default_style.strikethrough = Some(strikethrough);
+        self
+    }
+
+    /// Sets the default text color for new text.
+    pub fn color(mut self, color: impl Into<Option<crate::core::Color>>) -> Self {
+        self.default_style.color = color.into();
         self
     }
 
@@ -388,7 +426,10 @@ where
         let mut internal = self.content.0.borrow_mut();
         let _state = tree.state.downcast_mut::<State>();
 
-        let font = renderer.default_font();
+        let font = self
+            .default_style
+            .font
+            .unwrap_or_else(|| renderer.default_font());
 
         let limits = limits
             .width(self.width)
@@ -396,8 +437,8 @@ where
             .min_height(self.min_height)
             .max_height(self.max_height);
 
-        // Update the editor layout. No highlighter parameter needed --
-        // formatting is stored directly in AttrsList.
+        internal.default_style = self.default_style.clone();
+
         internal.editor.update(
             limits.shrink(self.padding).max(),
             font,
@@ -408,6 +449,7 @@ where
             self.font_variations.clone(),
             self.wrapping,
             renderer.scale_factor(),
+            self.default_style.clone(),
         );
 
         internal.editor.align_x(self.align_x);
@@ -557,7 +599,7 @@ where
                 },
                 Update::Binding(binding) => {
                     fn apply_binding<R: rich_editor::Renderer, Message>(
-                        binding: BindingType<Message>,
+                        binding: Binding<Message>,
                         content: &Content<R>,
                         state: &mut State,
                         on_action: &dyn Fn(Action) -> Message,
@@ -569,7 +611,7 @@ where
                         let mut publish = |action| shell.publish(on_action(action));
 
                         match binding {
-                            BindingType::Unfocus => {
+                            Binding::Unfocus => {
                                 if state.focus.is_some() {
                                     state.focus = None;
                                     state.drag_click = None;
@@ -578,70 +620,70 @@ where
                                     }
                                 }
                             }
-                            BindingType::Copy => {
+                            Binding::Copy => {
                                 if let Some(selection) = content.selection() {
                                     shell.write_clipboard(clipboard::Content::Text(selection));
                                 }
                             }
-                            BindingType::Cut => {
+                            Binding::Cut => {
                                 if let Some(selection) = content.selection() {
                                     shell.write_clipboard(clipboard::Content::Text(selection));
                                     shell.publish(on_action(Action::Edit(ActionEdit::Delete)));
                                 }
                             }
-                            BindingType::Paste => {
+                            Binding::Paste => {
                                 shell.read_clipboard(clipboard::Kind::Text);
                             }
-                            BindingType::Move(motion) => {
+                            Binding::Move(motion) => {
                                 publish(Action::Move(motion));
                             }
-                            BindingType::Select(motion) => {
+                            Binding::Select(motion) => {
                                 publish(Action::Select(motion));
                             }
-                            BindingType::SelectWord => {
+                            Binding::SelectWord => {
                                 publish(Action::SelectWord);
                             }
-                            BindingType::SelectLine => {
+                            Binding::SelectLine => {
                                 publish(Action::SelectLine);
                             }
-                            BindingType::SelectAll => {
+                            Binding::SelectAll => {
                                 publish(Action::SelectAll);
                             }
-                            BindingType::Insert(c) => {
+                            Binding::Insert(c) => {
                                 publish(Action::Edit(ActionEdit::Insert(c)));
                             }
-                            BindingType::Enter => {
+                            Binding::Enter => {
                                 publish(Action::Edit(ActionEdit::Enter));
                             }
-                            BindingType::Backspace => {
+                            Binding::Backspace => {
                                 publish(Action::Edit(ActionEdit::Backspace));
                             }
-                            BindingType::Delete => {
+                            Binding::Delete => {
                                 publish(Action::Edit(ActionEdit::Delete));
                             }
-                            BindingType::Format(fmt) => {
+                            Binding::Format(fmt) => {
                                 publish(Action::Edit(ActionEdit::Format(fmt)));
                             }
-                            BindingType::Undo => {
+                            Binding::Undo => {
                                 publish(Action::Undo);
                             }
-                            BindingType::Redo => {
+                            Binding::Redo => {
                                 publish(Action::Redo);
                             }
-                            BindingType::Sequence(sequence) => {
+                            Binding::Sequence(sequence) => {
                                 for binding in sequence {
                                     apply_binding(
                                         binding, content, state, on_action, on_blur, shell,
                                     );
                                 }
                             }
-                            BindingType::Custom(message) => {
+                            Binding::Custom(message) => {
                                 shell.publish(message);
                             }
                         }
                     }
 
-                    if !matches!(binding, BindingType::Unfocus) {
+                    if !matches!(binding, Binding::Unfocus) {
                         shell.capture_event();
                     }
 
@@ -702,7 +744,10 @@ where
         let internal = self.content.0.borrow();
         let state = tree.state.downcast_ref::<State>();
 
-        let font = renderer.default_font();
+        let font = self
+            .default_style
+            .font
+            .unwrap_or_else(|| renderer.default_font());
 
         let style = theme.style(&self.class, self.last_status.unwrap_or(Status::Active));
 
@@ -885,7 +930,7 @@ enum Update<Message> {
     Release,
     Scroll(f32),
     InputMethod(Ime),
-    Binding(BindingType<Message>),
+    Binding(Binding<Message>),
 }
 
 impl<Message> Update<Message> {
@@ -895,7 +940,7 @@ impl<Message> Update<Message> {
         bounds: Rectangle,
         content_offset: Vector,
         cursor: mouse::Cursor,
-        key_binding: Option<&dyn Fn(KeyPress) -> Option<BindingType<Message>>>,
+        key_binding: Option<&dyn Fn(KeyPress) -> Option<Binding<Message>>>,
     ) -> Option<Self> {
         let binding = |binding| Some(Self::Binding(binding));
 
@@ -911,7 +956,7 @@ impl<Message> Update<Message> {
                         );
                         Some(Self::Click(click))
                     } else if state.focus.is_some() {
-                        binding(BindingType::Unfocus)
+                        binding(Binding::Unfocus)
                     } else {
                         None
                     }
@@ -980,7 +1025,7 @@ impl<Message> Update<Message> {
 
                 key_binding
                     .and_then(|f| f(key_press.clone()))
-                    .or_else(|| BindingType::from_key_press(key_press))
+                    .or_else(|| Binding::from_key_press(key_press))
                     .map(Self::Binding)
             }
             _ => None,

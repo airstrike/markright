@@ -1,7 +1,6 @@
 //! Rich text editor content — wraps the editor and manages pending style
 //! and undo/redo history. All edits flow through [`Content::perform`].
 
-use crate::core::Font;
 use crate::core::text::editor::Position;
 use crate::core::text::rich_editor::{self, Editor as _, Style as RichStyle};
 use markright_document::{History, Op, paragraph};
@@ -57,7 +56,7 @@ pub(crate) struct Internal<R: rich_editor::Renderer> {
     history: History,
     /// Document-level default style — fills in `None` span fields during
     /// `resolve_style` and `cursor_context`.
-    default_style: RichStyle,
+    pub(crate) default_style: RichStyle,
     /// Per-line paragraph styles (spacing, indent, level, list).
     /// Kept in sync with the editor's line count.
     pub(crate) paragraph_styles: Vec<paragraph::Style>,
@@ -174,6 +173,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             paragraph: cursor::Paragraph {
                 alignment: super::Alignment::from_iced(para_style.alignment),
                 spacing_after: para_style.spacing_after.unwrap_or(0.0),
+                line_height: para_style.line_height,
                 style: para_doc_style,
             },
             position: cursor::Position {
@@ -241,53 +241,6 @@ impl<R: rich_editor::Renderer> Content<R> {
         self.0.borrow().list_indent
     }
 
-    /// Sets the document-level default style.
-    ///
-    /// Any `Some` fields act as fallbacks when a span's own field is `None`.
-    pub fn default_style(&self, style: RichStyle) {
-        self.0.borrow_mut().default_style = style;
-    }
-
-    /// Sets the default font.
-    pub fn font(&self, font: impl Into<Font>) {
-        self.0.borrow_mut().default_style.font = Some(font.into());
-    }
-
-    /// Sets the default bold state.
-    pub fn bold(&self, bold: bool) {
-        self.0.borrow_mut().default_style.bold = Some(bold);
-    }
-
-    /// Sets the default italic state.
-    pub fn italic(&self, italic: bool) {
-        self.0.borrow_mut().default_style.italic = Some(italic);
-    }
-
-    /// Sets the default underline state.
-    pub fn underline(&self, underline: bool) {
-        self.0.borrow_mut().default_style.underline = Some(underline);
-    }
-
-    /// Sets the default strikethrough state.
-    pub fn strikethrough(&self, strikethrough: bool) {
-        self.0.borrow_mut().default_style.strikethrough = Some(strikethrough);
-    }
-
-    /// Sets the default text color.
-    pub fn color(&self, color: Option<crate::core::Color>) {
-        self.0.borrow_mut().default_style.color = color;
-    }
-
-    /// Sets the default font size.
-    pub fn size(&self, size: impl Into<crate::core::Pixels>) {
-        self.0.borrow_mut().default_style.size = Some(size.into().0);
-    }
-
-    /// Sets the default letter spacing.
-    pub fn letter_spacing(&self, letter_spacing: impl Into<crate::core::Em>) {
-        self.0.borrow_mut().default_style.letter_spacing = Some(letter_spacing.into().0);
-    }
-
     /// Trigger a layout pass so that geometry queries return up-to-date values.
     ///
     /// In the real app this happens during the widget's `layout()` phase.
@@ -311,6 +264,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             Vec::new(),
             Wrapping::Word,
             None,
+            Default::default(),
         );
     }
 
@@ -533,6 +487,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
             | Format::SetList(_)
             | Format::IndentList
             | Format::DedentList
+            | Format::SetLineHeight(_)
             | Format::SetLineSpacing(_) => {}
         }
     }

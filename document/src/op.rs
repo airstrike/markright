@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use iced_core::text::LineHeight;
 use iced_core::text::rich_editor::{ParagraphStyle, Style};
 use iced_core::{Color, Font};
 
@@ -175,6 +176,12 @@ pub enum Op {
         style: paragraph::Style,
         old_style: paragraph::Style,
     },
+    /// Set line height on a line.
+    SetLineHeight {
+        line: usize,
+        line_height: Option<LineHeight>,
+        old_line_height: Option<LineHeight>,
+    },
 }
 
 impl Op {
@@ -283,6 +290,17 @@ impl Op {
                     line: *line,
                     style: old_style.clone(),
                     old_style: style.clone(),
+                }]
+            }
+            Op::SetLineHeight {
+                line,
+                line_height,
+                old_line_height,
+            } => {
+                vec![Op::SetLineHeight {
+                    line: *line,
+                    line_height: *old_line_height,
+                    old_line_height: *line_height,
                 }]
             }
         }
