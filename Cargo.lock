@@ -966,7 +966,7 @@ dependencies = [
 [[package]]
 name = "fount"
 version = "0.1.0"
-source = "git+https://github.com/airstrike/fount?rev=1264af9#1264af99fd64ead1876aef30d0c2f7d707a23a6d"
+source = "git+https://github.com/airstrike/fount#53efb999f55cbcbb7f4909a3cfdc854ce0c2dda9"
 dependencies = [
  "dirs",
  "iced_core",
