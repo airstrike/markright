@@ -5,13 +5,15 @@ mod pull;
 mod theme;
 mod toolbar;
 
+use std::path::PathBuf;
+
 use iced::clipboard;
 use iced::widget::operation::focus;
-use iced::widget::{column, container, mouse_area, row, space, text};
+use iced::widget::{column, container, mouse_area, row, rule, space, text};
 use iced::{Element, Fill, Font, Size, Subscription, Task, window};
 
 use markright::widget::rich_editor;
-use markright::widget::rich_editor::{Content, Format, cursor};
+use markright::widget::rich_editor::{Binding, Content, Format, KeyPress, cursor};
 
 use theme::Theme;
 
@@ -36,6 +38,11 @@ fn main() -> iced::Result {
         .run()
 }
 
+/// Default save path for the editor's document.
+fn document_path() -> PathBuf {
+    std::env::temp_dir().join("markright").join("scratch.mr")
+}
+
 struct App {
     content: Content<iced::Renderer>,
     toolbar: toolbar::State,
@@ -50,17 +57,25 @@ enum Message {
     Font(fonts::Message),
     CopyDebug(String),
     FocusEditor,
+    Save,
+    Saved(Result<PathBuf, String>),
 }
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let sample = include_str!("../sample.txt");
+        let content = match std::fs::read_to_string(document_path()) {
+            Ok(mr) => Content::parse(&mr).unwrap_or_else(|e| {
+                tracing::warn!("Failed to parse saved document: {e}");
+                Content::with_text(include_str!("../sample.txt"))
+            }),
+            Err(_) => Content::with_text(include_str!("../sample.txt")),
+        };
 
         let init_task = fonts::init().map(Message::Font);
 
         (
             Self {
-                content: Content::with_text(sample),
+                content,
                 toolbar: toolbar::State::default(),
                 fonts: fount::Fount::new(),
                 theme_choice: Theme::default(),
@@ -115,6 +130,10 @@ impl App {
                             ])
                         }
                     }
+                    toolbar::Action::Save => {
+                        let mr = self.content.serialize();
+                        Task::perform(save(mr), Message::Saved)
+                    }
                     toolbar::Action::ToggleTheme => {
                         self.theme_choice = self.theme_choice.toggle();
                         focus("editor")
@@ -166,6 +185,17 @@ impl App {
             },
             Message::CopyDebug(s) => clipboard::write(s).discard(),
             Message::FocusEditor => focus("editor"),
+            Message::Save => {
+                let mr = self.content.serialize();
+                Task::perform(save(mr), Message::Saved)
+            }
+            Message::Saved(result) => {
+                match &result {
+                    Ok(path) => tracing::info!("Saved to {}", path.display()),
+                    Err(e) => tracing::warn!("Save failed: {e}"),
+                }
+                focus("editor")
+            }
         }
     }
 
@@ -183,12 +213,13 @@ impl App {
         )
         .map(Message::Toolbar);
 
-        let status_bar = status_bar(&cursor);
+        let status_bar = container(status_bar(&cursor)).style(theme::container::toolbar);
 
         let editor = column![
             rich_editor(&self.content)
                 .id("editor")
                 .on_action(Message::Editor)
+                .key_binding(key_binding)
                 .style(theme::text_editor::borderless)
                 .padding(20)
                 .size(BASE_SIZE),
@@ -198,17 +229,51 @@ impl App {
         let body = if !self.toolbar.show_debug() {
             Element::from(container(editor).width(Fill).height(Fill))
         } else {
-            let debug_panel = container(debug::view(&self.content, Message::CopyDebug))
-                .style(theme::container::debug_panel)
-                .height(Fill);
+            let debug_panel = debug::view(&self.content, Message::CopyDebug);
 
-            row![container(editor).width(Fill).height(Fill), debug_panel,].into()
+            row![
+                container(editor).width(Fill).height(Fill),
+                rule::vertical(1).style(theme::rule::separator),
+                debug_panel,
+            ]
+            .into()
         };
 
-        let content = column![tools, body, status_bar].width(Fill).height(Fill);
+        let content = column![
+            tools,
+            rule::horizontal(1).style(theme::rule::separator),
+            body,
+            rule::horizontal(1).style(theme::rule::separator),
+            status_bar,
+        ]
+        .width(Fill)
+        .height(Fill);
 
         container(content).center_x(Fill).height(Fill).into()
     }
+}
+
+async fn save(mr: String) -> Result<PathBuf, String> {
+    let path = document_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, mr).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+fn key_binding(key_press: KeyPress) -> Option<Binding<Message>> {
+    let KeyPress { key, modifiers, .. } = &key_press;
+
+    // Cmd+S → Save
+    if let Some('s') = key.to_latin(key_press.physical_key) {
+        if modifiers.command() {
+            return Some(Binding::Custom(Message::Save));
+        }
+    }
+
+    // Fall through to default bindings
+    None
 }
 
 fn status_bar(cursor: &cursor::Context) -> Element<'static, Message> {

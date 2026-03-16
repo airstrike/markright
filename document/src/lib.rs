@@ -7,6 +7,7 @@
 //! future `crdt` subcrate can consume/produce the same operations.
 
 pub mod capture;
+pub mod format;
 pub mod history;
 pub mod op;
 pub mod paragraph;

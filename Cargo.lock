@@ -564,7 +564,7 @@ dependencies = [
 [[package]]
 name = "cosmic-text"
 version = "0.18.2"
-source = "git+https://github.com/airstrike/cosmic-text?branch=dev#bd9f4e56cbaa013b68e03514ad63a76843f64fd6"
+source = "git+https://github.com/airstrike/cosmic-text?branch=dev#8c79e0404019c9afd40429cda59e9d26a3153ceb"
 dependencies = [
  "bitflags 2.11.0",
  "fontdb",
@@ -1434,7 +1434,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "iced_core",
  "iced_debug",
@@ -1449,7 +1449,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "bitflags 2.11.0",
  "bytes",
@@ -1466,7 +1466,7 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -1476,7 +1476,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "futures",
  "iced_core",
@@ -1490,7 +1490,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1520,7 +1520,7 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -1529,7 +1529,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -1541,7 +1541,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "bytes",
  "iced_core",
@@ -1553,7 +1553,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -1569,7 +1569,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1588,7 +1588,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "iced_renderer",
  "log",
@@ -1601,7 +1601,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#2df75eb47aa759651307ca246ef99adbc399c7c1"
+source = "git+https://github.com/airstrike/iced?branch=markright#354cf7cebe7a3baf7059754aedb674d8c9a23216"
 dependencies = [
  "arboard",
  "iced_debug",
@@ -2643,7 +2643,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.45.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

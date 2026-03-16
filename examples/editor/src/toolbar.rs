@@ -21,8 +21,6 @@ const COLOR_SWATCHES: &[Option<Color>] = &[
     Some(color!(0x5c21a5)), // purple
 ];
 
-// ── State ────────────────────────────────────────────────────────────
-
 pub struct State {
     font_list: combo_box::State<String>,
     size_list: combo_box::State<String>,
@@ -90,10 +88,9 @@ impl State {
     }
 }
 
-// ── Message / Action ─────────────────────────────────────────────────
-
 #[derive(Debug, Clone)]
 pub enum Message {
+    Save,
     Format(Format),
     Undo,
     Redo,
@@ -124,12 +121,13 @@ pub enum Action {
     ToggleTheme,
     /// Toggle debug panel. `opening` = new state.
     ToggleDebug { opening: bool },
+    /// Save the document.
+    Save,
 }
-
-// ── update ───────────────────────────────────────────────────────────
 
 pub fn update(state: &mut State, message: Message) -> Action {
     match message {
+        Message::Save => Action::Save,
         Message::Format(f) => Action::Editor(f.into()),
         Message::Undo => Action::Editor(EditorAction::Undo),
         Message::Redo => Action::Editor(EditorAction::Redo),
@@ -207,13 +205,9 @@ pub fn update(state: &mut State, message: Message) -> Action {
     }
 }
 
-// ── subscription ─────────────────────────────────────────────────────
-
 pub fn subscription(state: &State) -> Subscription<Message> {
     pull::subscription(&state.pull).map(Message::Pull)
 }
-
-// ── view ─────────────────────────────────────────────────────────────
 
 /// Wrap content in a subtle group container with fixed height matching buttons.
 fn group<'a, M: 'a>(content: impl Into<Element<'a, M>>) -> container::Container<'a, M> {
@@ -238,6 +232,11 @@ pub fn view<'a>(
     can_undo: bool,
     can_redo: bool,
 ) -> Element<'a, Message> {
+    let save_btn = button(icon::save().size(16))
+        .padding([4, 8])
+        .style(theme::button::icon)
+        .on_press(Message::Save);
+
     let mut undo_btn = button(icon::undo().size(16))
         .padding([4, 8])
         .style(theme::button::icon);
@@ -331,6 +330,7 @@ pub fn view<'a>(
 
     let size = ctx.character.size.unwrap_or(crate::BASE_SIZE);
 
+    let file_group = group(row![save_btn]);
     let history_group = group(row![undo_btn, redo_btn].spacing(GROUP_SPACING));
     let format_group = group(row![bold_btn, italic_btn, underline_btn].spacing(GROUP_SPACING));
     let list_group =
@@ -442,6 +442,7 @@ pub fn view<'a>(
         .on_press(Message::ToggleDebug);
 
     let mut toolbar_row = row![
+        file_group,
         history_group,
         format_group,
         list_group,

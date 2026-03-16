@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 372ca37c232c764b21720a4a369db4993adff04e2ed952e79791982f1c275b6b
+// 1b34975bea23315170130a907546080144e97dead4a070cadcd3fa72f368ce74
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -20,6 +20,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("list_ordered", "\u{E1D1}"),
     ("moon", "\u{E11E}"),
     ("redo", "\u{E143}"),
+    ("save", "\u{E14D}"),
     ("sun", "\u{E178}"),
     ("text_align_center", "\u{E182}"),
     ("text_align_end", "\u{E183}"),
@@ -68,6 +69,10 @@ pub fn moon<'a>() -> Text<'a> {
 
 pub fn redo<'a>() -> Text<'a> {
     icon("\u{E143}")
+}
+
+pub fn save<'a>() -> Text<'a> {
+    icon("\u{E14D}")
 }
 
 pub fn sun<'a>() -> Text<'a> {

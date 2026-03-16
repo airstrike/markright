@@ -3,7 +3,7 @@
 
 use crate::core::text::editor::Position;
 use crate::core::text::rich_editor::{self, Editor as _, Style as RichStyle};
-use markright_document::{History, Op, paragraph};
+use markright_document::{History, Op, StyledLine as DocStyledLine, paragraph};
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -80,6 +80,83 @@ impl<R: rich_editor::Renderer> Content<R> {
             paragraph_styles: vec![paragraph::Style::default()],
             list_indent: list::DEFAULT_LIST_INDENT,
         }))
+    }
+
+    /// Parse `.mr` format markup into a [`Content`].
+    ///
+    /// This is the primary way to load a saved document.
+    pub fn parse(input: &str) -> Result<Self, markright_document::format::ParseError> {
+        let lines = markright_document::format::parse(input)?;
+        Ok(Self::from_styled_lines(&lines))
+    }
+
+    /// Create a [`Content`] from styled lines.
+    pub fn from_styled_lines(lines: &[DocStyledLine]) -> Self {
+        // Join all line texts with \n
+        let plain: String = lines
+            .iter()
+            .enumerate()
+            .fold(String::new(), |mut acc, (i, line)| {
+                if i > 0 {
+                    acc.push('\n');
+                }
+                acc.push_str(&line.text);
+                acc
+            });
+
+        let content = Self::with_text(&plain);
+        {
+            let mut internal = content.0.borrow_mut();
+
+            // Apply span styles per line
+            for (i, line) in lines.iter().enumerate() {
+                for run in &line.runs {
+                    internal
+                        .editor
+                        .set_span_style(i, run.range.clone(), &run.style);
+                }
+                // Apply paragraph style (alignment + character defaults)
+                if line.paragraph_style != rich_editor::ParagraphStyle::default() {
+                    internal
+                        .editor
+                        .set_paragraph_style(i, &line.paragraph_style);
+                }
+            }
+
+            // Set paragraph styles vector
+            internal.paragraph_styles = lines.iter().map(|l| l.paragraph.clone()).collect();
+
+            // Sync margins for list items
+            let margins: Vec<f32> = internal
+                .paragraph_styles
+                .iter()
+                .map(|s| list::compute_margin(s, internal.list_indent))
+                .collect();
+            for (i, margin) in margins.into_iter().enumerate() {
+                internal.editor.set_margin_left(i, margin);
+            }
+        }
+        content
+    }
+
+    /// Export all lines as styled lines for serialization.
+    pub fn styled_lines(&self) -> Vec<DocStyledLine> {
+        let internal = self.0.borrow();
+        let count = internal.editor.line_count();
+        (0..count)
+            .map(|i| {
+                let line = internal.editor.line(i);
+                let len = line.as_ref().map(|l| l.text.len()).unwrap_or(0);
+                let mut styled = markright_document::read_styled_line(&internal.editor, i, 0..len);
+                styled.paragraph = internal.paragraph_style(i).clone();
+                styled
+            })
+            .collect()
+    }
+
+    /// Serialize the content to `.mr` format.
+    pub fn serialize(&self) -> String {
+        markright_document::format::serialize(&self.styled_lines())
     }
 
     /// Perform an [`Action`] on the content.

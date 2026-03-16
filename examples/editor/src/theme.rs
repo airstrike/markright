@@ -180,20 +180,6 @@ pub mod container {
             ..Default::default()
         }
     }
-
-    /// Debug panel — subtle left border, slightly inset background.
-    pub fn debug_panel(theme: &Theme) -> container::Style {
-        let palette = theme.palette();
-        container::Style {
-            background: Some(palette.background.weak.color.into()),
-            border: Border {
-                color: palette.background.strong.color,
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..Default::default()
-        }
-    }
 }
 
 pub mod text {
@@ -265,6 +251,22 @@ pub mod combo_box {
             selected_text_color: palette.primary.base.text,
             selected_background: Background::Color(palette.primary.base.color),
             shadow: Shadow::default(),
+        }
+    }
+}
+
+pub mod rule {
+    use iced::Theme;
+    use iced::widget::rule;
+
+    /// Thin separator rule matching the toolbar border color.
+    pub fn separator(theme: &Theme) -> rule::Style {
+        let palette = theme.palette();
+        rule::Style {
+            color: palette.background.strong.color,
+            radius: 0.0.into(),
+            fill_mode: rule::FillMode::Full,
+            snap: true,
         }
     }
 }

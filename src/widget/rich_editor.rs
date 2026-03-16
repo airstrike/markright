@@ -34,8 +34,7 @@ use crate::core::keyboard;
 use crate::core::layout::{self, Layout};
 use crate::core::mouse;
 use crate::core::renderer;
-use crate::core::text::editor::Selection as EditorSelection;
-use crate::core::text::rich_editor::{self, Editor as RichEditorTrait, Style as RichStyle};
+use crate::core::text::rich_editor::{self, Editor as _, Style as RichStyle};
 use crate::core::text::{self, LineHeight, Text, Wrapping};
 use crate::core::time::{Duration, Instant};
 use crate::core::widget::operation as widget_operation;
@@ -318,8 +317,8 @@ where
         let translation = text_bounds.position() - Point::ORIGIN;
 
         let caret = match internal.editor.selection() {
-            EditorSelection::Caret(rect) => rect,
-            EditorSelection::Range(ranges) => ranges.first().cloned().unwrap_or_default(),
+            Selection::Caret(rect) => rect,
+            Selection::Range(ranges) => ranges.first().cloned().unwrap_or_default(),
         };
 
         let position = caret.position() + translation;
@@ -846,7 +845,7 @@ where
 
         // Draw selection ranges even when unfocused
         match internal.editor.selection() {
-            EditorSelection::Range(ranges) => {
+            Selection::Range(ranges) => {
                 for range in ranges
                     .into_iter()
                     .filter_map(|range| text_bounds.intersection(&(range + translation)))
@@ -860,7 +859,7 @@ where
                     );
                 }
             }
-            EditorSelection::Caret(caret) => {
+            Selection::Caret(caret) => {
                 // Only draw cursor caret when focused and visible
                 if let Some(focus) = state.focus.as_ref()
                     && focus.is_cursor_visible()
