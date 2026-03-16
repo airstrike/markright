@@ -109,7 +109,10 @@ impl App {
                         if self.fonts.system_families().contains(&name) {
                             focus("editor")
                         } else {
-                            Task::batch([fonts::load(name).map(Message::Font), focus("editor")])
+                            Task::batch([
+                                fonts::load(name, self.fonts.google_catalog()).map(Message::Font),
+                                focus("editor"),
+                            ])
                         }
                     }
                     toolbar::Action::ToggleTheme => {
