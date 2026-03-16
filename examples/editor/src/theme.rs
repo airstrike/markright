@@ -263,7 +263,7 @@ pub mod rule {
     pub fn separator(theme: &Theme) -> rule::Style {
         let palette = theme.palette();
         rule::Style {
-            color: palette.background.strong.color,
+            color: palette.background.weak.color,
             radius: 0.0.into(),
             fill_mode: rule::FillMode::Full,
             snap: true,

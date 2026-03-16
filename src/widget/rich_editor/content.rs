@@ -308,6 +308,16 @@ impl<R: rich_editor::Renderer> Content<R> {
         self.0.borrow().history.can_redo()
     }
 
+    /// Returns whether the document has been modified since the last save.
+    pub fn is_dirty(&self) -> bool {
+        self.0.borrow().history.is_dirty()
+    }
+
+    /// Mark the current state as saved (clean).
+    pub fn mark_saved(&self) {
+        self.0.borrow_mut().history.mark_saved();
+    }
+
     /// Sets the list indent (pixels per level). Default is 20.
     pub fn set_list_indent(&self, indent: f32) {
         self.0.borrow_mut().list_indent = indent;

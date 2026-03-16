@@ -229,13 +229,16 @@ pub fn view<'a>(
     state: &'a State,
     ctx: &cursor::Context,
     is_dark: bool,
+    is_dirty: bool,
     can_undo: bool,
     can_redo: bool,
 ) -> Element<'a, Message> {
-    let save_btn = button(icon::save().size(16))
+    let mut save_btn = button(icon::save().size(16))
         .padding([4, 8])
-        .style(theme::button::icon)
-        .on_press(Message::Save);
+        .style(theme::button::icon);
+    if is_dirty {
+        save_btn = save_btn.on_press(Message::Save);
+    }
 
     let mut undo_btn = button(icon::undo().size(16))
         .padding([4, 8])

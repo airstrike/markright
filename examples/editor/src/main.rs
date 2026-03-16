@@ -191,7 +191,10 @@ impl App {
             }
             Message::Saved(result) => {
                 match &result {
-                    Ok(path) => tracing::info!("Saved to {}", path.display()),
+                    Ok(path) => {
+                        self.content.mark_saved();
+                        tracing::info!("Saved to {}", path.display());
+                    }
                     Err(e) => tracing::warn!("Save failed: {e}"),
                 }
                 focus("editor")
@@ -201,6 +204,7 @@ impl App {
 
     fn view(&self) -> Element<'_, Message> {
         let cursor = self.content.cursor_context();
+        let is_dirty = self.content.is_dirty();
         let can_undo = self.content.can_undo();
         let can_redo = self.content.can_redo();
 
@@ -208,6 +212,7 @@ impl App {
             &self.toolbar,
             &cursor,
             self.theme_choice.is_dark(),
+            is_dirty,
             can_undo,
             can_redo,
         )

@@ -11,6 +11,9 @@ pub struct History {
     undo_stack: Vec<UndoGroup>,
     redo_stack: Vec<UndoGroup>,
     current_group: Option<Vec<Op>>,
+    /// Undo stack depth at the last save. `None` if the save point has been
+    /// invalidated (e.g. new edit after undoing past the save point).
+    saved_depth: Option<usize>,
 }
 
 impl History {
@@ -20,6 +23,7 @@ impl History {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             current_group: None,
+            saved_depth: Some(0),
         }
     }
 
@@ -61,6 +65,13 @@ impl History {
             return;
         }
         self.undo_stack.push(group);
+        // If the save point was ahead of us (on the redo branch), it's gone.
+        if self
+            .saved_depth
+            .is_some_and(|depth| depth > self.undo_stack.len().saturating_sub(1))
+        {
+            self.saved_depth = None;
+        }
         self.redo_stack.clear();
     }
 
@@ -112,6 +123,16 @@ impl History {
     /// Returns the number of redo groups.
     pub fn redo_len(&self) -> usize {
         self.redo_stack.len()
+    }
+
+    /// Mark the current state as the saved (clean) point.
+    pub fn mark_saved(&mut self) {
+        self.saved_depth = Some(self.undo_stack.len());
+    }
+
+    /// Returns whether the document has been modified since the last save.
+    pub fn is_dirty(&self) -> bool {
+        self.saved_depth != Some(self.undo_stack.len())
     }
 }
 
