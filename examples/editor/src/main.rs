@@ -155,12 +155,12 @@ impl App {
                     focus("editor")
                 }
                 fonts::Message::CatalogLoaded(Err(e)) => {
-                    eprintln!("Catalog loading failed: {e}");
+                    tracing::warn!("Catalog loading failed: {e}");
                     focus("editor")
                 }
                 fonts::Message::Loaded(_name, Ok(())) => focus("editor"),
                 fonts::Message::Loaded(name, Err(e)) => {
-                    eprintln!("Font loading failed ({name}): {e}");
+                    tracing::warn!("Font loading failed ({name}): {e}");
                     focus("editor")
                 }
             },

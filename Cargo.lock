@@ -734,6 +734,7 @@ dependencies = [
  "iced",
  "iced_lucide",
  "markright",
+ "tracing",
  "tracing-subscriber",
 ]
 
