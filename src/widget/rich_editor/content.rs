@@ -60,6 +60,9 @@ pub(crate) struct Internal<R: rich_editor::Renderer> {
     /// Per-line paragraph styles (spacing, indent, level, list).
     /// Kept in sync with the editor's line count.
     pub(crate) paragraph_styles: Vec<paragraph::Style>,
+    /// Per-line iced ParagraphStyle (alignment, line height, character defaults).
+    /// Authoritative copy — `editor.paragraph_style()` read-back is lossy.
+    pub(crate) iced_paragraph_styles: Vec<rich_editor::ParagraphStyle>,
     /// Pixels per indent level for list items.
     pub(crate) list_indent: f32,
 }
@@ -78,6 +81,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             history: History::new(),
             default_style: RichStyle::default(),
             paragraph_styles: vec![paragraph::Style::default()],
+            iced_paragraph_styles: vec![rich_editor::ParagraphStyle::default()],
             list_indent: list::DEFAULT_LIST_INDENT,
         }))
     }
@@ -108,23 +112,30 @@ impl<R: rich_editor::Renderer> Content<R> {
         {
             let mut internal = content.0.borrow_mut();
 
-            // Apply span styles per line
+            let default_style = rich_editor::Style::default();
+
             for (i, line) in lines.iter().enumerate() {
-                for run in &line.runs {
-                    internal
-                        .editor
-                        .set_span_style(i, run.range.clone(), &run.style);
-                }
-                // Apply paragraph style (alignment + character defaults)
+                // Apply paragraph style first so character defaults take effect
                 if line.paragraph_style != rich_editor::ParagraphStyle::default() {
                     internal
                         .editor
                         .set_paragraph_style(i, &line.paragraph_style);
                 }
+                // Then apply span overrides — skip default-styled runs so they
+                // inherit paragraph character defaults instead of overriding them
+                for run in &line.runs {
+                    if run.style != default_style {
+                        internal
+                            .editor
+                            .set_span_style(i, run.range.clone(), &run.style);
+                    }
+                }
             }
 
-            // Set paragraph styles vector
+            // Set paragraph styles vectors
             internal.paragraph_styles = lines.iter().map(|l| l.paragraph.clone()).collect();
+            internal.iced_paragraph_styles =
+                lines.iter().map(|l| l.paragraph_style.clone()).collect();
 
             // Sync margins for list items
             let margins: Vec<f32> = internal
@@ -469,7 +480,12 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 self.pending_style = None;
             }
             Edit::Format(ref fmt) => {
-                let ops = operation::format(&mut self.editor, fmt, &self.paragraph_styles);
+                let ops = operation::format(
+                    &mut self.editor,
+                    fmt,
+                    &self.paragraph_styles,
+                    &self.iced_paragraph_styles,
+                );
                 if !ops.is_empty() {
                     self.sync_paragraph_styles_for_ops(&ops);
                     self.record_group(ops);
@@ -596,6 +612,16 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 Op::SetParagraphStyle { line, style, .. } => {
                     self.set_paragraph_style(*line, style.clone());
                 }
+                Op::SetAlignment {
+                    line, alignment, ..
+                } => {
+                    self.sync_iced_paragraph_alignment(*line, Some(alignment.to_iced()));
+                }
+                Op::SetLineHeight {
+                    line, line_height, ..
+                } => {
+                    self.sync_iced_paragraph_line_height(*line, *line_height);
+                }
                 _ => {}
             }
         }
@@ -631,26 +657,27 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     /// Sync paragraph_styles after a SplitLine: clone the style at `line` and
-    /// insert it after, then sync margins and alignment for the new line.
+    /// insert it after, then sync margins and paragraph style for the new line.
     fn sync_paragraph_split(&mut self, line: usize) {
         let style = self.paragraph_style(line).clone();
-        let alignment = self.editor.paragraph_style(line).alignment;
+        let iced_ps = self
+            .iced_paragraph_styles
+            .get(line)
+            .cloned()
+            .unwrap_or_default();
         if line + 1 > self.paragraph_styles.len() {
             self.paragraph_styles
                 .resize(line + 1, paragraph::Style::default());
         }
+        if line + 1 > self.iced_paragraph_styles.len() {
+            self.iced_paragraph_styles
+                .resize(line + 1, rich_editor::ParagraphStyle::default());
+        }
         let margin = list::compute_margin(&style, self.list_indent);
         self.paragraph_styles.insert(line + 1, style);
+        self.iced_paragraph_styles.insert(line + 1, iced_ps.clone());
         self.editor.set_margin_left(line + 1, margin);
-        if let Some(alignment) = alignment {
-            self.editor.set_paragraph_style(
-                line + 1,
-                &rich_editor::ParagraphStyle {
-                    alignment: Some(alignment),
-                    ..Default::default()
-                },
-            );
-        }
+        self.editor.set_paragraph_style(line + 1, &iced_ps);
     }
 
     /// Sync paragraph_styles after a MergeLine: remove the style at `line + 1`
@@ -658,6 +685,9 @@ impl<R: rich_editor::Renderer> Internal<R> {
     fn sync_paragraph_merge(&mut self, line: usize) {
         if line + 1 < self.paragraph_styles.len() {
             self.paragraph_styles.remove(line + 1);
+        }
+        if line + 1 < self.iced_paragraph_styles.len() {
+            self.iced_paragraph_styles.remove(line + 1);
         }
         let margin = list::compute_margin(self.paragraph_style(line), self.list_indent);
         self.editor.set_margin_left(line, margin);
@@ -671,6 +701,11 @@ impl<R: rich_editor::Renderer> Internal<R> {
             if remove_start < remove_end {
                 self.paragraph_styles.drain(remove_start..remove_end);
             }
+            let remove_start = (start_line + 1).min(self.iced_paragraph_styles.len());
+            let remove_end = (end_line + 1).min(self.iced_paragraph_styles.len());
+            if remove_start < remove_end {
+                self.iced_paragraph_styles.drain(remove_start..remove_end);
+            }
         }
     }
 
@@ -681,7 +716,37 @@ impl<R: rich_editor::Renderer> Internal<R> {
             let new_styles = vec![paragraph::Style::default(); line_count - 1];
             self.paragraph_styles
                 .splice(insert_at..insert_at, new_styles);
+            let insert_at = (start_line + 1).min(self.iced_paragraph_styles.len());
+            let new_iced = vec![rich_editor::ParagraphStyle::default(); line_count - 1];
+            self.iced_paragraph_styles
+                .splice(insert_at..insert_at, new_iced);
         }
+    }
+
+    /// Update alignment in iced_paragraph_styles for a given line.
+    fn sync_iced_paragraph_alignment(
+        &mut self,
+        line: usize,
+        alignment: Option<iced_core::text::Alignment>,
+    ) {
+        if line >= self.iced_paragraph_styles.len() {
+            self.iced_paragraph_styles
+                .resize(line + 1, rich_editor::ParagraphStyle::default());
+        }
+        self.iced_paragraph_styles[line].alignment = alignment;
+    }
+
+    /// Update line_height in iced_paragraph_styles for a given line.
+    fn sync_iced_paragraph_line_height(
+        &mut self,
+        line: usize,
+        line_height: Option<iced_core::text::LineHeight>,
+    ) {
+        if line >= self.iced_paragraph_styles.len() {
+            self.iced_paragraph_styles
+                .resize(line + 1, rich_editor::ParagraphStyle::default());
+        }
+        self.iced_paragraph_styles[line].line_height = line_height;
     }
 
     /// Backspace that is list-aware: at column 0 with no selection, if the
@@ -736,7 +801,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
         for op in group.into_iter().rev() {
             for inv_op in op.inverse() {
                 let captured = operation::capture_op_state(&self.editor, &inv_op);
-                operation::apply_op(&mut self.editor, &captured);
+                operation::apply_op(&mut self.editor, &captured, &self.iced_paragraph_styles);
                 self.sync_paragraph_styles_for_ops(std::slice::from_ref(&captured));
                 redo_ops.push(captured);
             }
@@ -755,7 +820,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
         for op in group.into_iter().rev() {
             for inv_op in op.inverse() {
                 let captured = operation::capture_op_state(&self.editor, &inv_op);
-                operation::apply_op(&mut self.editor, &captured);
+                operation::apply_op(&mut self.editor, &captured, &self.iced_paragraph_styles);
                 self.sync_paragraph_styles_for_ops(std::slice::from_ref(&captured));
                 undo_ops.push(captured);
             }

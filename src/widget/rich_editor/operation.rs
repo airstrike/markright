@@ -33,7 +33,9 @@ pub fn ordered_positions<'a>(a: &'a Position, b: &'a Position) -> (&'a Position,
 /// Replay an operation on the editor.
 ///
 /// Does NOT return an `Op` — this is intentional; replay is not recorded.
-pub fn apply_op<E: Editor>(editor: &mut E, op: &Op) {
+/// `iced_paragraph_styles` provides the authoritative paragraph styles since
+/// `editor.paragraph_style()` read-back is lossy for character defaults.
+pub fn apply_op<E: Editor>(editor: &mut E, op: &Op, iced_paragraph_styles: &[ParagraphStyle]) {
     match op {
         Op::InsertText { line, col, content } => {
             editor.move_to(Cursor {
@@ -110,13 +112,12 @@ pub fn apply_op<E: Editor>(editor: &mut E, op: &Op) {
         Op::SetAlignment {
             line, alignment, ..
         } => {
-            editor.set_paragraph_style(
-                *line,
-                &ParagraphStyle {
-                    alignment: Some(alignment.to_iced()),
-                    ..Default::default()
-                },
-            );
+            let mut ps = iced_paragraph_styles
+                .get(*line)
+                .cloned()
+                .unwrap_or_default();
+            ps.alignment = Some(alignment.to_iced());
+            editor.set_paragraph_style(*line, &ps);
         }
         Op::DeleteRange {
             start_line,
@@ -179,13 +180,12 @@ pub fn apply_op<E: Editor>(editor: &mut E, op: &Op) {
         Op::SetLineHeight {
             line, line_height, ..
         } => {
-            editor.set_paragraph_style(
-                *line,
-                &ParagraphStyle {
-                    line_height: *line_height,
-                    ..Default::default()
-                },
-            );
+            let mut ps = iced_paragraph_styles
+                .get(*line)
+                .cloned()
+                .unwrap_or_default();
+            ps.line_height = *line_height;
+            editor.set_paragraph_style(*line, &ps);
         }
     }
 }

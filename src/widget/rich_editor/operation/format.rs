@@ -21,6 +21,7 @@ pub fn format<E: Editor>(
     editor: &mut E,
     fmt: &Format,
     paragraph_styles: &[paragraph::Style],
+    iced_paragraph_styles: &[ParagraphStyle],
 ) -> Vec<Op> {
     let cursor = editor.cursor();
     let has_selection = cursor.selection.is_some();
@@ -53,7 +54,7 @@ pub fn format<E: Editor>(
                 .unwrap_or(false);
             set_attr_in_selection(editor, SpanAttr::Underline(Some(!is_underline)))
         }
-        Format::SetAlignment(alignment) => set_alignment(editor, *alignment),
+        Format::SetAlignment(alignment) => set_alignment(editor, *alignment, iced_paragraph_styles),
         Format::SetFont(font) => {
             if !has_selection {
                 return vec![];
@@ -148,7 +149,7 @@ pub fn format<E: Editor>(
                 style.level -= 1;
             }
         }),
-        Format::SetLineHeight(lh) => set_line_height(editor, *lh),
+        Format::SetLineHeight(lh) => set_line_height(editor, *lh, iced_paragraph_styles),
         Format::SetLineSpacing(spacing) => {
             let spacing = *spacing;
             set_paragraph_field(editor, paragraph_styles, |style| {
@@ -239,7 +240,11 @@ fn set_attr_on_line<E: Editor>(
 }
 
 /// Set line height on lines covered by the current cursor/selection.
-fn set_line_height<E: Editor>(editor: &mut E, line_height: LineHeight) -> Vec<Op> {
+fn set_line_height<E: Editor>(
+    editor: &mut E,
+    line_height: LineHeight,
+    iced_paragraph_styles: &[ParagraphStyle],
+) -> Vec<Op> {
     let cursor = editor.cursor();
     let lines = if let Some(ref sel) = cursor.selection {
         let (start, end) = ordered_positions(&cursor.position, sel);
@@ -249,14 +254,11 @@ fn set_line_height<E: Editor>(editor: &mut E, line_height: LineHeight) -> Vec<Op
     };
     lines
         .map(|line| {
-            let old_line_height = editor.paragraph_style(line).line_height;
-            editor.set_paragraph_style(
-                line,
-                &ParagraphStyle {
-                    line_height: Some(line_height),
-                    ..Default::default()
-                },
-            );
+            let current = iced_paragraph_styles.get(line).cloned().unwrap_or_default();
+            let old_line_height = current.line_height;
+            let mut ps = current;
+            ps.line_height = Some(line_height);
+            editor.set_paragraph_style(line, &ps);
             Op::SetLineHeight {
                 line,
                 line_height: Some(line_height),
@@ -267,7 +269,11 @@ fn set_line_height<E: Editor>(editor: &mut E, line_height: LineHeight) -> Vec<Op
 }
 
 /// Set alignment on lines covered by the current cursor/selection.
-fn set_alignment<E: Editor>(editor: &mut E, alignment: Alignment) -> Vec<Op> {
+fn set_alignment<E: Editor>(
+    editor: &mut E,
+    alignment: Alignment,
+    iced_paragraph_styles: &[ParagraphStyle],
+) -> Vec<Op> {
     let cursor = editor.cursor();
     let lines = if let Some(ref sel) = cursor.selection {
         let (start, end) = ordered_positions(&cursor.position, sel);
@@ -277,14 +283,11 @@ fn set_alignment<E: Editor>(editor: &mut E, alignment: Alignment) -> Vec<Op> {
     };
     lines
         .map(|line| {
-            let old_alignment = Alignment::from_iced(editor.paragraph_style(line).alignment);
-            editor.set_paragraph_style(
-                line,
-                &ParagraphStyle {
-                    alignment: Some(alignment.to_iced()),
-                    ..Default::default()
-                },
-            );
+            let current = iced_paragraph_styles.get(line).cloned().unwrap_or_default();
+            let old_alignment = Alignment::from_iced(current.alignment);
+            let mut ps = current;
+            ps.alignment = Some(alignment.to_iced());
+            editor.set_paragraph_style(line, &ps);
             Op::SetAlignment {
                 line,
                 alignment,

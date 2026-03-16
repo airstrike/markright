@@ -1,6 +1,6 @@
 //! `.mr` serialization format for rich text documents.
 //!
-//! Styled text uses `{attrs text}` syntax. Paragraph properties use `>|key=val|`.
+//! Styled text uses `{{attrs} text}` syntax. Paragraph properties use `>|key=val|`.
 //! Unstyled text is identical to plain `.txt`.
 
 use std::fmt::Write;
@@ -227,9 +227,9 @@ fn serialize_line_content(out: &mut String, line: &StyledLine, escape_prop_prefi
         if attrs.is_empty() {
             escape_text(out, run_text);
         } else {
-            out.push('{');
+            out.push_str("{{");
             out.push_str(&attrs);
-            out.push(' ');
+            out.push_str("} ");
             escape_text(out, run_text);
             out.push('}');
         }
@@ -494,7 +494,7 @@ fn parse_line_content(input: &str) -> Result<(String, Vec<StyleRun>), ParseError
     parse_inline(input)
 }
 
-/// Core inline parser. Processes `{attrs text}` spans with nesting.
+/// Core inline parser. Processes `{{attrs} text}` spans with nesting.
 fn parse_inline(input: &str) -> Result<(String, Vec<StyleRun>), ParseError> {
     let mut text = String::new();
     let mut runs: Vec<StyleRun> = Vec::new();
@@ -512,11 +512,15 @@ fn parse_inline(input: &str) -> Result<(String, Vec<StyleRun>), ParseError> {
                     i += 1;
                 }
             }
-            '{' => {
-                // Try to parse attributes
-                i += 1;
-                let (style, consumed) = parse_span_attrs(&chars, i)?;
-                i += consumed;
+            '{' if i + 1 < chars.len() && chars[i + 1] == '{' => {
+                // Styled span: {{attrs} text}
+                i += 2; // skip {{
+                let (style, consumed) = parse_bracketed_attrs(&chars, i)?;
+                i += consumed; // now past the closing }
+                // Skip optional space after attr block
+                if i < chars.len() && chars[i] == ' ' {
+                    i += 1;
+                }
 
                 // The current style is the combination of parent styles + this span
                 let parent_style = style_stack
@@ -526,20 +530,20 @@ fn parse_inline(input: &str) -> Result<(String, Vec<StyleRun>), ParseError> {
                 let merged = merge_styles(&parent_style, &style);
                 style_stack.push((merged, text.len()));
             }
-            '}' => {
-                i += 1;
-                if let Some((style, start)) = style_stack.pop() {
-                    let end = text.len();
-                    if end > start {
-                        runs.push(StyleRun {
-                            range: start..end,
-                            style,
-                        });
-                    }
+            '}' if !style_stack.is_empty() => {
+                // Close the innermost styled span
+                let (style, start) = style_stack.pop().unwrap();
+                let end = text.len();
+                if end > start {
+                    runs.push(StyleRun {
+                        range: start..end,
+                        style,
+                    });
                 }
-                // If stack is empty, stray } is ignored
+                i += 1;
             }
             _ => {
+                // All other characters (including bare { and }) are literal text
                 text.push(chars[i]);
                 i += 1;
             }
@@ -552,15 +556,11 @@ fn parse_inline(input: &str) -> Result<(String, Vec<StyleRun>), ParseError> {
     Ok((text, runs))
 }
 
-/// Parse attribute tokens after `{`. Returns (style, chars consumed including trailing space).
-///
-/// Greedily reads space-separated tokens that look like attributes (`b`, `i`, `f=Name`, etc.).
-/// The first token that doesn't parse as an attribute marks the start of text content.
-/// The trailing space between the last attribute and the text content is consumed.
-fn parse_span_attrs(chars: &[char], start: usize) -> Result<(Style, usize), ParseError> {
+/// Parse attributes inside `{...}` (the inner braces of `{{attrs} text}`).
+/// Returns (style, chars consumed including the closing `}`).
+fn parse_bracketed_attrs(chars: &[char], start: usize) -> Result<(Style, usize), ParseError> {
     let mut style = Style::default();
     let mut i = start;
-    let mut found_any = false;
 
     loop {
         // Skip spaces
@@ -568,8 +568,15 @@ fn parse_span_attrs(chars: &[char], start: usize) -> Result<(Style, usize), Pars
             i += 1;
         }
 
-        if i >= chars.len() || chars[i] == '}' {
-            // End of span with no text content
+        if i >= chars.len() {
+            return Err(ParseError {
+                message: "unclosed attribute block".into(),
+                offset: start,
+            });
+        }
+
+        if chars[i] == '}' {
+            i += 1; // consume closing }
             return Ok((style, i - start));
         }
 
@@ -580,19 +587,13 @@ fn parse_span_attrs(chars: &[char], start: usize) -> Result<(Style, usize), Pars
         }
         let token: String = chars[token_start..i].iter().collect();
 
-        if let Some(parsed) = try_parse_attr(&token) {
-            apply_attr(&mut style, parsed);
-            found_any = true;
+        if let Some(attr) = try_parse_attr(&token) {
+            apply_attr(&mut style, attr);
         } else {
-            // Not an attribute — rewind to the start of the non-attr token.
-            // If we found attrs before this, consume the space before the text.
-            if found_any {
-                // token_start points to the text; we want to consume exactly
-                // up to it (the space before it was the delimiter)
-                return Ok((style, token_start - start));
-            }
-            // No attrs at all — everything after { is text (rewind past spaces too)
-            return Ok((style, 0));
+            return Err(ParseError {
+                message: format!("unknown attribute in span: {token}"),
+                offset: token_start,
+            });
         }
     }
 }
@@ -875,13 +876,13 @@ mod tests {
         assert_round_trip(&lines);
 
         let s = serialize(&lines);
-        assert_eq!(s, "{f=Georgia sz=20 c=ff0000 sp=2 styled}");
+        assert_eq!(s, "{{f=Georgia sz=20 c=ff0000 sp=2} styled}");
     }
 
     #[test]
     fn nested_styles() {
         // "bold bold-italic bold" — uses nesting
-        let input = "{b bold {i bold-italic} bold}";
+        let input = "{{b} bold {{i} bold-italic} bold}";
         let (text, runs) = parse_inline(input).unwrap();
         assert_eq!(text, "bold bold-italic bold");
 
@@ -1173,7 +1174,7 @@ mod tests {
 
     #[test]
     fn parse_styled_span() {
-        let input = "before {b bold} after";
+        let input = "before {{b} bold} after";
         let lines = parse(input).unwrap();
         assert_eq!(lines[0].text, "before bold after");
         // Find the bold run
@@ -1220,7 +1221,7 @@ mod tests {
         }];
 
         let s = serialize(&lines);
-        assert_eq!(s, "{f=IBM_Plex_Sans text}");
+        assert_eq!(s, "{{f=IBM_Plex_Sans} text}");
 
         // Round-trip: font name should match
         let parsed = parse(&s).unwrap();
@@ -1285,5 +1286,82 @@ mod tests {
         let s = serialize(&lines);
         assert!(s.contains("ls=1.5x"));
         assert!(s.contains("ls=18px"));
+    }
+
+    #[test]
+    fn bare_braces_are_literal() {
+        // A single { or } not part of {{attrs} text} should be literal text
+        let input = "hello { world } end";
+        let (text, _runs) = parse_inline(input).unwrap();
+        assert_eq!(text, "hello { world } end");
+    }
+
+    #[test]
+    fn ambiguous_attr_like_text_preserved() {
+        // The motivating case: bold text "i foo" must not become italic on round-trip.
+        // With {{attrs} text}, the serializer emits {{b} i foo} — the "i" is clearly
+        // text, not an attribute, because it's outside the inner {}.
+        let lines = vec![StyledLine {
+            text: "i foo".to_string(),
+            runs: vec![StyleRun {
+                range: 0..5,
+                style: Style {
+                    bold: Some(true),
+                    ..Style::default()
+                },
+            }],
+            paragraph_style: ParagraphStyle::default(),
+            paragraph: paragraph::Style::default(),
+        }];
+
+        let s = serialize(&lines);
+        assert_eq!(s, "{{b} i foo}");
+
+        // Round-trip must preserve bold-only (no italic)
+        let parsed = parse(&s).unwrap();
+        assert_eq!(parsed[0].text, "i foo");
+        let bold_run = &parsed[0].runs[0];
+        assert_eq!(bold_run.style.bold, Some(true));
+        assert_eq!(bold_run.style.italic, None);
+    }
+
+    #[test]
+    fn attr_like_tokens_in_text_round_trip() {
+        // Text containing things that look like attrs: "b", "sz=20", "f=Arial"
+        let lines = vec![default_line("set b to true and sz=20 for f=Arial")];
+        assert_round_trip(&lines);
+
+        // No styling should be applied — these are plain text
+        let s = serialize(&lines);
+        assert_eq!(s, "set b to true and sz=20 for f=Arial");
+    }
+
+    #[test]
+    fn unknown_attr_in_span_is_error() {
+        // Inside {{...}}, unknown tokens are errors (not silently treated as text)
+        let input = "{{b bogus} text}";
+        let result = parse_inline(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_attr_block() {
+        // {{} text} — empty attr block, text is unstyled
+        let input = "before {{} middle} after";
+        let (text, _runs) = parse_inline(input).unwrap();
+        assert_eq!(text, "before middle after");
+    }
+
+    #[test]
+    fn multiple_attrs_in_block() {
+        let input = "{{b i u sz=24 c=ff0000} styled}";
+        let (text, runs) = parse_inline(input).unwrap();
+        assert_eq!(text, "styled");
+        let run = runs.iter().find(|r| r.range == (0..6)).unwrap();
+        assert_eq!(run.style.bold, Some(true));
+        assert_eq!(run.style.italic, Some(true));
+        assert_eq!(run.style.underline, Some(true));
+        assert_eq!(run.style.size, Some(24.0));
+        assert!(run.style.color.is_some());
     }
 }

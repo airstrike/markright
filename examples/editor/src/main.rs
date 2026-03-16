@@ -63,12 +63,18 @@ enum Message {
 
 impl App {
     fn new() -> (Self, Task<Message>) {
+        let fallback = || {
+            Content::parse(include_str!("../sample.mr")).unwrap_or_else(|e| {
+                tracing::warn!("Failed to parse sample: {e}");
+                Content::with_text("")
+            })
+        };
         let content = match std::fs::read_to_string(document_path()) {
             Ok(mr) => Content::parse(&mr).unwrap_or_else(|e| {
                 tracing::warn!("Failed to parse saved document: {e}");
-                Content::with_text(include_str!("../sample.txt"))
+                fallback()
             }),
-            Err(_) => Content::with_text(include_str!("../sample.txt")),
+            Err(_) => fallback(),
         };
 
         let init_task = fonts::init().map(Message::Font);

@@ -3,7 +3,7 @@
 
 use markright::widget::rich_editor::{Action, Alignment, Content, Edit, Format, Motion};
 
-const SAMPLE: &str = include_str!("../examples/editor/sample.txt");
+const SAMPLE: &str = include_str!("../examples/editor/sample.mr");
 
 type C = Content<iced::Renderer>;
 
