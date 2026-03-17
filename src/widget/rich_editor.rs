@@ -10,21 +10,7 @@
 //! - No external highlighter -- formatting lives in AttrsList, always up-to-date
 //! - Built-in key bindings for Cmd+B/I/U formatting shortcuts
 //! - Emits our [`Action`] type instead of iced's `text_editor::Action`
-
-mod action;
-mod binding;
-mod content;
-pub mod cursor;
-pub mod list;
-pub mod operation;
-pub mod style;
-
-pub use action::{
-    Action, Alignment, Cursor, Edit, Format, Line, LineEnding, Motion, Position, Selection,
-};
-pub use binding::{Binding, KeyPress};
-pub use content::{Content, StyleRun, StyledLine};
-pub use style::{Catalog, Style, StyleFn};
+use std::sync::Arc;
 
 use crate::core::Font;
 use crate::core::alignment;
@@ -34,7 +20,7 @@ use crate::core::keyboard;
 use crate::core::layout::{self, Layout};
 use crate::core::mouse;
 use crate::core::renderer;
-use crate::core::text::rich_editor::{self, Editor as _, Style as RichStyle};
+use crate::core::text::rich_editor::{self, Editor as _};
 use crate::core::text::{self, LineHeight, Text, Wrapping};
 use crate::core::time::{Duration, Instant};
 use crate::core::widget::operation as widget_operation;
@@ -44,10 +30,22 @@ use crate::core::{
     Element, Event, InputMethod, Length, Padding, Pixels, Point, Rectangle, Shell, Size, Vector,
 };
 
-use std::sync::Arc;
+mod action;
+mod binding;
+mod content;
+pub mod cursor;
+pub mod list;
+pub mod operation;
+pub mod style;
 
-use action::Edit as ActionEdit;
 use binding::Ime;
+
+pub use action::{
+    Action, Alignment, Cursor, Edit, Format, Line, LineEnding, Motion, Position, Selection,
+};
+pub use binding::{Binding, KeyPress};
+pub use content::{Content, StyleRun, StyledLine};
+pub use style::{Catalog, Style, StyleFn};
 
 /// Creates a new [`RichEditor`] with the given [`Content`].
 pub fn rich_editor<'a, Message, Theme, Renderer>(
@@ -80,7 +78,7 @@ where
     letter_spacing: crate::core::Em,
     font_features: Vec<crate::core::font::Feature>,
     font_variations: Vec<crate::core::font::Variation>,
-    default_style: RichStyle,
+    default_style: rich_editor::Style,
     class: Theme::Class<'a>,
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
     on_blur: Option<Message>,
@@ -114,7 +112,7 @@ where
             letter_spacing: crate::core::Em::default(),
             font_features: Vec::new(),
             font_variations: Vec::new(),
-            default_style: RichStyle::default(),
+            default_style: rich_editor::Style::default(),
             class: <Theme as Catalog>::default(),
             on_action: None,
             on_blur: None,
@@ -522,9 +520,7 @@ where
                     && let Some(focus) = &mut state.focus
                     && focus.is_window_focused
                 {
-                    shell.publish(on_action(Action::Edit(ActionEdit::Paste(Arc::new(
-                        text.clone(),
-                    )))));
+                    shell.publish(on_action(Action::Edit(Edit::Paste(Arc::new(text.clone())))));
                 }
             }
             _ => {}
@@ -593,7 +589,7 @@ where
                         shell.request_redraw();
                     }
                     Ime::Commit(text) => {
-                        shell.publish(on_action(Action::Edit(ActionEdit::Paste(Arc::new(text)))));
+                        shell.publish(on_action(Action::Edit(Edit::Paste(Arc::new(text)))));
                     }
                 },
                 Update::Binding(binding) => {
@@ -627,7 +623,7 @@ where
                             Binding::Cut => {
                                 if let Some(selection) = content.selection() {
                                     shell.write_clipboard(clipboard::Content::Text(selection));
-                                    shell.publish(on_action(Action::Edit(ActionEdit::Delete)));
+                                    shell.publish(on_action(Action::Edit(Edit::Delete)));
                                 }
                             }
                             Binding::Paste => {
@@ -649,19 +645,19 @@ where
                                 publish(Action::SelectAll);
                             }
                             Binding::Insert(c) => {
-                                publish(Action::Edit(ActionEdit::Insert(c)));
+                                publish(Action::Edit(Edit::Insert(c)));
                             }
                             Binding::Enter => {
-                                publish(Action::Edit(ActionEdit::Enter));
+                                publish(Action::Edit(Edit::Enter));
                             }
                             Binding::Backspace => {
-                                publish(Action::Edit(ActionEdit::Backspace));
+                                publish(Action::Edit(Edit::Backspace));
                             }
                             Binding::Delete => {
-                                publish(Action::Edit(ActionEdit::Delete));
+                                publish(Action::Edit(Edit::Delete));
                             }
                             Binding::Format(fmt) => {
-                                publish(Action::Edit(ActionEdit::Format(fmt)));
+                                publish(Action::Edit(Edit::Format(fmt)));
                             }
                             Binding::Undo => {
                                 publish(Action::Undo);

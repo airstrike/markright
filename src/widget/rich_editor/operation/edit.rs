@@ -1,14 +1,14 @@
 //! Text editing operations — insert, delete, enter, backspace, paste.
 
-use crate::core::text::editor as iced_editor;
-use crate::core::text::rich_editor::{Editor, Style as RichStyle};
+use crate::core::text::editor;
+use crate::core::text::rich_editor::{self, Editor};
 use markright_document::{self as document, Op, StyleRun, StyledText};
 use std::sync::Arc;
 
 use super::{Position, iced_edit, ordered_positions};
 
 /// Insert a single character with a resolved style.
-pub fn insert<E: Editor>(editor: &mut E, c: char, style: RichStyle) -> Op {
+pub fn insert<E: Editor>(editor: &mut E, c: char, style: rich_editor::Style) -> Op {
     let cursor = editor.cursor();
     let content = StyledText {
         text: c.to_string(),
@@ -29,7 +29,7 @@ pub fn insert<E: Editor>(editor: &mut E, c: char, style: RichStyle) -> Op {
 ///
 /// Single-line paste produces an op. Multi-line paste applies directly (not yet
 /// undoable) and returns an empty vec.
-pub fn paste<E: Editor>(editor: &mut E, text: Arc<String>, style: RichStyle) -> Vec<Op> {
+pub fn paste<E: Editor>(editor: &mut E, text: Arc<String>, style: rich_editor::Style) -> Vec<Op> {
     let cursor = editor.cursor();
     let line = cursor.position.line;
     let col = cursor.position.column;
@@ -44,7 +44,7 @@ pub fn paste<E: Editor>(editor: &mut E, text: Arc<String>, style: RichStyle) -> 
         };
         vec![insert_text(editor, line, col, content)]
     } else {
-        editor.perform(iced_edit(iced_editor::Edit::Paste(text)));
+        editor.perform(iced_edit(editor::Edit::Paste(text)));
         vec![]
     }
 }
@@ -100,9 +100,9 @@ pub fn delete<E: Editor>(editor: &mut E) -> Vec<Op> {
 fn insert_text<E: Editor>(editor: &mut E, line: usize, col: usize, content: StyledText) -> Op {
     if content.text.len() == 1 {
         let c = content.text.chars().next().expect("non-empty text");
-        editor.perform(iced_edit(iced_editor::Edit::Insert(c)));
+        editor.perform(iced_edit(editor::Edit::Insert(c)));
     } else {
-        editor.perform(iced_edit(iced_editor::Edit::Paste(Arc::new(
+        editor.perform(iced_edit(editor::Edit::Paste(Arc::new(
             content.text.clone(),
         ))));
     }
@@ -118,7 +118,7 @@ fn insert_text<E: Editor>(editor: &mut E, line: usize, col: usize, content: Styl
 
 /// Split a line at `(line, col)` — the Enter key.
 fn split_line<E: Editor>(editor: &mut E, line: usize, col: usize) -> Op {
-    editor.perform(iced_edit(iced_editor::Edit::Enter));
+    editor.perform(iced_edit(editor::Edit::Enter));
     Op::SplitLine { line, col }
 }
 
@@ -138,7 +138,7 @@ fn delete_char_before<E: Editor>(editor: &mut E, line: usize, col: usize) -> Op 
     let deleted_text = &line_text[char_start..col];
     let styled = document::read_styled_text(editor, line, char_start..col, deleted_text);
 
-    editor.perform(iced_edit(iced_editor::Edit::Backspace));
+    editor.perform(iced_edit(editor::Edit::Backspace));
 
     Op::DeleteText {
         line,
@@ -163,7 +163,7 @@ fn delete_char_at<E: Editor>(editor: &mut E, line: usize, col: usize) -> Op {
     let deleted_text = &line_text[col..char_end];
     let styled = document::read_styled_text(editor, line, col..char_end, deleted_text);
 
-    editor.perform(iced_edit(iced_editor::Edit::Delete));
+    editor.perform(iced_edit(editor::Edit::Delete));
 
     Op::DeleteText {
         line,
@@ -176,7 +176,7 @@ fn delete_char_at<E: Editor>(editor: &mut E, line: usize, col: usize) -> Op {
 fn merge_line_backward<E: Editor>(editor: &mut E, line: usize) -> Op {
     let prev_line_len = editor.line(line - 1).map(|l| l.text.len()).unwrap_or(0);
 
-    editor.perform(iced_edit(iced_editor::Edit::Backspace));
+    editor.perform(iced_edit(editor::Edit::Backspace));
 
     Op::MergeLine {
         line: line - 1,
@@ -186,7 +186,7 @@ fn merge_line_backward<E: Editor>(editor: &mut E, line: usize) -> Op {
 
 /// Delete at the end of `line` — merges the next line in.
 fn merge_line_forward<E: Editor>(editor: &mut E, line: usize, col: usize) -> Op {
-    editor.perform(iced_edit(iced_editor::Edit::Delete));
+    editor.perform(iced_edit(editor::Edit::Delete));
     Op::MergeLine { line, col }
 }
 
@@ -217,7 +217,7 @@ fn delete_selection<E: Editor>(editor: &mut E, start: &Position, end: &Position)
         ));
     }
 
-    editor.perform(iced_edit(iced_editor::Edit::Delete));
+    editor.perform(iced_edit(editor::Edit::Delete));
 
     vec![Op::DeleteRange {
         start_line: start.line,
