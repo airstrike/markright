@@ -146,7 +146,7 @@ impl Default for History {
 mod tests {
     use super::*;
     use crate::op::{StyleRun, StyledText};
-    use iced_core::text::rich_editor::Style;
+    use iced_core::text::rich_editor::span;
 
     fn make_insert(line: usize, col: usize, text: &str) -> Op {
         Op::InsertText {
@@ -156,7 +156,7 @@ mod tests {
                 text: text.to_string(),
                 runs: vec![StyleRun {
                     range: 0..text.len(),
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
             },
         }

@@ -1,10 +1,8 @@
 use std::ops::Range;
 
 use iced_core::text::LineHeight;
-use iced_core::text::rich_editor::{ParagraphStyle, Style};
+use iced_core::text::rich_editor::{paragraph, span};
 use iced_core::{Color, Font};
-
-use crate::paragraph;
 
 /// Text alignment for paragraphs.
 ///
@@ -58,8 +56,8 @@ pub enum SpanAttr {
 }
 
 impl SpanAttr {
-    /// Extract this attribute's value from a full `Style`.
-    pub fn from_style(style: &Style, template: &SpanAttr) -> SpanAttr {
+    /// Extract this attribute's value from a full `span::Style`.
+    pub fn from_style(style: &span::Style, template: &SpanAttr) -> SpanAttr {
         match template {
             SpanAttr::Bold(_) => SpanAttr::Bold(style.bold),
             SpanAttr::Italic(_) => SpanAttr::Italic(style.italic),
@@ -72,8 +70,8 @@ impl SpanAttr {
         }
     }
 
-    /// Apply this attribute onto a full `Style`, returning the modified style.
-    pub fn apply_to(&self, style: &Style) -> Style {
+    /// Apply this attribute onto a full `span::Style`, returning the modified style.
+    pub fn apply_to(&self, style: &span::Style) -> span::Style {
         let mut result = style.clone();
         match self {
             SpanAttr::Bold(v) => result.bold = *v,
@@ -93,7 +91,7 @@ impl SpanAttr {
 #[derive(Debug, Clone)]
 pub struct StyleRun {
     pub range: Range<usize>,
-    pub style: Style,
+    pub style: span::Style,
 }
 
 /// Text with associated style runs.
@@ -111,10 +109,8 @@ pub struct StyledText {
 pub struct StyledLine {
     pub text: String,
     pub runs: Vec<StyleRun>,
-    /// Iced's paragraph style (alignment + character defaults for rendering).
-    pub paragraph_style: ParagraphStyle,
-    /// Document-model paragraph style (spacing, indent, level, list).
-    pub paragraph: paragraph::Style,
+    /// Unified paragraph style (alignment, character defaults, spacing, indent, level, list).
+    pub paragraph_style: paragraph::Style,
 }
 
 /// An atomic document operation.
@@ -328,9 +324,9 @@ mod tests {
             text: "hello".to_string(),
             runs: vec![StyleRun {
                 range: 0..5,
-                style: Style {
+                style: span::Style {
                     bold: Some(true),
-                    ..Style::default()
+                    ..span::Style::default()
                 },
             }],
         }
@@ -498,10 +494,9 @@ mod tests {
             text: text.to_string(),
             runs: vec![StyleRun {
                 range: 0..text.len(),
-                style: Style::default(),
+                style: span::Style::default(),
             }],
-            paragraph_style: ParagraphStyle::default(),
-            paragraph: paragraph::Style::default(),
+            paragraph_style: paragraph::Style::default(),
         }
     }
 
@@ -620,11 +615,11 @@ mod tests {
 
     #[test]
     fn span_attr_from_style_extracts_correct_field() {
-        let style = Style {
+        let style = span::Style {
             bold: Some(true),
             italic: Some(false),
             size: Some(16.0),
-            ..Style::default()
+            ..span::Style::default()
         };
         assert_eq!(
             SpanAttr::from_style(&style, &SpanAttr::Bold(None)),
@@ -646,10 +641,10 @@ mod tests {
 
     #[test]
     fn span_attr_apply_to_sets_only_one_field() {
-        let style = Style {
+        let style = span::Style {
             bold: Some(true),
             italic: Some(true),
-            ..Style::default()
+            ..span::Style::default()
         };
         let modified = SpanAttr::Bold(Some(false)).apply_to(&style);
         assert_eq!(modified.bold, Some(false));

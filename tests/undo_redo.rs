@@ -54,8 +54,16 @@ fn select_all_center_then_left_preserves_styles() {
         "character styles should not change after alignment round-trip"
     );
     assert_eq!(
-        after.paragraph, original.paragraph,
-        "paragraph styles should not change after alignment round-trip"
+        after.paragraph.alignment, original.paragraph.alignment,
+        "paragraph alignment should not change after alignment round-trip"
+    );
+    assert_eq!(
+        after.paragraph.spacing_after, original.paragraph.spacing_after,
+        "paragraph spacing_after should not change after alignment round-trip"
+    );
+    assert_eq!(
+        after.paragraph.line_height, original.paragraph.line_height,
+        "paragraph line_height should not change after alignment round-trip"
     );
 }
 

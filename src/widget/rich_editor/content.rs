@@ -2,8 +2,8 @@
 //! and undo/redo history. All edits flow through [`Content::perform`].
 
 use crate::core::text::editor::Position;
-use crate::core::text::rich_editor::{self, Editor as _, Style as RichStyle};
-use markright_document::{History, Op, StyledLine as DocStyledLine, paragraph};
+use crate::core::text::rich_editor::{self, Editor as _, paragraph, span};
+use markright_document::{History, Op, StyledLine as DocStyledLine};
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -23,7 +23,7 @@ fn style_at_selection_start<E: rich_editor::Editor>(
     editor: &E,
     pos: &Position,
     sel: &Position,
-) -> RichStyle {
+) -> span::Style {
     let (start, end) = operation::ordered_positions(pos, sel);
     for line in start.line..=end.line {
         let col_start = if line == start.line { start.column } else { 0 };
@@ -33,10 +33,10 @@ fn style_at_selection_start<E: rich_editor::Editor>(
             editor.line(line).map(|l| l.text.len()).unwrap_or(0)
         };
         if col_start < col_end {
-            return editor.style_at(line, col_start);
+            return editor.span_style_at(line, col_start);
         }
     }
-    editor.style_at(start.line, start.column)
+    editor.span_style_at(start.line, start.column)
 }
 
 /// The content of a rich text editor -- wraps the rich editor which manages
@@ -51,18 +51,15 @@ pub(crate) struct Internal<R: rich_editor::Renderer> {
     /// Pending character style for typing with no selection.
     /// When the user toggles bold with no selection, this records the intent
     /// so the next Insert applies it.
-    pending_style: Option<RichStyle>,
+    pending_style: Option<span::Style>,
     /// Undo/redo history of document operations.
     history: History,
     /// Document-level default style — fills in `None` span fields during
     /// `resolve_style` and `cursor_context`.
-    pub(crate) default_style: RichStyle,
-    /// Per-line paragraph styles (spacing, indent, level, list).
+    pub(crate) default_style: span::Style,
+    /// Per-line paragraph styles (alignment, line height, spacing, indent, level, list).
     /// Kept in sync with the editor's line count.
     pub(crate) paragraph_styles: Vec<paragraph::Style>,
-    /// Per-line iced ParagraphStyle (alignment, line height, character defaults).
-    /// Authoritative copy — `editor.paragraph_style()` read-back is lossy.
-    pub(crate) iced_paragraph_styles: Vec<rich_editor::ParagraphStyle>,
     /// Pixels per indent level for list items.
     pub(crate) list_indent: f32,
 }
@@ -79,9 +76,8 @@ impl<R: rich_editor::Renderer> Content<R> {
             editor: R::RichEditor::with_text(text),
             pending_style: None,
             history: History::new(),
-            default_style: RichStyle::default(),
+            default_style: span::Style::default(),
             paragraph_styles: vec![paragraph::Style::default()],
-            iced_paragraph_styles: vec![rich_editor::ParagraphStyle::default()],
             list_indent: list::DEFAULT_LIST_INDENT,
         }))
     }
@@ -112,11 +108,11 @@ impl<R: rich_editor::Renderer> Content<R> {
         {
             let mut internal = content.0.borrow_mut();
 
-            let default_style = rich_editor::Style::default();
+            let default_style = span::Style::default();
 
             for (i, line) in lines.iter().enumerate() {
                 // Apply paragraph style first so character defaults take effect
-                if line.paragraph_style != rich_editor::ParagraphStyle::default() {
+                if line.paragraph_style != paragraph::Style::default() {
                     internal
                         .editor
                         .set_paragraph_style(i, &line.paragraph_style);
@@ -132,10 +128,8 @@ impl<R: rich_editor::Renderer> Content<R> {
                 }
             }
 
-            // Set paragraph styles vectors
-            internal.paragraph_styles = lines.iter().map(|l| l.paragraph.clone()).collect();
-            internal.iced_paragraph_styles =
-                lines.iter().map(|l| l.paragraph_style.clone()).collect();
+            // Set paragraph styles vector
+            internal.paragraph_styles = lines.iter().map(|l| l.paragraph_style.clone()).collect();
 
             // Sync margins for list items
             let margins: Vec<f32> = internal
@@ -159,7 +153,7 @@ impl<R: rich_editor::Renderer> Content<R> {
                 let line = internal.editor.line(i);
                 let len = line.as_ref().map(|l| l.text.len()).unwrap_or(0);
                 let mut styled = markright_document::read_styled_line(&internal.editor, i, 0..len);
-                styled.paragraph = internal.paragraph_style(i).clone();
+                styled.paragraph_style = internal.paragraph_style(i).clone();
                 styled
             })
             .collect()
@@ -239,14 +233,12 @@ impl<R: rich_editor::Renderer> Content<R> {
             // No selection: bias-left
             let line = editor_cursor.position.line;
             let col = editor_cursor.position.column;
-            internal.editor.style_at(line, col.saturating_sub(1))
+            internal.editor.span_style_at(line, col.saturating_sub(1))
         };
         internal.fill_from_defaults(&mut char_style);
 
         let line = editor_cursor.position.line;
-        let para_style = internal.editor.paragraph_style(line);
-
-        let para_doc_style = internal.paragraph_style(line).clone();
+        let para_style = internal.paragraph_style(line).clone();
 
         cursor::Context {
             character: cursor::Character {
@@ -262,7 +254,7 @@ impl<R: rich_editor::Renderer> Content<R> {
                 alignment: super::Alignment::from_iced(para_style.alignment),
                 spacing_after: para_style.spacing_after.unwrap_or(0.0),
                 line_height: para_style.line_height,
-                style: para_doc_style,
+                style: para_style,
             },
             position: cursor::Position {
                 line: editor_cursor.position.line,
@@ -277,7 +269,7 @@ impl<R: rich_editor::Renderer> Content<R> {
         let line = internal.editor.line(index)?;
         let len = line.text.len();
         let mut styled = markright_document::read_styled_line(&internal.editor, index, 0..len);
-        styled.paragraph = internal.paragraph_style(index).clone();
+        styled.paragraph_style = internal.paragraph_style(index).clone();
         Some(styled)
     }
 
@@ -292,8 +284,8 @@ impl<R: rich_editor::Renderer> Content<R> {
         let internal = self.0.borrow();
         let c = internal.editor.cursor();
         let col = c.position.column.saturating_sub(1);
-        let style = internal.editor.style_at(c.position.line, col);
-        let para = internal.editor.paragraph_style(c.position.line);
+        let style = internal.editor.span_style_at(c.position.line, col);
+        let para = internal.editor.paragraph_style_at(c.position.line);
         let mut out = String::new();
         let _ = write!(out, "{c:#?}\n{style:#?}\n{para:#?}");
         out
@@ -372,7 +364,7 @@ impl<R: rich_editor::Renderer> Content<R> {
     pub fn line_geometry(
         &self,
         line: usize,
-    ) -> Option<crate::core::text::rich_editor::LineGeometry> {
+    ) -> Option<crate::core::text::rich_editor::paragraph::Geometry> {
         use crate::core::text::rich_editor::Editor as _;
         self.0.borrow().editor.line_geometry(line)
     }
@@ -480,12 +472,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 self.pending_style = None;
             }
             Edit::Format(ref fmt) => {
-                let ops = operation::format(
-                    &mut self.editor,
-                    fmt,
-                    &self.paragraph_styles,
-                    &self.iced_paragraph_styles,
-                );
+                let ops = operation::format(&mut self.editor, fmt, &self.paragraph_styles);
                 if !ops.is_empty() {
                     self.sync_paragraph_styles_for_ops(&ops);
                     self.record_group(ops);
@@ -516,10 +503,10 @@ impl<R: rich_editor::Renderer> Internal<R> {
         }
     }
 
-    fn resolve_style(&self) -> RichStyle {
+    fn resolve_style(&self) -> span::Style {
         let mut style = self.pending_style.clone().unwrap_or_else(|| {
             let cursor = self.editor.cursor();
-            self.editor.style_at(
+            self.editor.span_style_at(
                 cursor.position.line,
                 cursor.position.column.saturating_sub(1),
             )
@@ -529,7 +516,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     /// Fill any `None` fields in `style` from `self.default_style`.
-    fn fill_from_defaults(&self, style: &mut RichStyle) {
+    fn fill_from_defaults(&self, style: &mut span::Style) {
         let d = &self.default_style;
         if style.bold.is_none() {
             style.bold = d.bold;
@@ -571,7 +558,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
     fn update_pending_style(&mut self, fmt: &Format) {
         let cursor = self.editor.cursor();
         let current = self.pending_style.get_or_insert_with(|| {
-            self.editor.style_at(
+            self.editor.span_style_at(
                 cursor.position.line,
                 cursor.position.column.saturating_sub(1),
             )
@@ -615,12 +602,12 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 Op::SetAlignment {
                     line, alignment, ..
                 } => {
-                    self.sync_iced_paragraph_alignment(*line, Some(alignment.to_iced()));
+                    self.sync_paragraph_alignment(*line, Some(alignment.to_iced()));
                 }
                 Op::SetLineHeight {
                     line, line_height, ..
                 } => {
-                    self.sync_iced_paragraph_line_height(*line, *line_height);
+                    self.sync_paragraph_line_height(*line, *line_height);
                 }
                 _ => {}
             }
@@ -642,17 +629,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
 
     /// Get the paragraph style for a given line, defaulting if out of bounds.
     pub(crate) fn paragraph_style(&self, line: usize) -> &paragraph::Style {
-        static DEFAULT: paragraph::Style = paragraph::Style {
-            line_spacing: None,
-            space_before: None,
-            space_after: None,
-            indent: paragraph::Indent {
-                left: 0.0,
-                hanging: 0.0,
-            },
-            level: 0,
-            list: None,
-        };
+        static DEFAULT: std::sync::LazyLock<paragraph::Style> =
+            std::sync::LazyLock::new(paragraph::Style::default);
         self.paragraph_styles.get(line).unwrap_or(&DEFAULT)
     }
 
@@ -660,24 +638,14 @@ impl<R: rich_editor::Renderer> Internal<R> {
     /// insert it after, then sync margins and paragraph style for the new line.
     fn sync_paragraph_split(&mut self, line: usize) {
         let style = self.paragraph_style(line).clone();
-        let iced_ps = self
-            .iced_paragraph_styles
-            .get(line)
-            .cloned()
-            .unwrap_or_default();
         if line + 1 > self.paragraph_styles.len() {
             self.paragraph_styles
                 .resize(line + 1, paragraph::Style::default());
         }
-        if line + 1 > self.iced_paragraph_styles.len() {
-            self.iced_paragraph_styles
-                .resize(line + 1, rich_editor::ParagraphStyle::default());
-        }
         let margin = list::compute_margin(&style, self.list_indent);
-        self.paragraph_styles.insert(line + 1, style);
-        self.iced_paragraph_styles.insert(line + 1, iced_ps.clone());
+        self.paragraph_styles.insert(line + 1, style.clone());
         self.editor.set_margin_left(line + 1, margin);
-        self.editor.set_paragraph_style(line + 1, &iced_ps);
+        self.editor.set_paragraph_style(line + 1, &style);
     }
 
     /// Sync paragraph_styles after a MergeLine: remove the style at `line + 1`
@@ -685,9 +653,6 @@ impl<R: rich_editor::Renderer> Internal<R> {
     fn sync_paragraph_merge(&mut self, line: usize) {
         if line + 1 < self.paragraph_styles.len() {
             self.paragraph_styles.remove(line + 1);
-        }
-        if line + 1 < self.iced_paragraph_styles.len() {
-            self.iced_paragraph_styles.remove(line + 1);
         }
         let margin = list::compute_margin(self.paragraph_style(line), self.list_indent);
         self.editor.set_margin_left(line, margin);
@@ -701,11 +666,6 @@ impl<R: rich_editor::Renderer> Internal<R> {
             if remove_start < remove_end {
                 self.paragraph_styles.drain(remove_start..remove_end);
             }
-            let remove_start = (start_line + 1).min(self.iced_paragraph_styles.len());
-            let remove_end = (end_line + 1).min(self.iced_paragraph_styles.len());
-            if remove_start < remove_end {
-                self.iced_paragraph_styles.drain(remove_start..remove_end);
-            }
         }
     }
 
@@ -716,37 +676,33 @@ impl<R: rich_editor::Renderer> Internal<R> {
             let new_styles = vec![paragraph::Style::default(); line_count - 1];
             self.paragraph_styles
                 .splice(insert_at..insert_at, new_styles);
-            let insert_at = (start_line + 1).min(self.iced_paragraph_styles.len());
-            let new_iced = vec![rich_editor::ParagraphStyle::default(); line_count - 1];
-            self.iced_paragraph_styles
-                .splice(insert_at..insert_at, new_iced);
         }
     }
 
-    /// Update alignment in iced_paragraph_styles for a given line.
-    fn sync_iced_paragraph_alignment(
+    /// Update alignment in paragraph_styles for a given line.
+    fn sync_paragraph_alignment(
         &mut self,
         line: usize,
         alignment: Option<iced_core::text::Alignment>,
     ) {
-        if line >= self.iced_paragraph_styles.len() {
-            self.iced_paragraph_styles
-                .resize(line + 1, rich_editor::ParagraphStyle::default());
+        if line >= self.paragraph_styles.len() {
+            self.paragraph_styles
+                .resize(line + 1, paragraph::Style::default());
         }
-        self.iced_paragraph_styles[line].alignment = alignment;
+        self.paragraph_styles[line].alignment = alignment;
     }
 
-    /// Update line_height in iced_paragraph_styles for a given line.
-    fn sync_iced_paragraph_line_height(
+    /// Update line_height in paragraph_styles for a given line.
+    fn sync_paragraph_line_height(
         &mut self,
         line: usize,
         line_height: Option<iced_core::text::LineHeight>,
     ) {
-        if line >= self.iced_paragraph_styles.len() {
-            self.iced_paragraph_styles
-                .resize(line + 1, rich_editor::ParagraphStyle::default());
+        if line >= self.paragraph_styles.len() {
+            self.paragraph_styles
+                .resize(line + 1, paragraph::Style::default());
         }
-        self.iced_paragraph_styles[line].line_height = line_height;
+        self.paragraph_styles[line].line_height = line_height;
     }
 
     /// Backspace that is list-aware: at column 0 with no selection, if the
@@ -801,7 +757,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
         for op in group.into_iter().rev() {
             for inv_op in op.inverse() {
                 let captured = operation::capture_op_state(&self.editor, &inv_op);
-                operation::apply_op(&mut self.editor, &captured, &self.iced_paragraph_styles);
+                operation::apply_op(&mut self.editor, &captured, &self.paragraph_styles);
                 self.sync_paragraph_styles_for_ops(std::slice::from_ref(&captured));
                 redo_ops.push(captured);
             }
@@ -820,7 +776,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
         for op in group.into_iter().rev() {
             for inv_op in op.inverse() {
                 let captured = operation::capture_op_state(&self.editor, &inv_op);
-                operation::apply_op(&mut self.editor, &captured, &self.iced_paragraph_styles);
+                operation::apply_op(&mut self.editor, &captured, &self.paragraph_styles);
                 self.sync_paragraph_styles_for_ops(std::slice::from_ref(&captured));
                 undo_ops.push(captured);
             }

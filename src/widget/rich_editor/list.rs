@@ -30,10 +30,8 @@ pub fn marker_text(list: &paragraph::List, ordinal: usize) -> String {
             paragraph::Bullet::Circle => "\u{25E6}".into(),
             paragraph::Bullet::Square => "\u{25AA}".into(),
             paragraph::Bullet::Custom(c) => c.to_string(),
-            _ => "\u{2022}".into(),
         },
         paragraph::List::Ordered(number) => format_number(ordinal, number),
-        _ => "\u{2022}".into(),
     }
 }
 
@@ -86,7 +84,6 @@ fn format_number(n: usize, style: &paragraph::Number) -> String {
         paragraph::Number::UpperAlpha => format!("{}.", nth_alpha(n, true)),
         paragraph::Number::LowerRoman => format!("{}.", to_roman(n, false)),
         paragraph::Number::UpperRoman => format!("{}.", to_roman(n, true)),
-        _ => format!("{n}."),
     }
 }
 

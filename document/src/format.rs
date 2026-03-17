@@ -6,10 +6,10 @@
 use std::fmt::Write;
 
 use iced_core::text::LineHeight;
-use iced_core::text::rich_editor::{ParagraphStyle, Style};
+use iced_core::text::rich_editor::paragraph::{self, Bullet, List, Number, Spacing};
+use iced_core::text::rich_editor::span;
 use iced_core::{Color, Font, Pixels, font};
 
-use crate::paragraph::{self, Bullet, List, Number, Spacing};
 use crate::{StyleRun, StyledLine};
 
 /// Serialize styled lines to `.mr` format.
@@ -35,22 +35,20 @@ pub fn parse(input: &str) -> Result<Vec<StyledLine>, ParseError> {
     while let Some(raw) = raw_lines.next() {
         if let Some(props) = raw.strip_prefix(">|") {
             // Paragraph property line — content is on the next line
-            let (paragraph_style, paragraph) = parse_paragraph_header(props)?;
+            let paragraph_style = parse_paragraph_header(props)?;
             let content_line = raw_lines.next().unwrap_or("");
             let (text, runs) = parse_line_content(content_line)?;
             lines.push(StyledLine {
                 text,
                 runs,
                 paragraph_style,
-                paragraph,
             });
         } else {
             let (text, runs) = parse_line_content(raw)?;
             lines.push(StyledLine {
                 text,
                 runs,
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style::default(),
+                paragraph_style: paragraph::Style::default(),
             });
         }
     }
@@ -60,8 +58,7 @@ pub fn parse(input: &str) -> Result<Vec<StyledLine>, ParseError> {
         lines.push(StyledLine {
             text: String::new(),
             runs: Vec::new(),
-            paragraph_style: ParagraphStyle::default(),
-            paragraph: paragraph::Style::default(),
+            paragraph_style: paragraph::Style::default(),
         });
     }
 
@@ -88,12 +85,11 @@ impl std::error::Error for ParseError {}
 // ---------------------------------------------------------------------------
 
 fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
-    let para = &line.paragraph;
     let ps = &line.paragraph_style;
 
     let mut props = Vec::new();
 
-    // Alignment (from ParagraphStyle)
+    // Alignment
     if let Some(align) = ps.alignment {
         let s = match align {
             iced_core::text::Alignment::Left | iced_core::text::Alignment::Default => "left",
@@ -110,7 +106,7 @@ fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
         }
     }
 
-    // Line height (from ParagraphStyle)
+    // Line height
     if let Some(lh) = ps.line_height {
         match lh {
             LineHeight::Relative(r) => props.push(format!("lh={}", format_float(r))),
@@ -118,8 +114,8 @@ fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
         }
     }
 
-    // Line spacing (from paragraph::Style)
-    if let Some(spacing) = &para.line_spacing {
+    // Line spacing
+    if let Some(spacing) = &ps.line_spacing {
         match spacing {
             Spacing::Multiple(m) => props.push(format!("ls={}x", format_float(*m))),
             Spacing::Exact(px) => props.push(format!("ls={}px", format_float(*px))),
@@ -127,36 +123,30 @@ fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
     }
 
     // Space before/after
-    if let Some(sb) = para.space_before {
+    if let Some(sb) = ps.space_before {
         props.push(format!("sb={}", format_float(sb)));
     }
-    if let Some(sa) = para.space_after {
-        props.push(format!("sa={}", format_float(sa)));
-    }
-    // Also check ParagraphStyle.spacing_after
-    if let Some(sa) = ps.spacing_after
-        && para.space_after.is_none()
-    {
+    if let Some(sa) = ps.spacing_after {
         props.push(format!("sa={}", format_float(sa)));
     }
 
     // Level
-    if para.level > 0 {
-        props.push(format!("level={}", para.level));
+    if ps.level > 0 {
+        props.push(format!("level={}", ps.level));
     }
 
     // List
-    if let Some(list) = &para.list {
+    if let Some(list) = &ps.list {
         let s = match list {
-            List::Bullet(Bullet::Disc) => "bullet",
-            List::Bullet(Bullet::Circle) => "circle",
-            List::Bullet(Bullet::Square) => "square",
-            List::Ordered(Number::Arabic) => "1",
-            List::Ordered(Number::LowerAlpha) => "a",
-            List::Ordered(Number::UpperAlpha) => "A",
-            List::Ordered(Number::LowerRoman) => "i",
-            List::Ordered(Number::UpperRoman) => "I",
-            _ => "bullet",
+            List::Bullet(Bullet::Disc) => "bullet".to_string(),
+            List::Bullet(Bullet::Circle) => "circle".to_string(),
+            List::Bullet(Bullet::Square) => "square".to_string(),
+            List::Bullet(Bullet::Custom(c)) => format!("custom:{c}"),
+            List::Ordered(Number::Arabic) => "1".to_string(),
+            List::Ordered(Number::LowerAlpha) => "a".to_string(),
+            List::Ordered(Number::UpperAlpha) => "A".to_string(),
+            List::Ordered(Number::LowerRoman) => "i".to_string(),
+            List::Ordered(Number::UpperRoman) => "I".to_string(),
         };
         props.push(format!("list={s}"));
     }
@@ -170,7 +160,7 @@ fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
 }
 
 /// Serialize paragraph character defaults with `d:` prefix.
-fn serialize_default_style_attrs(props: &mut Vec<String>, style: &Style) {
+fn serialize_default_style_attrs(props: &mut Vec<String>, style: &span::Style) {
     if style.bold == Some(true) {
         props.push("d:b".to_string());
     }
@@ -243,8 +233,8 @@ fn serialize_line_content(out: &mut String, line: &StyledLine, escape_prop_prefi
     }
 }
 
-/// Convert a Style to space-separated attribute tokens.
-fn style_to_attrs(style: &Style) -> String {
+/// Convert a span::Style to space-separated attribute tokens.
+fn style_to_attrs(style: &span::Style) -> String {
     let mut tokens = Vec::new();
 
     if style.bold == Some(true) {
@@ -314,7 +304,7 @@ fn format_float(v: f32) -> String {
 // Parser internals
 // ---------------------------------------------------------------------------
 
-fn parse_paragraph_header(header: &str) -> Result<(ParagraphStyle, paragraph::Style), ParseError> {
+fn parse_paragraph_header(header: &str) -> Result<paragraph::Style, ParseError> {
     // Strip trailing `|`
     let content = header
         .strip_suffix('|')
@@ -324,8 +314,7 @@ fn parse_paragraph_header(header: &str) -> Result<(ParagraphStyle, paragraph::St
         })?
         .trim();
 
-    let mut ps = ParagraphStyle::default();
-    let mut para = paragraph::Style::default();
+    let mut ps = paragraph::Style::default();
 
     for token in content.split_whitespace() {
         if let Some(rest) = token.strip_prefix("d:") {
@@ -347,18 +336,18 @@ fn parse_paragraph_header(header: &str) -> Result<(ParagraphStyle, paragraph::St
         } else if let Some(val) = token.strip_prefix("lh=") {
             ps.line_height = Some(parse_line_height(val)?);
         } else if let Some(val) = token.strip_prefix("ls=") {
-            para.line_spacing = Some(parse_line_spacing(val)?);
+            ps.line_spacing = Some(parse_line_spacing(val)?);
         } else if let Some(val) = token.strip_prefix("sb=") {
-            para.space_before = Some(parse_f32(val)?);
+            ps.space_before = Some(parse_f32(val)?);
         } else if let Some(val) = token.strip_prefix("sa=") {
-            para.space_after = Some(parse_f32(val)?);
+            ps.spacing_after = Some(parse_f32(val)?);
         } else if let Some(val) = token.strip_prefix("level=") {
-            para.level = val.parse::<u8>().map_err(|_| ParseError {
+            ps.level = val.parse::<u8>().map_err(|_| ParseError {
                 message: format!("invalid level: {val}"),
                 offset: 0,
             })?;
         } else if let Some(val) = token.strip_prefix("list=") {
-            para.list = Some(parse_list(val)?);
+            ps.list = Some(parse_list(val)?);
         } else {
             return Err(ParseError {
                 message: format!("unknown paragraph property: {token}"),
@@ -367,10 +356,10 @@ fn parse_paragraph_header(header: &str) -> Result<(ParagraphStyle, paragraph::St
         }
     }
 
-    Ok((ps, para))
+    Ok(ps)
 }
 
-fn parse_default_attr(attr: &str, style: &mut Style) -> Result<(), ParseError> {
+fn parse_default_attr(attr: &str, style: &mut span::Style) -> Result<(), ParseError> {
     match attr {
         "b" => style.bold = Some(true),
         "i" => style.italic = Some(true),
@@ -498,7 +487,7 @@ fn parse_line_content(input: &str) -> Result<(String, Vec<StyleRun>), ParseError
 fn parse_inline(input: &str) -> Result<(String, Vec<StyleRun>), ParseError> {
     let mut text = String::new();
     let mut runs: Vec<StyleRun> = Vec::new();
-    let mut style_stack: Vec<(Style, usize)> = Vec::new(); // (style, text_start)
+    let mut style_stack: Vec<(span::Style, usize)> = Vec::new(); // (style, text_start)
     let chars: Vec<char> = input.chars().collect();
     let mut i = 0;
 
@@ -558,8 +547,8 @@ fn parse_inline(input: &str) -> Result<(String, Vec<StyleRun>), ParseError> {
 
 /// Parse attributes inside `{...}` (the inner braces of `{{attrs} text}`).
 /// Returns (style, chars consumed including the closing `}`).
-fn parse_bracketed_attrs(chars: &[char], start: usize) -> Result<(Style, usize), ParseError> {
-    let mut style = Style::default();
+fn parse_bracketed_attrs(chars: &[char], start: usize) -> Result<(span::Style, usize), ParseError> {
+    let mut style = span::Style::default();
     let mut i = start;
 
     loop {
@@ -632,7 +621,7 @@ enum AttrToken {
     LetterSpacing(f32),
 }
 
-fn apply_attr(style: &mut Style, attr: AttrToken) {
+fn apply_attr(style: &mut span::Style, attr: AttrToken) {
     match attr {
         AttrToken::Bold => style.bold = Some(true),
         AttrToken::Italic => style.italic = Some(true),
@@ -646,8 +635,8 @@ fn apply_attr(style: &mut Style, attr: AttrToken) {
 }
 
 /// Merge child style onto parent: child values override parent values.
-fn merge_styles(parent: &Style, child: &Style) -> Style {
-    Style {
+fn merge_styles(parent: &span::Style, child: &span::Style) -> span::Style {
+    span::Style {
         bold: child.bold.or(parent.bold),
         italic: child.italic.or(parent.italic),
         underline: child.underline.or(parent.underline),
@@ -675,7 +664,7 @@ fn fill_gaps(mut runs: Vec<StyleRun>, len: usize) -> Vec<StyleRun> {
         if run.range.start > pos {
             filled.push(StyleRun {
                 range: pos..run.range.start,
-                style: Style::default(),
+                style: span::Style::default(),
             });
         }
         pos = run.range.end;
@@ -685,7 +674,7 @@ fn fill_gaps(mut runs: Vec<StyleRun>, len: usize) -> Vec<StyleRun> {
     if pos < len {
         filled.push(StyleRun {
             range: pos..len,
-            style: Style::default(),
+            style: span::Style::default(),
         });
     }
 
@@ -706,14 +695,13 @@ mod tests {
         } else {
             vec![StyleRun {
                 range: 0..text.len(),
-                style: Style::default(),
+                style: span::Style::default(),
             }]
         };
         StyledLine {
             text: text.to_string(),
             runs,
-            paragraph_style: ParagraphStyle::default(),
-            paragraph: paragraph::Style::default(),
+            paragraph_style: paragraph::Style::default(),
         }
     }
 
@@ -739,21 +727,13 @@ mod tests {
                 assert_styles_eq(&or.style, &pr.style, i, j);
             }
             assert_eq!(
-                orig.paragraph, rt.paragraph,
+                orig.paragraph_style, rt.paragraph_style,
                 "paragraph style mismatch on line {i}"
-            );
-            assert_eq!(
-                orig.paragraph_style.alignment, rt.paragraph_style.alignment,
-                "alignment mismatch on line {i}"
-            );
-            assert_eq!(
-                orig.paragraph_style.line_height, rt.paragraph_style.line_height,
-                "line_height mismatch on line {i}"
             );
         }
     }
 
-    fn assert_styles_eq(a: &Style, b: &Style, line: usize, run: usize) {
+    fn assert_styles_eq(a: &span::Style, b: &span::Style, line: usize, run: usize) {
         assert_eq!(a.bold, b.bold, "bold mismatch at line {line} run {run}");
         assert_eq!(
             a.italic, b.italic,
@@ -806,47 +786,46 @@ mod tests {
             runs: vec![
                 StyleRun {
                     range: 0..4,
-                    style: Style {
+                    style: span::Style {
                         bold: Some(true),
-                        ..Style::default()
+                        ..span::Style::default()
                     },
                 },
                 StyleRun {
                     range: 4..5,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 },
                 StyleRun {
                     range: 5..11,
-                    style: Style {
+                    style: span::Style {
                         italic: Some(true),
-                        ..Style::default()
+                        ..span::Style::default()
                     },
                 },
                 StyleRun {
                     range: 11..12,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 },
                 StyleRun {
                     range: 12..21,
-                    style: Style {
+                    style: span::Style {
                         underline: Some(true),
-                        ..Style::default()
+                        ..span::Style::default()
                     },
                 },
                 StyleRun {
                     range: 21..22,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 },
                 StyleRun {
                     range: 22..28,
-                    style: Style {
+                    style: span::Style {
                         strikethrough: Some(true),
-                        ..Style::default()
+                        ..span::Style::default()
                     },
                 },
             ],
-            paragraph_style: ParagraphStyle::default(),
-            paragraph: paragraph::Style::default(),
+            paragraph_style: paragraph::Style::default(),
         }];
         assert_round_trip(&lines);
     }
@@ -857,7 +836,7 @@ mod tests {
             text: "styled".to_string(),
             runs: vec![StyleRun {
                 range: 0..6,
-                style: Style {
+                style: span::Style {
                     color: Some(Color::from_rgb8(255, 0, 0)),
                     font: Some(Font {
                         family: font::Family::Name(Box::leak(
@@ -867,11 +846,10 @@ mod tests {
                     }),
                     size: Some(20.0),
                     letter_spacing: Some(2.0),
-                    ..Style::default()
+                    ..span::Style::default()
                 },
             }],
-            paragraph_style: ParagraphStyle::default(),
-            paragraph: paragraph::Style::default(),
+            paragraph_style: paragraph::Style::default(),
         }];
         assert_round_trip(&lines);
 
@@ -902,13 +880,12 @@ mod tests {
             text: "centered".to_string(),
             runs: vec![StyleRun {
                 range: 0..8,
-                style: Style::default(),
+                style: span::Style::default(),
             }],
-            paragraph_style: ParagraphStyle {
+            paragraph_style: paragraph::Style {
                 alignment: Some(iced_core::text::Alignment::Center),
-                ..ParagraphStyle::default()
+                ..paragraph::Style::default()
             },
-            paragraph: paragraph::Style::default(),
         }];
         assert_round_trip(&lines);
 
@@ -923,25 +900,23 @@ mod tests {
                 text: "relative".to_string(),
                 runs: vec![StyleRun {
                     range: 0..8,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
-                paragraph_style: ParagraphStyle {
+                paragraph_style: paragraph::Style {
                     line_height: Some(LineHeight::Relative(1.5)),
-                    ..ParagraphStyle::default()
+                    ..paragraph::Style::default()
                 },
-                paragraph: paragraph::Style::default(),
             },
             StyledLine {
                 text: "absolute".to_string(),
                 runs: vec![StyleRun {
                     range: 0..8,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
-                paragraph_style: ParagraphStyle {
+                paragraph_style: paragraph::Style {
                     line_height: Some(LineHeight::Absolute(Pixels(24.0))),
-                    ..ParagraphStyle::default()
+                    ..paragraph::Style::default()
                 },
-                paragraph: paragraph::Style::default(),
             },
         ];
         assert_round_trip(&lines);
@@ -958,10 +933,9 @@ mod tests {
                 text: "bullet item".to_string(),
                 runs: vec![StyleRun {
                     range: 0..11,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style {
+                paragraph_style: paragraph::Style {
                     list: Some(List::Bullet(Bullet::Disc)),
                     level: 1,
                     ..Default::default()
@@ -971,10 +945,9 @@ mod tests {
                 text: "numbered item".to_string(),
                 runs: vec![StyleRun {
                     range: 0..13,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style {
+                paragraph_style: paragraph::Style {
                     list: Some(List::Ordered(Number::Arabic)),
                     level: 1,
                     ..Default::default()
@@ -991,10 +964,9 @@ mod tests {
                 text: "level 1".to_string(),
                 runs: vec![StyleRun {
                     range: 0..7,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style {
+                paragraph_style: paragraph::Style {
                     list: Some(List::Bullet(Bullet::Disc)),
                     level: 1,
                     ..Default::default()
@@ -1004,10 +976,9 @@ mod tests {
                 text: "level 2".to_string(),
                 runs: vec![StyleRun {
                     range: 0..7,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style {
+                paragraph_style: paragraph::Style {
                     list: Some(List::Bullet(Bullet::Circle)),
                     level: 2,
                     ..Default::default()
@@ -1060,24 +1031,22 @@ mod tests {
                 text: "My Document".to_string(),
                 runs: vec![StyleRun {
                     range: 0..11,
-                    style: Style {
+                    style: span::Style {
                         bold: Some(true),
                         size: Some(24.0),
-                        ..Style::default()
+                        ..span::Style::default()
                     },
                 }],
-                paragraph_style: ParagraphStyle {
+                paragraph_style: paragraph::Style {
                     alignment: Some(iced_core::text::Alignment::Center),
-                    ..ParagraphStyle::default()
+                    ..paragraph::Style::default()
                 },
-                paragraph: paragraph::Style::default(),
             },
             // Empty line
             StyledLine {
                 text: String::new(),
                 runs: Vec::new(),
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style::default(),
+                paragraph_style: paragraph::Style::default(),
             },
             // Body with mixed styles
             StyledLine {
@@ -1085,43 +1054,41 @@ mod tests {
                 runs: vec![
                     StyleRun {
                         range: 0..7,
-                        style: Style::default(),
+                        style: span::Style::default(),
                     },
                     StyleRun {
                         range: 7..11,
-                        style: Style {
+                        style: span::Style {
                             bold: Some(true),
-                            ..Style::default()
+                            ..span::Style::default()
                         },
                     },
                     StyleRun {
                         range: 11..12,
-                        style: Style::default(),
+                        style: span::Style::default(),
                     },
                     StyleRun {
                         range: 12..15,
-                        style: Style {
+                        style: span::Style {
                             color: Some(Color::from_rgb8(255, 0, 0)),
-                            ..Style::default()
+                            ..span::Style::default()
                         },
                     },
                     StyleRun {
                         range: 15..19,
-                        style: Style::default(),
+                        style: span::Style::default(),
                     },
                 ],
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style::default(),
+                paragraph_style: paragraph::Style::default(),
             },
             // Bullet list
             StyledLine {
                 text: "First bullet".to_string(),
                 runs: vec![StyleRun {
                     range: 0..12,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style {
+                paragraph_style: paragraph::Style {
                     list: Some(List::Bullet(Bullet::Disc)),
                     level: 1,
                     ..Default::default()
@@ -1137,17 +1104,16 @@ mod tests {
             text: "heading text".to_string(),
             runs: vec![StyleRun {
                 range: 0..12,
-                style: Style::default(),
+                style: span::Style::default(),
             }],
-            paragraph_style: ParagraphStyle {
-                style: Style {
+            paragraph_style: paragraph::Style {
+                style: span::Style {
                     bold: Some(true),
                     size: Some(24.0),
-                    ..Style::default()
+                    ..span::Style::default()
                 },
-                ..ParagraphStyle::default()
+                ..paragraph::Style::default()
             },
-            paragraph: paragraph::Style::default(),
         }];
         assert_round_trip(&lines);
 
@@ -1191,10 +1157,9 @@ mod tests {
             text: ">|not a property|".to_string(),
             runs: vec![StyleRun {
                 range: 0..17,
-                style: Style::default(),
+                style: span::Style::default(),
             }],
-            paragraph_style: ParagraphStyle::default(),
-            paragraph: paragraph::Style::default(),
+            paragraph_style: paragraph::Style::default(),
         };
         let s = serialize(&[line]);
         assert!(s.starts_with("\\>|"), "expected escaped prefix, got: {s}");
@@ -1206,18 +1171,17 @@ mod tests {
             text: "text".to_string(),
             runs: vec![StyleRun {
                 range: 0..4,
-                style: Style {
+                style: span::Style {
                     font: Some(Font {
                         family: font::Family::Name(Box::leak(
                             "IBM Plex Sans".to_string().into_boxed_str(),
                         )),
                         ..Font::DEFAULT
                     }),
-                    ..Style::default()
+                    ..span::Style::default()
                 },
             }],
-            paragraph_style: ParagraphStyle::default(),
-            paragraph: paragraph::Style::default(),
+            paragraph_style: paragraph::Style::default(),
         }];
 
         let s = serialize(&lines);
@@ -1237,12 +1201,11 @@ mod tests {
             text: "spaced".to_string(),
             runs: vec![StyleRun {
                 range: 0..6,
-                style: Style::default(),
+                style: span::Style::default(),
             }],
-            paragraph_style: ParagraphStyle::default(),
-            paragraph: paragraph::Style {
+            paragraph_style: paragraph::Style {
                 space_before: Some(12.0),
-                space_after: Some(8.0),
+                spacing_after: Some(8.0),
                 ..Default::default()
             },
         }];
@@ -1260,10 +1223,9 @@ mod tests {
                 text: "multiple".to_string(),
                 runs: vec![StyleRun {
                     range: 0..8,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style {
+                paragraph_style: paragraph::Style {
                     line_spacing: Some(Spacing::Multiple(1.5)),
                     ..Default::default()
                 },
@@ -1272,10 +1234,9 @@ mod tests {
                 text: "exact".to_string(),
                 runs: vec![StyleRun {
                     range: 0..5,
-                    style: Style::default(),
+                    style: span::Style::default(),
                 }],
-                paragraph_style: ParagraphStyle::default(),
-                paragraph: paragraph::Style {
+                paragraph_style: paragraph::Style {
                     line_spacing: Some(Spacing::Exact(18.0)),
                     ..Default::default()
                 },
@@ -1305,13 +1266,12 @@ mod tests {
             text: "i foo".to_string(),
             runs: vec![StyleRun {
                 range: 0..5,
-                style: Style {
+                style: span::Style {
                     bold: Some(true),
-                    ..Style::default()
+                    ..span::Style::default()
                 },
             }],
-            paragraph_style: ParagraphStyle::default(),
-            paragraph: paragraph::Style::default(),
+            paragraph_style: paragraph::Style::default(),
         }];
 
         let s = serialize(&lines);

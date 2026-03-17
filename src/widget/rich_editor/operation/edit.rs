@@ -8,7 +8,7 @@ use std::sync::Arc;
 use super::{Position, iced_edit, ordered_positions};
 
 /// Insert a single character with a resolved style.
-pub fn insert<E: Editor>(editor: &mut E, c: char, style: rich_editor::Style) -> Op {
+pub fn insert<E: Editor>(editor: &mut E, c: char, style: rich_editor::span::Style) -> Op {
     let cursor = editor.cursor();
     let content = StyledText {
         text: c.to_string(),
@@ -29,7 +29,11 @@ pub fn insert<E: Editor>(editor: &mut E, c: char, style: rich_editor::Style) -> 
 ///
 /// Single-line paste produces an op. Multi-line paste applies directly (not yet
 /// undoable) and returns an empty vec.
-pub fn paste<E: Editor>(editor: &mut E, text: Arc<String>, style: rich_editor::Style) -> Vec<Op> {
+pub fn paste<E: Editor>(
+    editor: &mut E,
+    text: Arc<String>,
+    style: rich_editor::span::Style,
+) -> Vec<Op> {
     let cursor = editor.cursor();
     let line = cursor.position.line;
     let col = cursor.position.column;

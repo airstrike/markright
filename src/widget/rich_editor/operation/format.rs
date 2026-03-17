@@ -2,7 +2,7 @@
 //! list style, indentation, and line spacing.
 
 use crate::core::text::LineHeight;
-use crate::core::text::rich_editor::{Editor, ParagraphStyle, Style as RichStyle};
+use crate::core::text::rich_editor::{Editor, span};
 use markright_document::{self as document, Alignment, Op, SpanAttr, paragraph};
 use std::ops::Range;
 
@@ -21,7 +21,6 @@ pub fn format<E: Editor>(
     editor: &mut E,
     fmt: &Format,
     paragraph_styles: &[paragraph::Style],
-    iced_paragraph_styles: &[ParagraphStyle],
 ) -> Vec<Op> {
     let cursor = editor.cursor();
     let has_selection = cursor.selection.is_some();
@@ -54,7 +53,7 @@ pub fn format<E: Editor>(
                 .unwrap_or(false);
             set_attr_in_selection(editor, SpanAttr::Underline(Some(!is_underline)))
         }
-        Format::SetAlignment(alignment) => set_alignment(editor, *alignment, iced_paragraph_styles),
+        Format::SetAlignment(alignment) => set_alignment(editor, *alignment, paragraph_styles),
         Format::SetFont(font) => {
             if !has_selection {
                 return vec![];
@@ -149,7 +148,7 @@ pub fn format<E: Editor>(
                 style.level -= 1;
             }
         }),
-        Format::SetLineHeight(lh) => set_line_height(editor, *lh, iced_paragraph_styles),
+        Format::SetLineHeight(lh) => set_line_height(editor, *lh, paragraph_styles),
         Format::SetLineSpacing(spacing) => {
             let spacing = *spacing;
             set_paragraph_field(editor, paragraph_styles, |style| {
@@ -243,7 +242,7 @@ fn set_attr_on_line<E: Editor>(
 fn set_line_height<E: Editor>(
     editor: &mut E,
     line_height: LineHeight,
-    iced_paragraph_styles: &[ParagraphStyle],
+    paragraph_styles: &[paragraph::Style],
 ) -> Vec<Op> {
     let cursor = editor.cursor();
     let lines = if let Some(ref sel) = cursor.selection {
@@ -254,7 +253,7 @@ fn set_line_height<E: Editor>(
     };
     lines
         .map(|line| {
-            let current = iced_paragraph_styles.get(line).cloned().unwrap_or_default();
+            let current = paragraph_styles.get(line).cloned().unwrap_or_default();
             let old_line_height = current.line_height;
             let mut ps = current;
             ps.line_height = Some(line_height);
@@ -272,7 +271,7 @@ fn set_line_height<E: Editor>(
 fn set_alignment<E: Editor>(
     editor: &mut E,
     alignment: Alignment,
-    iced_paragraph_styles: &[ParagraphStyle],
+    paragraph_styles: &[paragraph::Style],
 ) -> Vec<Op> {
     let cursor = editor.cursor();
     let lines = if let Some(ref sel) = cursor.selection {
@@ -283,7 +282,7 @@ fn set_alignment<E: Editor>(
     };
     lines
         .map(|line| {
-            let current = iced_paragraph_styles.get(line).cloned().unwrap_or_default();
+            let current = paragraph_styles.get(line).cloned().unwrap_or_default();
             let old_alignment = Alignment::from_iced(current.alignment);
             let mut ps = current;
             ps.alignment = Some(alignment.to_iced());
@@ -332,11 +331,11 @@ fn set_paragraph_field<E: Editor>(
 ///
 /// Skips blank lines at the start so that the toggle state reflects actual
 /// content, not unformatted newlines.
-fn style_at_selection_start<E: Editor>(editor: &E, cursor: &Cursor) -> RichStyle {
+fn style_at_selection_start<E: Editor>(editor: &E, cursor: &Cursor) -> span::Style {
     let (start, end) = match &cursor.selection {
         Some(sel) => ordered_positions(&cursor.position, sel),
         None => {
-            return editor.style_at(cursor.position.line, cursor.position.column);
+            return editor.span_style_at(cursor.position.line, cursor.position.column);
         }
     };
 
@@ -348,9 +347,9 @@ fn style_at_selection_start<E: Editor>(editor: &E, cursor: &Cursor) -> RichStyle
             editor.line(line).map(|l| l.text.len()).unwrap_or(0)
         };
         if col_start < col_end {
-            return editor.style_at(line, col_start);
+            return editor.span_style_at(line, col_start);
         }
     }
 
-    editor.style_at(start.line, start.column)
+    editor.span_style_at(start.line, start.column)
 }

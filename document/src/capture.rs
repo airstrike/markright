@@ -19,7 +19,7 @@ pub fn read_style_runs<E: Editor>(editor: &E, line: usize, range: Range<usize>) 
     let mut runs: Vec<StyleRun> = Vec::new();
 
     for col in range.clone() {
-        let style = editor.style_at(line, col);
+        let style = editor.span_style_at(line, col);
 
         match runs.last_mut() {
             Some(last) if last.style == style => {
@@ -58,8 +58,7 @@ pub fn read_styled_line<E: Editor>(editor: &E, line: usize, col_range: Range<usi
     StyledLine {
         text,
         runs,
-        paragraph_style: editor.paragraph_style(line),
-        paragraph: crate::paragraph::Style::default(),
+        paragraph_style: editor.paragraph_style_at(line),
     }
 }
 
