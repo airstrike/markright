@@ -321,6 +321,49 @@ impl<R: rich_editor::Renderer> Content<R> {
         self.0.borrow_mut().history.mark_saved();
     }
 
+    /// Strip all per-span overrides of a given attribute across the entire
+    /// document. Also clears the attribute from paragraph character defaults.
+    ///
+    /// Recorded as one undo group so the user can restore everything with Cmd+Z.
+    pub fn strip_attr(&self, attr: markright_document::SpanAttr) {
+        self.0.borrow_mut().strip_attr(attr);
+    }
+
+    /// Set the document's default color and strip all per-span and
+    /// paragraph-default color overrides so everything renders in `color`.
+    pub fn set_color(&self, color: crate::core::Color) {
+        let mut internal = self.0.borrow_mut();
+        internal.default_style.color = Some(color);
+        internal.strip_attr(markright_document::SpanAttr::Color(None));
+    }
+
+    /// Set the document's default font and strip all per-span font overrides.
+    pub fn set_font(&self, font: crate::core::Font) {
+        let mut internal = self.0.borrow_mut();
+        internal.default_style.font = Some(font);
+        internal.strip_attr(markright_document::SpanAttr::Font(None));
+    }
+
+    /// Set the document's default font size and strip all per-span size overrides.
+    pub fn set_font_size(&self, size: f32) {
+        let mut internal = self.0.borrow_mut();
+        internal.default_style.size = Some(size);
+        internal.strip_attr(markright_document::SpanAttr::Size(None));
+    }
+
+    /// Set the document's default letter spacing and strip all per-span overrides.
+    pub fn set_letter_spacing(&self, spacing: f32) {
+        let mut internal = self.0.borrow_mut();
+        internal.default_style.letter_spacing = Some(spacing);
+        internal.strip_attr(markright_document::SpanAttr::LetterSpacing(None));
+    }
+
+    /// Set alignment on every paragraph. Recorded as one undo group.
+    pub fn set_alignment(&self, alignment: super::Alignment) {
+        let mut internal = self.0.borrow_mut();
+        internal.set_alignment_all(alignment);
+    }
+
     /// Sets the list indent (pixels per level). Default is 20.
     pub fn set_list_indent(&self, indent: f32) {
         self.0.borrow_mut().list_indent = indent;
@@ -580,6 +623,78 @@ impl<R: rich_editor::Renderer> Internal<R> {
             | Format::SetLineHeight(_)
             | Format::SetLineSpacing(_) => {}
         }
+    }
+
+    /// Strip all per-span overrides of `attr` and clear it from paragraph
+    /// character defaults. Recorded as one undo group.
+    fn strip_attr(&mut self, attr: markright_document::SpanAttr) {
+        use markright_document::SpanAttr;
+
+        let mut ops = Vec::new();
+        let count = self.editor.line_count();
+
+        for line in 0..count {
+            let len = self.editor.line(line).map(|l| l.text.len()).unwrap_or(0);
+            if len == 0 {
+                continue;
+            }
+            let range = 0..len;
+            let runs = markright_document::read_style_runs(&self.editor, line, range.clone());
+            let old_values: Vec<(std::ops::Range<usize>, SpanAttr)> = runs
+                .iter()
+                .filter(|r| attr.is_set_in(&r.style))
+                .map(|r| (r.range.clone(), SpanAttr::from_style(&r.style, &attr)))
+                .collect();
+
+            if old_values.is_empty() {
+                continue;
+            }
+
+            let op = Op::SetSpanAttr {
+                line,
+                range,
+                attr: attr.clone(),
+                old_values,
+            };
+            operation::apply_op(&mut self.editor, &op, &self.paragraph_styles);
+            ops.push(op);
+        }
+
+        // Also clear from paragraph character defaults
+        for line in 0..self.paragraph_styles.len() {
+            if attr.is_set_in(&self.paragraph_styles[line].style) {
+                attr.clear_in(&mut self.paragraph_styles[line].style);
+                let ps = self.paragraph_styles[line].clone();
+                self.editor.set_paragraph_style(line, &ps);
+            }
+        }
+
+        self.record_group(ops);
+    }
+
+    /// Set alignment on every paragraph. Recorded as one undo group.
+    fn set_alignment_all(&mut self, alignment: super::Alignment) {
+        let mut ops = Vec::new();
+        let count = self.editor.line_count();
+
+        for line in 0..count {
+            let current = markright_document::Alignment::from_iced(
+                self.paragraph_styles.get(line).and_then(|ps| ps.alignment),
+            );
+            if current == alignment {
+                continue;
+            }
+            let op = Op::SetAlignment {
+                line,
+                alignment,
+                old_alignment: current,
+            };
+            operation::apply_op(&mut self.editor, &op, &self.paragraph_styles);
+            self.sync_paragraph_styles_for_ops(std::slice::from_ref(&op));
+            ops.push(op);
+        }
+
+        self.record_group(ops);
     }
 
     /// Sync paragraph_styles for a batch of ops that were just applied to the editor.

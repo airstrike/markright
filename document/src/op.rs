@@ -70,6 +70,34 @@ impl SpanAttr {
         }
     }
 
+    /// Returns `true` if this attribute's corresponding field in `style` is `Some`.
+    pub fn is_set_in(&self, style: &span::Style) -> bool {
+        match self {
+            SpanAttr::Bold(_) => style.bold.is_some(),
+            SpanAttr::Italic(_) => style.italic.is_some(),
+            SpanAttr::Underline(_) => style.underline.is_some(),
+            SpanAttr::Strikethrough(_) => style.strikethrough.is_some(),
+            SpanAttr::Font(_) => style.font.is_some(),
+            SpanAttr::Size(_) => style.size.is_some(),
+            SpanAttr::Color(_) => style.color.is_some(),
+            SpanAttr::LetterSpacing(_) => style.letter_spacing.is_some(),
+        }
+    }
+
+    /// Clear this attribute's corresponding field in `style` (set to `None`).
+    pub fn clear_in(&self, style: &mut span::Style) {
+        match self {
+            SpanAttr::Bold(_) => style.bold = None,
+            SpanAttr::Italic(_) => style.italic = None,
+            SpanAttr::Underline(_) => style.underline = None,
+            SpanAttr::Strikethrough(_) => style.strikethrough = None,
+            SpanAttr::Font(_) => style.font = None,
+            SpanAttr::Size(_) => style.size = None,
+            SpanAttr::Color(_) => style.color = None,
+            SpanAttr::LetterSpacing(_) => style.letter_spacing = None,
+        }
+    }
+
     /// Apply this attribute onto a full `span::Style`, returning the modified style.
     pub fn apply_to(&self, style: &span::Style) -> span::Style {
         let mut result = style.clone();

@@ -278,6 +278,21 @@ where
         self
     }
 
+    /// Sets the font features (e.g. `smcp`, `onum`).
+    pub fn font_features(mut self, features: impl Into<Vec<crate::core::font::Feature>>) -> Self {
+        self.font_features = features.into();
+        self
+    }
+
+    /// Sets the font variations (e.g. `opsz`, `wght`).
+    pub fn font_variations(
+        mut self,
+        variations: impl Into<Vec<crate::core::font::Variation>>,
+    ) -> Self {
+        self.font_variations = variations.into();
+        self
+    }
+
     /// Sets the style of the [`RichEditor`].
     #[must_use]
     pub fn style(mut self, style: impl Fn(&Theme, Status) -> Style + 'a) -> Self
