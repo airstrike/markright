@@ -1,6 +1,7 @@
 //! Action types for the rich text editor — navigation, selection, and edits.
 use std::sync::Arc;
 
+use crate::core::font::OpticalSize;
 pub use crate::core::text::editor::{Cursor, Line, LineEnding, Motion, Position, Selection};
 use crate::core::{Color, Font, Point};
 
@@ -95,6 +96,8 @@ pub enum Format {
     SetLineHeight(crate::core::text::LineHeight),
     /// Set line spacing for the current line(s).
     SetLineSpacing(paragraph::Spacing),
+    /// Set optical sizing for the selection.
+    SetOpticalSize(Option<OpticalSize>),
 }
 
 /// Convert our [`Action`] to an iced editor [`Action`] when possible.

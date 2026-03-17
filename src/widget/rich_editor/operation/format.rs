@@ -155,6 +155,12 @@ pub fn format<E: Editor>(
                 style.line_spacing = Some(spacing);
             })
         }
+        Format::SetOpticalSize(opsz) => {
+            if !has_selection {
+                return vec![];
+            }
+            set_attr_in_selection(editor, SpanAttr::OpticalSize(*opsz))
+        }
     }
 }
 
@@ -320,8 +326,8 @@ fn set_paragraph_field<E: Editor>(
             apply(&mut new_style);
             Op::SetParagraphStyle {
                 line,
-                style: new_style,
-                old_style,
+                style: Box::new(new_style),
+                old_style: Box::new(old_style),
             }
         })
         .collect()

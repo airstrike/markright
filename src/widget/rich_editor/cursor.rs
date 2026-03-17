@@ -1,6 +1,7 @@
 //! Cursor context types — formatting state at the current cursor position.
 
 use super::action::Alignment;
+use crate::core::font::OpticalSize;
 use crate::core::text::LineHeight;
 use crate::core::{Color, Font};
 use markright_document::paragraph;
@@ -23,6 +24,7 @@ pub struct Character {
     pub size: Option<f32>,
     pub color: Option<Color>,
     pub letter_spacing: Option<f32>,
+    pub optical_size: Option<OpticalSize>,
 }
 
 /// Per-paragraph formatting at cursor.

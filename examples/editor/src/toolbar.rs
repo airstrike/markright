@@ -1,6 +1,7 @@
 use iced::widget::{Space, button, combo_box, container, mouse_area, row, text, text_input};
 use iced::{Color, Element, Length, Subscription, color, mouse};
 
+use iced::font::OpticalSize;
 use markright::paragraph;
 use markright::widget::rich_editor::{self, Action as EditorAction, Alignment, Format, cursor};
 
@@ -269,6 +270,17 @@ pub fn view<'a>(
         .style(theme::button::toolbar_toggle(ctx.character.underline))
         .on_press(Message::Format(Format::ToggleUnderline));
 
+    let is_opsz = ctx.character.optical_size.is_some()
+        && ctx.character.optical_size != Some(OpticalSize::None);
+    let opsz_btn = button(icon::eye().size(16))
+        .padding([4, 8])
+        .style(theme::button::toolbar_toggle(is_opsz))
+        .on_press(Message::Format(Format::SetOpticalSize(if is_opsz {
+            Some(OpticalSize::None)
+        } else {
+            Some(OpticalSize::Auto)
+        })));
+
     let is_left = ctx.paragraph.alignment == Alignment::Left;
     let is_center = ctx.paragraph.alignment == Alignment::Center;
     let is_right = ctx.paragraph.alignment == Alignment::Right;
@@ -335,7 +347,8 @@ pub fn view<'a>(
 
     let file_group = group(row![save_btn]);
     let history_group = group(row![undo_btn, redo_btn].spacing(GROUP_SPACING));
-    let format_group = group(row![bold_btn, italic_btn, underline_btn].spacing(GROUP_SPACING));
+    let format_group =
+        group(row![bold_btn, italic_btn, underline_btn, opsz_btn].spacing(GROUP_SPACING));
     let list_group =
         group(row![bullet_btn, ordered_btn, dedent_btn, indent_btn].spacing(GROUP_SPACING));
     let align_group = group(

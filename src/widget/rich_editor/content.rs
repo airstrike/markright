@@ -44,7 +44,11 @@ fn style_at_selection_start<E: rich_editor::Editor>(
 ///
 /// This is the single source of truth: all edits and formatting changes go
 /// through [`Content::perform`].
-pub struct Content<R: rich_editor::Renderer>(pub(crate) RefCell<Internal<R>>);
+pub struct Content<R: rich_editor::Renderer> {
+    pub(crate) inner: RefCell<Internal<R>>,
+    /// Bumped on every mutation so the widget can detect changes.
+    generation: std::cell::Cell<u64>,
+}
 
 pub(crate) struct Internal<R: rich_editor::Renderer> {
     pub(crate) editor: R::RichEditor,
@@ -72,14 +76,17 @@ impl<R: rich_editor::Renderer> Content<R> {
 
     /// Create a [`Content`] with the given text.
     pub fn with_text(text: &str) -> Self {
-        Self(RefCell::new(Internal {
-            editor: R::RichEditor::with_text(text),
-            pending_style: None,
-            history: History::new(),
-            default_style: span::Style::default(),
-            paragraph_styles: vec![paragraph::Style::default()],
-            list_indent: list::DEFAULT_LIST_INDENT,
-        }))
+        Self {
+            inner: RefCell::new(Internal {
+                editor: R::RichEditor::with_text(text),
+                pending_style: None,
+                history: History::new(),
+                default_style: span::Style::default(),
+                paragraph_styles: vec![paragraph::Style::default()],
+                list_indent: list::DEFAULT_LIST_INDENT,
+            }),
+            generation: std::cell::Cell::new(0),
+        }
     }
 
     /// Parse `.mr` format markup into a [`Content`].
@@ -106,7 +113,7 @@ impl<R: rich_editor::Renderer> Content<R> {
 
         let content = Self::with_text(&plain);
         {
-            let mut internal = content.0.borrow_mut();
+            let mut internal = content.inner.borrow_mut();
 
             let default_style = span::Style::default();
 
@@ -146,7 +153,7 @@ impl<R: rich_editor::Renderer> Content<R> {
 
     /// Export all lines as styled lines for serialization.
     pub fn styled_lines(&self) -> Vec<DocStyledLine> {
-        let internal = self.0.borrow();
+        let internal = self.inner.borrow();
         let count = internal.editor.line_count();
         (0..count)
             .map(|i| {
@@ -166,23 +173,34 @@ impl<R: rich_editor::Renderer> Content<R> {
 
     /// Perform an [`Action`] on the content.
     pub fn perform(&self, action: impl Into<Action>) {
-        let mut internal = self.0.borrow_mut();
+        let mut internal = self.inner.borrow_mut();
         internal.perform(action.into());
+        self.bump_generation();
+    }
+
+    /// Monotonically increasing counter, bumped on every mutation.
+    /// The widget uses this to detect when re-layout is needed.
+    pub fn generation(&self) -> u64 {
+        self.generation.get()
+    }
+
+    fn bump_generation(&self) {
+        self.generation.set(self.generation.get().wrapping_add(1));
     }
 
     /// Returns the current cursor position.
     pub fn cursor(&self) -> Cursor {
-        self.0.borrow().editor.cursor()
+        self.inner.borrow().editor.cursor()
     }
 
     /// Returns the selected text, if any.
     pub fn selection(&self) -> Option<String> {
-        self.0.borrow().editor.copy()
+        self.inner.borrow().editor.copy()
     }
 
     /// Returns the full text content.
     pub fn text(&self) -> String {
-        let internal = self.0.borrow();
+        let internal = self.inner.borrow();
         let mut contents = String::new();
         let count = internal.editor.line_count();
         for i in 0..count {
@@ -202,12 +220,12 @@ impl<R: rich_editor::Renderer> Content<R> {
 
     /// Returns the number of lines.
     pub fn line_count(&self) -> usize {
-        self.0.borrow().editor.line_count()
+        self.inner.borrow().editor.line_count()
     }
 
     /// Returns the text of a specific line.
     pub fn line(&self, index: usize) -> Option<Line<'_>> {
-        let internal = self.0.borrow();
+        let internal = self.inner.borrow();
         let line = internal.editor.line(index)?;
         Some(Line {
             text: Cow::Owned(line.text.into_owned()),
@@ -221,7 +239,7 @@ impl<R: rich_editor::Renderer> Content<R> {
     /// character in the selection (matching the toggle logic in format ops).
     /// Without a selection, bias-left reads the character before the cursor.
     pub fn cursor_context(&self) -> cursor::Context {
-        let internal = self.0.borrow();
+        let internal = self.inner.borrow();
         let editor_cursor = internal.editor.cursor();
 
         let mut char_style = if let Some(ref pending) = internal.pending_style {
@@ -249,6 +267,7 @@ impl<R: rich_editor::Renderer> Content<R> {
                 size: char_style.size,
                 color: char_style.color,
                 letter_spacing: char_style.letter_spacing,
+                optical_size: char_style.optical_size,
             },
             paragraph: cursor::Paragraph {
                 alignment: super::Alignment::from_iced(para_style.alignment),
@@ -265,7 +284,7 @@ impl<R: rich_editor::Renderer> Content<R> {
 
     /// Returns per-line styled content for debugging/inspection.
     pub fn styled_line(&self, index: usize) -> Option<markright_document::StyledLine> {
-        let internal = self.0.borrow();
+        let internal = self.inner.borrow();
         let line = internal.editor.line(index)?;
         let len = line.text.len();
         let mut styled = markright_document::read_styled_line(&internal.editor, index, 0..len);
@@ -275,13 +294,13 @@ impl<R: rich_editor::Renderer> Content<R> {
 
     /// Returns whether the content is empty.
     pub fn is_empty(&self) -> bool {
-        self.0.borrow().editor.is_empty()
+        self.inner.borrow().editor.is_empty()
     }
 
     /// Returns a Debug-formatted dump of cursor, style, and paragraph state.
     pub fn debug_state(&self) -> String {
         use std::fmt::Write;
-        let internal = self.0.borrow();
+        let internal = self.inner.borrow();
         let c = internal.editor.cursor();
         let col = c.position.column.saturating_sub(1);
         let style = internal.editor.span_style_at(c.position.line, col);
@@ -293,32 +312,32 @@ impl<R: rich_editor::Renderer> Content<R> {
 
     /// Returns whether undo is available.
     pub fn can_undo(&self) -> bool {
-        self.0.borrow().history.can_undo()
+        self.inner.borrow().history.can_undo()
     }
 
     /// Number of undo groups.
     pub fn undo_len(&self) -> usize {
-        self.0.borrow().history.undo_len()
+        self.inner.borrow().history.undo_len()
     }
 
     /// Number of redo groups.
     pub fn redo_len(&self) -> usize {
-        self.0.borrow().history.redo_len()
+        self.inner.borrow().history.redo_len()
     }
 
     /// Returns whether redo is available.
     pub fn can_redo(&self) -> bool {
-        self.0.borrow().history.can_redo()
+        self.inner.borrow().history.can_redo()
     }
 
     /// Returns whether the document has been modified since the last save.
     pub fn is_dirty(&self) -> bool {
-        self.0.borrow().history.is_dirty()
+        self.inner.borrow().history.is_dirty()
     }
 
     /// Mark the current state as saved (clean).
     pub fn mark_saved(&self) {
-        self.0.borrow_mut().history.mark_saved();
+        self.inner.borrow_mut().history.mark_saved();
     }
 
     /// Strip all per-span overrides of a given attribute across the entire
@@ -326,52 +345,63 @@ impl<R: rich_editor::Renderer> Content<R> {
     ///
     /// Recorded as one undo group so the user can restore everything with Cmd+Z.
     pub fn strip_attr(&self, attr: markright_document::SpanAttr) {
-        self.0.borrow_mut().strip_attr(attr);
+        self.inner.borrow_mut().strip_attr(attr);
+        self.bump_generation();
     }
 
     /// Set the document's default color and strip all per-span and
     /// paragraph-default color overrides so everything renders in `color`.
     pub fn set_color(&self, color: crate::core::Color) {
-        let mut internal = self.0.borrow_mut();
+        let mut internal = self.inner.borrow_mut();
         internal.default_style.color = Some(color);
         internal.strip_attr(markright_document::SpanAttr::Color(None));
+        drop(internal);
+        self.bump_generation();
     }
 
     /// Set the document's default font and strip all per-span font overrides.
     pub fn set_font(&self, font: crate::core::Font) {
-        let mut internal = self.0.borrow_mut();
+        let mut internal = self.inner.borrow_mut();
         internal.default_style.font = Some(font);
         internal.strip_attr(markright_document::SpanAttr::Font(None));
+        drop(internal);
+        self.bump_generation();
     }
 
     /// Set the document's default font size and strip all per-span size overrides.
     pub fn set_font_size(&self, size: f32) {
-        let mut internal = self.0.borrow_mut();
+        let mut internal = self.inner.borrow_mut();
         internal.default_style.size = Some(size);
         internal.strip_attr(markright_document::SpanAttr::Size(None));
+        drop(internal);
+        self.bump_generation();
     }
 
     /// Set the document's default letter spacing and strip all per-span overrides.
     pub fn set_letter_spacing(&self, spacing: f32) {
-        let mut internal = self.0.borrow_mut();
+        let mut internal = self.inner.borrow_mut();
         internal.default_style.letter_spacing = Some(spacing);
         internal.strip_attr(markright_document::SpanAttr::LetterSpacing(None));
+        drop(internal);
+        self.bump_generation();
     }
 
     /// Set alignment on every paragraph. Recorded as one undo group.
     pub fn set_alignment(&self, alignment: super::Alignment) {
-        let mut internal = self.0.borrow_mut();
+        let mut internal = self.inner.borrow_mut();
         internal.set_alignment_all(alignment);
+        drop(internal);
+        self.bump_generation();
     }
 
     /// Sets the list indent (pixels per level). Default is 20.
     pub fn set_list_indent(&self, indent: f32) {
-        self.0.borrow_mut().list_indent = indent;
+        self.inner.borrow_mut().list_indent = indent;
     }
 
     /// Returns the current list indent.
     pub fn list_indent(&self) -> f32 {
-        self.0.borrow().list_indent
+        self.inner.borrow().list_indent
     }
 
     /// Trigger a layout pass so that geometry queries return up-to-date values.
@@ -386,7 +416,7 @@ impl<R: rich_editor::Renderer> Content<R> {
         use crate::core::text::{LineHeight, Wrapping};
         use crate::core::{Em, Pixels};
 
-        let mut internal = self.0.borrow_mut();
+        let mut internal = self.inner.borrow_mut();
         internal.editor.update(
             bounds,
             Default::default(),
@@ -409,7 +439,7 @@ impl<R: rich_editor::Renderer> Content<R> {
         line: usize,
     ) -> Option<crate::core::text::rich_editor::paragraph::Geometry> {
         use crate::core::text::rich_editor::Editor as _;
-        self.0.borrow().editor.line_geometry(line)
+        self.inner.borrow().editor.line_geometry(line)
     }
 
     /// Returns the caret rectangle from the editor's selection state.
@@ -417,7 +447,7 @@ impl<R: rich_editor::Renderer> Content<R> {
     /// Call `update_layout` first to ensure the layout is current.
     pub fn caret_rect(&self) -> Option<crate::core::Rectangle> {
         use crate::core::text::rich_editor::Editor as _;
-        let internal = self.0.borrow();
+        let internal = self.inner.borrow();
         match internal.editor.selection() {
             crate::core::text::editor::Selection::Caret(rect) => Some(rect),
             _ => None,
@@ -442,7 +472,7 @@ where
     R::RichEditor: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let internal = self.0.borrow();
+        let internal = self.inner.borrow();
         f.debug_struct("Content")
             .field("editor", &internal.editor)
             .finish()
@@ -616,6 +646,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
             Format::SetFontSize(size) => current.size = Some(*size),
             Format::SetColor(color) => current.color = *color,
             Format::SetLetterSpacing(ls) => current.letter_spacing = Some(*ls),
+            Format::SetOpticalSize(opsz) => current.optical_size = *opsz,
             Format::SetAlignment(_)
             | Format::SetList(_)
             | Format::IndentList
@@ -712,7 +743,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                     start_line, lines, ..
                 } => self.sync_paragraph_insert_range(*start_line, lines.len()),
                 Op::SetParagraphStyle { line, style, .. } => {
-                    self.set_paragraph_style(*line, style.clone());
+                    self.set_paragraph_style(*line, *style.clone());
                 }
                 Op::SetAlignment {
                     line, alignment, ..
@@ -855,8 +886,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 }
                 return vec![Op::SetParagraphStyle {
                     line,
-                    style: new_style,
-                    old_style,
+                    style: Box::new(new_style),
+                    old_style: Box::new(old_style),
                 }];
             }
         }

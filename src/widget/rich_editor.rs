@@ -324,7 +324,7 @@ where
             return InputMethod::Disabled;
         };
 
-        let internal = self.content.0.borrow_mut();
+        let internal = self.content.inner.borrow_mut();
 
         let text_bounds = layout.children().next().expect("content node").bounds();
         let translation = text_bounds.position() - Point::ORIGIN;
@@ -352,6 +352,8 @@ pub struct State {
     last_click: Option<mouse::Click>,
     drag_click: Option<mouse::click::Kind>,
     partial_scroll: f32,
+    /// Last content generation seen by layout — forces relayout on mutation.
+    last_generation: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -419,7 +421,17 @@ where
             last_click: None,
             drag_click: None,
             partial_scroll: 0.0,
+            last_generation: 0,
         })
+    }
+
+    fn diff(&self, tree: &mut widget::Tree) {
+        let state = tree.state.downcast_mut::<State>();
+        let current = self.content.generation();
+        if state.last_generation != current {
+            state.last_generation = current;
+            tree.children.clear();
+        }
     }
 
     fn size(&self) -> Size<Length> {
@@ -435,7 +447,7 @@ where
         renderer: &Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let mut internal = self.content.0.borrow_mut();
+        let mut internal = self.content.inner.borrow_mut();
         let _state = tree.state.downcast_mut::<State>();
 
         let font = self
@@ -577,7 +589,7 @@ where
                     state.drag_click = None;
                 }
                 Update::Scroll(lines) => {
-                    let bounds = self.content.0.borrow().editor.bounds();
+                    let bounds = self.content.inner.borrow().editor.bounds();
                     if bounds.height >= i32::MAX as f32 {
                         return;
                     }
@@ -751,7 +763,7 @@ where
     ) {
         let bounds = layout.bounds();
 
-        let internal = self.content.0.borrow();
+        let internal = self.content.inner.borrow();
         let state = tree.state.downcast_ref::<State>();
 
         let font = self
