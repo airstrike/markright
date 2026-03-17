@@ -320,8 +320,8 @@ fn set_paragraph_field<E: Editor>(
             apply(&mut new_style);
             Op::SetParagraphStyle {
                 line,
-                style: new_style,
-                old_style,
+                style: Box::new(new_style),
+                old_style: Box::new(old_style),
             }
         })
         .collect()

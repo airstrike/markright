@@ -712,7 +712,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                     start_line, lines, ..
                 } => self.sync_paragraph_insert_range(*start_line, lines.len()),
                 Op::SetParagraphStyle { line, style, .. } => {
-                    self.set_paragraph_style(*line, style.clone());
+                    self.set_paragraph_style(*line, *style.clone());
                 }
                 Op::SetAlignment {
                     line, alignment, ..
@@ -855,8 +855,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 }
                 return vec![Op::SetParagraphStyle {
                     line,
-                    style: new_style,
-                    old_style,
+                    style: Box::new(new_style),
+                    old_style: Box::new(old_style),
                 }];
             }
         }

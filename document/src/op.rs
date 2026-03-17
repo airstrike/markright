@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use iced_core::font::OpticalSize;
 use iced_core::text::LineHeight;
 use iced_core::text::rich_editor::{paragraph, span};
 use iced_core::{Color, Font};
@@ -53,6 +54,7 @@ pub enum SpanAttr {
     Size(Option<f32>),
     Color(Option<Color>),
     LetterSpacing(Option<f32>),
+    OpticalSize(Option<OpticalSize>),
 }
 
 impl SpanAttr {
@@ -67,6 +69,7 @@ impl SpanAttr {
             SpanAttr::Size(_) => SpanAttr::Size(style.size),
             SpanAttr::Color(_) => SpanAttr::Color(style.color),
             SpanAttr::LetterSpacing(_) => SpanAttr::LetterSpacing(style.letter_spacing),
+            SpanAttr::OpticalSize(_) => SpanAttr::OpticalSize(style.optical_size),
         }
     }
 
@@ -81,6 +84,7 @@ impl SpanAttr {
             SpanAttr::Size(_) => style.size.is_some(),
             SpanAttr::Color(_) => style.color.is_some(),
             SpanAttr::LetterSpacing(_) => style.letter_spacing.is_some(),
+            SpanAttr::OpticalSize(_) => style.optical_size.is_some(),
         }
     }
 
@@ -95,6 +99,7 @@ impl SpanAttr {
             SpanAttr::Size(_) => style.size = None,
             SpanAttr::Color(_) => style.color = None,
             SpanAttr::LetterSpacing(_) => style.letter_spacing = None,
+            SpanAttr::OpticalSize(_) => style.optical_size = None,
         }
     }
 
@@ -110,6 +115,7 @@ impl SpanAttr {
             SpanAttr::Size(v) => result.size = *v,
             SpanAttr::Color(v) => result.color = *v,
             SpanAttr::LetterSpacing(v) => result.letter_spacing = *v,
+            SpanAttr::OpticalSize(v) => result.optical_size = *v,
         }
         result
     }
@@ -197,8 +203,8 @@ pub enum Op {
     /// Set the paragraph style (spacing, indent, level, list) on a line.
     SetParagraphStyle {
         line: usize,
-        style: paragraph::Style,
-        old_style: paragraph::Style,
+        style: Box<paragraph::Style>,
+        old_style: Box<paragraph::Style>,
     },
     /// Set line height on a line.
     SetLineHeight {
@@ -696,8 +702,8 @@ mod tests {
         };
         let op = Op::SetParagraphStyle {
             line: 2,
-            style: new.clone(),
-            old_style: old.clone(),
+            style: Box::new(new.clone()),
+            old_style: Box::new(old.clone()),
         };
         let inv = op.inverse();
         assert_eq!(inv.len(), 1);
@@ -708,8 +714,8 @@ mod tests {
                 old_style,
             } => {
                 assert_eq!(*line, 2);
-                assert_eq!(*style, old);
-                assert_eq!(*old_style, new);
+                assert_eq!(**style, old);
+                assert_eq!(**old_style, new);
             }
             other => panic!("expected SetParagraphStyle, got {other:?}"),
         }
@@ -725,8 +731,8 @@ mod tests {
         };
         let op = Op::SetParagraphStyle {
             line: 0,
-            style: style.clone(),
-            old_style: paragraph::Style::default(),
+            style: Box::new(style.clone()),
+            old_style: Box::new(paragraph::Style::default()),
         };
         let inv = op.inverse();
         let double_inv = inv[0].inverse();
@@ -738,8 +744,8 @@ mod tests {
                 old_style,
             } => {
                 assert_eq!(*line, 0);
-                assert_eq!(*s, style);
-                assert_eq!(*old_style, paragraph::Style::default());
+                assert_eq!(**s, style);
+                assert_eq!(**old_style, paragraph::Style::default());
             }
             other => panic!("expected SetParagraphStyle, got {other:?}"),
         }

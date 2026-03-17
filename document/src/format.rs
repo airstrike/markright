@@ -187,6 +187,15 @@ fn serialize_default_style_attrs(props: &mut Vec<String>, style: &span::Style) {
     if let Some(sp) = style.letter_spacing {
         props.push(format!("d:sp={}", format_float(sp)));
     }
+    if let Some(opsz) = style.optical_size {
+        match opsz {
+            font::OpticalSize::Auto => props.push("d:opsz=auto".to_string()),
+            font::OpticalSize::Fixed(bits) => {
+                props.push(format!("d:opsz={}", format_float(f32::from_bits(bits))));
+            }
+            font::OpticalSize::None => {}
+        }
+    }
 }
 
 fn serialize_line_content(out: &mut String, line: &StyledLine, escape_prop_prefix: bool) {
@@ -262,6 +271,15 @@ fn style_to_attrs(style: &span::Style) -> String {
     }
     if let Some(sp) = style.letter_spacing {
         tokens.push(format!("sp={}", format_float(sp)));
+    }
+    if let Some(opsz) = style.optical_size {
+        match opsz {
+            font::OpticalSize::Auto => tokens.push("opsz=auto".to_string()),
+            font::OpticalSize::Fixed(bits) => {
+                tokens.push(format!("opsz={}", format_float(f32::from_bits(bits))));
+            }
+            font::OpticalSize::None => {}
+        }
     }
 
     tokens.join(" ")
@@ -377,6 +395,9 @@ fn parse_default_attr(attr: &str, style: &mut span::Style) -> Result<(), ParseEr
         }
         _ if attr.starts_with("sp=") => {
             style.letter_spacing = Some(parse_f32(&attr[3..])?);
+        }
+        _ if attr.starts_with("opsz=") => {
+            style.optical_size = Some(parse_optical_size(&attr[5..]));
         }
         _ => {
             return Err(ParseError {
@@ -604,7 +625,9 @@ fn try_parse_attr(token: &str) -> Option<AttrToken> {
             } else if let Some(val) = token.strip_prefix("sp=") {
                 val.parse::<f32>().ok().map(AttrToken::LetterSpacing)
             } else {
-                None
+                token
+                    .strip_prefix("opsz=")
+                    .map(|val| AttrToken::OpticalSize(parse_optical_size(val)))
             }
         }
     }
@@ -619,6 +642,7 @@ enum AttrToken {
     Size(f32),
     Color(Color),
     LetterSpacing(f32),
+    OpticalSize(font::OpticalSize),
 }
 
 fn apply_attr(style: &mut span::Style, attr: AttrToken) {
@@ -631,6 +655,18 @@ fn apply_attr(style: &mut span::Style, attr: AttrToken) {
         AttrToken::Size(sz) => style.size = Some(sz),
         AttrToken::Color(c) => style.color = Some(c),
         AttrToken::LetterSpacing(sp) => style.letter_spacing = Some(sp),
+        AttrToken::OpticalSize(opsz) => style.optical_size = Some(opsz),
+    }
+}
+
+fn parse_optical_size(val: &str) -> font::OpticalSize {
+    match val {
+        "auto" => font::OpticalSize::Auto,
+        "none" => font::OpticalSize::None,
+        _ => val
+            .parse::<f32>()
+            .map(font::OpticalSize::fixed)
+            .unwrap_or(font::OpticalSize::None),
     }
 }
 
@@ -645,6 +681,7 @@ fn merge_styles(parent: &span::Style, child: &span::Style) -> span::Style {
         size: child.size.or(parent.size),
         color: child.color.or(parent.color),
         letter_spacing: child.letter_spacing.or(parent.letter_spacing),
+        optical_size: child.optical_size.or(parent.optical_size),
     }
 }
 
