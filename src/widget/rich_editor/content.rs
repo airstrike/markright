@@ -387,6 +387,7 @@ impl<R: rich_editor::Renderer> Content<R> {
         use crate::core::{Em, Pixels};
 
         let mut internal = self.0.borrow_mut();
+        let default_style = internal.default_style.clone();
         internal.editor.update(
             bounds,
             Default::default(),
@@ -397,7 +398,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             Vec::new(),
             Wrapping::Word,
             None,
-            Default::default(),
+            default_style,
         );
     }
 

@@ -120,6 +120,10 @@ impl State {
         self.selected.borrow().contains(&id)
     }
 
+    pub fn selected_ids(&self) -> Vec<Id> {
+        self.selected.borrow().iter().copied().collect()
+    }
+
     fn select(&self, id: Id) {
         self.selected.borrow_mut().insert(id);
     }

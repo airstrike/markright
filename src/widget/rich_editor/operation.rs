@@ -96,15 +96,19 @@ pub fn apply_op<E: Editor>(editor: &mut E, op: &Op, paragraph_styles: &[paragrap
             line, range, attr, ..
         } => {
             // Read existing styles, apply only the one attribute, write back.
+            // Skip runs where the attribute doesn't change to avoid creating
+            // unnecessary explicit spans in cosmic-text that shadow future
+            // default style changes.
             let runs = document::read_style_runs(editor, *line, range.clone());
             if runs.is_empty() {
-                // No existing runs — apply attribute to a default style.
                 let style = attr.apply_to(&Default::default());
                 editor.set_span_style(*line, range.clone(), &style);
             } else {
                 for run in &runs {
                     let merged = attr.apply_to(&run.style);
-                    editor.set_span_style(*line, run.range.clone(), &merged);
+                    if merged != run.style {
+                        editor.set_span_style(*line, run.range.clone(), &merged);
+                    }
                 }
             }
         }

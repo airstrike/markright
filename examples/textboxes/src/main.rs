@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use iced::alignment::{self, Vertical::*};
 use iced::widget::operation::focus;
-use iced::widget::{button, column, container, row};
-use iced::{Color, Element, Length, Point, Rectangle, Size, Task, color};
+use iced::widget::{button, column, container, row, text};
+use iced::{Color, Element, Font, Length, Point, Rectangle, Size, Task, color, font};
 
 use function::*;
 use markright::widget::rich_editor::{self, Action, Alignment, Content, Format};
@@ -24,9 +24,31 @@ fn main() -> iced::Result {
         .run()
 }
 
+struct Textbox {
+    content: Content<iced::Renderer>,
+    color: Option<Color>,
+    font: Option<Font>,
+}
+
+impl Textbox {
+    fn with_text(text: &str) -> Self {
+        Self {
+            content: Content::with_text(text),
+            color: None,
+            font: None,
+        }
+    }
+}
+
+const FONT_CHOICES: &[(&str, font::Family)] = &[
+    ("Sans", font::Family::SansSerif),
+    ("Serif", font::Family::Serif),
+    ("Mono", font::Family::Monospace),
+];
+
 struct App {
     state: workspace::State,
-    content: HashMap<Id, Content<iced::Renderer>>,
+    textboxes: HashMap<Id, Textbox>,
 }
 
 #[derive(Debug, Clone)]
@@ -40,20 +62,21 @@ enum Message {
     SetAlignment(Alignment),
     SetVAlign(alignment::Vertical),
     SetColor(Color),
+    SetFont(Font),
 }
 
 impl App {
     fn new() -> (Self, Task<Message>) {
         let mut state = workspace::State::new();
-        let mut content = HashMap::new();
+        let mut textboxes = HashMap::new();
 
         let id = state.insert(
             Rectangle::new(Point::new(50.0, 80.0), Size::new(280.0, 160.0)),
             Top,
         );
-        content.insert(
+        textboxes.insert(
             id,
-            Content::with_text(
+            Textbox::with_text(
                 "Hello, world!\n\nThis is a floating textbox. Double-click to edit.",
             ),
         );
@@ -62,21 +85,21 @@ impl App {
             Rectangle::new(Point::new(400.0, 120.0), Size::new(260.0, 140.0)),
             Center,
         );
-        content.insert(
+        textboxes.insert(
             id,
-            Content::with_text("A second textbox.\n\nDrag me around!"),
+            Textbox::with_text("A second textbox.\n\nDrag me around!"),
         );
 
         let id = state.insert(
             Rectangle::new(Point::new(200.0, 340.0), Size::new(320.0, 120.0)),
             Bottom,
         );
-        content.insert(
+        textboxes.insert(
             id,
-            Content::with_text("Bottom-aligned text in a wider box."),
+            Textbox::with_text("Bottom-aligned text in a wider box."),
         );
 
-        (Self { state, content }, Task::none())
+        (Self { state, textboxes }, Task::none())
     }
 
     /// Perform an action on the currently-editing content, if any.
@@ -89,15 +112,15 @@ impl App {
     /// Returns a mutable reference to the content being edited, if any.
     fn editing_content(&mut self) -> Option<&mut Content<iced::Renderer>> {
         let id = self.state.editing()?;
-        self.content.get_mut(&id)
+        self.textboxes.get_mut(&id).map(|tb| &mut tb.content)
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::EditStarted(_) => focus("editor"),
             Message::EditExited(id) => {
-                if let Some(content) = self.content.get(&id) {
-                    content.perform(Action::Deselect);
+                if let Some(tb) = self.textboxes.get(&id) {
+                    tb.content.perform(Action::Deselect);
                 }
                 Task::none()
             }
@@ -127,23 +150,60 @@ impl App {
                 }
                 focus("editor")
             }
+            Message::SetFont(font) => {
+                if self.state.editing().is_some() {
+                    self.perform(Format::SetFont(font));
+                    focus("editor")
+                } else {
+                    for &id in &self.state.selected_ids() {
+                        if let Some(tb) = self.textboxes.get_mut(&id) {
+                            tb.content.set_font(font);
+                            tb.font = Some(font);
+                        }
+                    }
+                    Task::none()
+                }
+            }
             Message::SetColor(color) => {
-                self.perform(Format::SetColor(Some(color)));
-                focus("editor")
+                if self.state.editing().is_some() {
+                    // Editing: apply as span format on the selection.
+                    self.perform(Format::SetColor(Some(color)));
+                    focus("editor")
+                } else {
+                    // Not editing: set_color on all selected boxes.
+                    let selected = self.state.selected_ids();
+                    for &id in &selected {
+                        if let Some(tb) = self.textboxes.get_mut(&id) {
+                            tb.content.set_color(color);
+                            tb.color = Some(color);
+                        }
+                    }
+                    for &id in &selected {
+                        if let Some(tb) = self.textboxes.get(&id) {
+                            eprintln!("--- box {id:?} ---\n{}", tb.content.serialize());
+                        }
+                    }
+                    Task::none()
+                }
             }
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
         let mut ws = workspace::workspace(&self.state, |id, bx| {
-            let content = &self.content[&id];
+            let tb = &self.textboxes[&id];
 
-            let mut editor = rich_editor::rich_editor(content)
+            let mut editor = rich_editor::rich_editor(&tb.content)
                 .style(theme::editor::style)
                 .padding(8)
                 .height(Length::Fill)
                 .align_y(bx.v_align())
+                .color(tb.color)
                 .size(BASE_SIZE);
+
+            if let Some(font) = tb.font {
+                editor = editor.font(font);
+            }
 
             if bx.is_editing() {
                 editor = editor.id("editor").on_action(Message::Editor);
@@ -167,7 +227,7 @@ impl App {
         // Mini-toolbar above the active box, centered on it.
         if let Some(id) = self.state.editing() {
             let bounds = self.state.bounds(id);
-            let ctx = self.content[&id].cursor_context();
+            let ctx = self.textboxes[&id].content.cursor_context();
             let center_x = bounds.x + bounds.width / 2.0;
             ws = ws.push(
                 Point::new(center_x, bounds.y - TOOLBAR_H - 4.0),
@@ -180,6 +240,20 @@ impl App {
 }
 
 fn top_toolbar() -> Element<'static, Message> {
+    let mut font_row = row![].spacing(2).align_y(Center);
+    for &(label, family) in FONT_CHOICES {
+        let font = Font {
+            family,
+            ..Font::DEFAULT
+        };
+        font_row = font_row.push(
+            button(text(label).size(12).font(font))
+                .on_press(Message::SetFont(font))
+                .style(theme::toolbar::button.with(false))
+                .padding([4, 8]),
+        );
+    }
+
     let mut swatch_row = row![].spacing(4).align_y(Center);
     for &color in COLOR_SWATCHES {
         swatch_row = swatch_row.push(
@@ -195,7 +269,7 @@ fn top_toolbar() -> Element<'static, Message> {
         );
     }
 
-    container(swatch_row)
+    container(row![font_row, swatch_row].spacing(12).align_y(Center))
         .padding([6, 12])
         .width(Length::Fill)
         .style(theme::toolbar::top_bar)
