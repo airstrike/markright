@@ -158,3 +158,44 @@ fn set_color_renders_uniformly_after_layout() {
          Expected uniform color across all lines.",
     );
 }
+
+/// Calling set_color twice: green then blue. After the second call,
+/// serialization should have NO colors — the green from the first call
+/// must not leak through line defaults into the serialized output.
+#[test]
+fn set_color_twice_second_overrides_first() {
+    let green = Color::from_rgb(0.0, 1.0, 0.0);
+
+    let c = C::with_text("Hello\n\nWorld");
+
+    // First: set to green
+    c.set_color(green);
+
+    // Simulate a frame: layout propagates green into editor line defaults
+    c.update_layout(Size::new(400.0, 400.0));
+
+    // Second: set to blue
+    c.set_color(BLUE);
+
+    // Serialization should have no colors at all — blue is on default_style,
+    // not baked into spans.
+    let mr = c.serialize();
+    assert!(
+        !mr.contains("c="),
+        "no color should appear in serialization after second set_color.\n.mr:\n{mr}"
+    );
+
+    // After layout, all lines should be uniform (no stale green leaking).
+    c.update_layout(Size::new(400.0, 400.0));
+    let lines = c.styled_lines();
+    let line_colors: Vec<_> = lines
+        .iter()
+        .filter(|l| !l.text.is_empty())
+        .map(|l| l.runs[0].style.color)
+        .collect();
+    assert!(
+        line_colors.windows(2).all(|w| w[0] == w[1]),
+        "all lines should have the same color after second set_color.\n\
+         Line colors: {line_colors:?}",
+    );
+}

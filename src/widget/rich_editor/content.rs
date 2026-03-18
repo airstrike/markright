@@ -631,6 +631,24 @@ impl<R: rich_editor::Renderer> Internal<R> {
     fn strip_attr(&mut self, attr: markright_document::SpanAttr) {
         use markright_document::SpanAttr;
 
+        // First: clear paragraph character defaults and rebuild ALL line
+        // defaults. This must happen BEFORE reading/stripping spans, because
+        // update() may have baked the old default_style value into line
+        // defaults — spans inherit from those defaults, so we need them
+        // clean before we read and clear span overrides.
+        let count = self.editor.line_count();
+        // Ensure paragraph_styles covers all lines.
+        if self.paragraph_styles.len() < count {
+            self.paragraph_styles
+                .resize(count, paragraph::Style::default());
+        }
+        for line in 0..count {
+            attr.clear_in(&mut self.paragraph_styles[line].style);
+            let ps = self.paragraph_styles[line].clone();
+            self.editor.set_paragraph_style(line, &ps);
+        }
+
+        // Now strip span-level overrides.
         let mut ops = Vec::new();
         let count = self.editor.line_count();
 
@@ -659,15 +677,6 @@ impl<R: rich_editor::Renderer> Internal<R> {
             };
             operation::apply_op(&mut self.editor, &op, &self.paragraph_styles);
             ops.push(op);
-        }
-
-        // Also clear from paragraph character defaults
-        for line in 0..self.paragraph_styles.len() {
-            if attr.is_set_in(&self.paragraph_styles[line].style) {
-                attr.clear_in(&mut self.paragraph_styles[line].style);
-                let ps = self.paragraph_styles[line].clone();
-                self.editor.set_paragraph_style(line, &ps);
-            }
         }
 
         self.record_group(ops);
