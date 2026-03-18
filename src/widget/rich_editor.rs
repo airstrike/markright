@@ -79,6 +79,7 @@ where
     font_features: Vec<crate::core::font::Feature>,
     font_variations: Vec<crate::core::font::Variation>,
     default_style: rich_editor::span::Style,
+    scrollable: bool,
     class: Theme::Class<'a>,
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
     on_blur: Option<Message>,
@@ -113,6 +114,7 @@ where
             font_features: Vec::new(),
             font_variations: Vec::new(),
             default_style: rich_editor::span::Style::default(),
+            scrollable: true,
             class: <Theme as Catalog>::default(),
             on_action: None,
             on_blur: None,
@@ -293,6 +295,13 @@ where
         self
     }
 
+    /// Enable or disable automatic scrolling to keep the cursor visible.
+    /// Defaults to `true`.
+    pub fn scrollable(mut self, scrollable: bool) -> Self {
+        self.scrollable = scrollable;
+        self
+    }
+
     /// Sets the style of the [`RichEditor`].
     #[must_use]
     pub fn style(mut self, style: impl Fn(&Theme, Status) -> Style + 'a) -> Self
@@ -450,6 +459,10 @@ where
             .max_height(self.max_height);
 
         internal.default_style = self.default_style.clone();
+        {
+            use crate::core::text::rich_editor::Editor as _;
+            internal.editor.set_scrollable(self.scrollable);
+        }
 
         internal.editor.update(
             limits.shrink(self.padding).max(),
