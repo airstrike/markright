@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use iced::alignment::{self, Vertical::*};
 use iced::widget::operation::focus;
-use iced::widget::{button, container, row};
+use iced::widget::{button, column, container, row};
 use iced::{Color, Element, Length, Point, Rectangle, Size, Task, color};
 
 use function::*;
@@ -39,7 +39,7 @@ enum Message {
     ToggleUnderline,
     SetAlignment(Alignment),
     SetVAlign(alignment::Vertical),
-    SetColor(Option<Color>),
+    SetColor(Color),
 }
 
 impl App {
@@ -128,7 +128,7 @@ impl App {
                 focus("editor")
             }
             Message::SetColor(color) => {
-                self.perform(Format::SetColor(color));
+                self.perform(Format::SetColor(Some(color)));
                 focus("editor")
             }
         }
@@ -175,17 +175,41 @@ impl App {
             );
         }
 
-        ws.into()
+        column![top_toolbar(), ws].into()
     }
 }
 
-const COLOR_SWATCHES: &[(Option<Color>, &str)] = &[
-    (None, "Default"),
-    (Some(Color::BLACK), "Black"),
-    (Some(color!(0xCC2626)), "Red"),
-    (Some(color!(0x1A80E6)), "Blue"),
-    (Some(color!(0x26A640)), "Green"),
-    (Some(color!(0xB36600)), "Orange"),
+fn top_toolbar() -> Element<'static, Message> {
+    let mut swatch_row = row![].spacing(4).align_y(Center);
+    for &color in COLOR_SWATCHES {
+        swatch_row = swatch_row.push(
+            button(
+                container("")
+                    .width(16)
+                    .height(16)
+                    .style(move |_| theme::toolbar::swatch(color, false)),
+            )
+            .on_press(Message::SetColor(color))
+            .style(theme::toolbar::button.with(false))
+            .padding([4, 3]),
+        );
+    }
+
+    container(swatch_row)
+        .padding([6, 12])
+        .width(Length::Fill)
+        .style(theme::toolbar::top_bar)
+        .into()
+}
+
+const COLOR_SWATCHES: &[Color] = &[
+    Color::BLACK,
+    color!(0xCC2626),
+    color!(0x1A80E6),
+    color!(0x26A640),
+    color!(0xB36600),
+    color!(0x5c21a5),
+    Color::WHITE,
 ];
 
 fn btn<'a>(label: iced::widget::Text<'a>, active: bool) -> iced::widget::Button<'a, Message> {
@@ -236,8 +260,8 @@ fn mini_toolbar(
     .spacing(2)
     .align_y(Center);
 
-    for &(color, _label) in COLOR_SWATCHES {
-        let active = current_color == color;
+    for &color in COLOR_SWATCHES {
+        let active = current_color == Some(color);
         toolbar_row = toolbar_row.push(
             button(
                 container("")
@@ -316,6 +340,19 @@ mod theme {
         use super::*;
         use iced::Color;
 
+        pub fn top_bar(theme: &iced::Theme) -> container::Style {
+            let palette = theme.palette();
+            container::Style {
+                background: Some(Background::Color(palette.background.weak.color)),
+                border: Border {
+                    color: palette.background.strong.color,
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            }
+        }
+
         pub fn group(theme: &iced::Theme) -> container::Style {
             let palette = theme.palette();
             container::Style {
@@ -329,11 +366,9 @@ mod theme {
             }
         }
 
-        pub fn swatch(color: Option<Color>, active: bool) -> container::Style {
+        pub fn swatch(color: Color, active: bool) -> container::Style {
             container::Style {
-                background: Some(Background::Color(
-                    color.unwrap_or(Color::from_rgb(0.5, 0.5, 0.5)),
-                )),
+                background: Some(Background::Color(color)),
                 border: Border {
                     color: if active {
                         Color::WHITE

@@ -603,9 +603,12 @@ where
                     self.state.interaction.set(Interaction::Idle);
                     shell.invalidate_layout();
                 }
-                Interaction::Pressed { .. } => {
-                    // Click without drag — clear any group selection.
-                    self.state.clear_selection();
+                Interaction::Pressed { id, .. } => {
+                    // Click without drag — select just this box.
+                    if !widget_state.modifiers.shift() {
+                        self.state.clear_selection();
+                    }
+                    self.state.select(id);
                     self.state.interaction.set(Interaction::Idle);
                     shell.request_redraw();
                 }
@@ -712,8 +715,8 @@ where
             }
         }
 
-        // Selection borders (drawn over all box layers).
-        {
+        // Selection borders (drawn over all box layers in a separate layer).
+        renderer.with_layer(*viewport, |renderer| {
             let selected = self.state.selected.borrow();
             for (i, child_layout) in layouts[..n].iter().enumerate() {
                 let (&id, _) = self.state.boxes.get_index(i).unwrap();
@@ -722,7 +725,7 @@ where
                         && widget_state.drag_origins.iter().any(|&(bid, _)| bid == id);
                     let bounds = if is_dragged {
                         let delta = drag_delta.unwrap();
-                        let b = child_layout.bounds();
+                        let b = child_layout.bounds().expand(2.0);
                         Rectangle {
                             x: b.x + delta.x,
                             y: b.y + delta.y,
@@ -745,7 +748,7 @@ where
                     );
                 }
             }
-        }
+        });
 
         // Rubberband selection rectangle.
         if let Interaction::Selecting { origin, current } = self.state.interaction.get() {
