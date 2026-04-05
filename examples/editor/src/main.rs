@@ -5,9 +5,11 @@ mod pull;
 mod theme;
 mod toolbar;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use markright_document::format as mr;
+use markright_document::markdown;
+use markright_document::{Format as _, StyledLine};
 
 use iced::clipboard;
 use iced::widget::operation::focus;
@@ -61,6 +63,8 @@ enum Message {
     FocusEditor,
     Save,
     Saved(Result<PathBuf, String>),
+    Open,
+    Opened(Result<(PathBuf, Vec<StyledLine>), String>),
 }
 
 impl App {
@@ -146,6 +150,7 @@ impl App {
                         let mr = mr::serialize(&self.content.styled_lines());
                         Task::perform(save(mr), Message::Saved)
                     }
+                    toolbar::Action::Open => Task::perform(open(), Message::Opened),
                     toolbar::Action::ToggleTheme => {
                         self.theme_choice = self.theme_choice.toggle();
                         focus("editor")
@@ -208,6 +213,20 @@ impl App {
                         tracing::info!("Saved to {}", path.display());
                     }
                     Err(e) => tracing::warn!("Save failed: {e}"),
+                }
+                focus("editor")
+            }
+            Message::Open => Task::perform(open(), Message::Opened),
+            Message::Opened(result) => {
+                match result {
+                    Ok((path, lines)) => {
+                        self.content = Content::from_styled_lines(&lines);
+                        self.content.mark_saved();
+                        self.toolbar
+                            .sync_from_cursor(&self.content.cursor_context());
+                        tracing::info!("Opened {}", path.display());
+                    }
+                    Err(e) => tracing::warn!("Open failed: {e}"),
                 }
                 focus("editor")
             }
@@ -279,6 +298,53 @@ async fn save(mr: String) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Show a native file-open dialog and load the chosen file into styled lines.
+/// Dispatches to the right parser based on extension (`.mr`, `.md`/`.markdown`,
+/// or plain text as fallback).
+async fn open() -> Result<(PathBuf, Vec<StyledLine>), String> {
+    let handle = rfd::AsyncFileDialog::new()
+        .add_filter("Markright", &["mr"])
+        .add_filter("Markdown", &["md", "markdown"])
+        .add_filter("Text", &["txt"])
+        .add_filter("All", &["*"])
+        .pick_file()
+        .await
+        .ok_or_else(|| "no file selected".to_string())?;
+
+    let path: PathBuf = handle.path().to_path_buf();
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let lines = parse_by_extension(&path, &text);
+    Ok((path, lines))
+}
+
+fn parse_by_extension(path: &Path, text: &str) -> Vec<StyledLine> {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    match ext.as_str() {
+        "md" | "markdown" => markdown::Markdown::parse(text).unwrap_or_default(),
+        "mr" => mr::parse(text).unwrap_or_else(|e| {
+            tracing::warn!("Failed to parse .mr file: {e}");
+            vec![StyledLine {
+                text: text.to_string(),
+                runs: vec![],
+                paragraph_style: Default::default(),
+            }]
+        }),
+        _ => text
+            .lines()
+            .map(|line| StyledLine {
+                text: line.to_string(),
+                runs: vec![],
+                paragraph_style: Default::default(),
+            })
+            .collect(),
+    }
+}
+
 fn key_binding(key_press: KeyPress) -> Option<Binding<Message>> {
     let KeyPress { key, modifiers, .. } = &key_press;
 
@@ -286,6 +352,12 @@ fn key_binding(key_press: KeyPress) -> Option<Binding<Message>> {
     if let Some('s') = key.to_latin(key_press.physical_key) {
         if modifiers.command() {
             return Some(Binding::Custom(Message::Save));
+        }
+    }
+    // Cmd+O → Open
+    if let Some('o') = key.to_latin(key_press.physical_key) {
+        if modifiers.command() {
+            return Some(Binding::Custom(Message::Open));
         }
     }
 

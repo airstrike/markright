@@ -90,6 +90,7 @@ impl State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    Open,
     Save,
     Format(Format),
     Undo,
@@ -123,11 +124,14 @@ pub enum Action {
     ToggleDebug { opening: bool },
     /// Save the document.
     Save,
+    /// Open a file (shows native file dialog).
+    Open,
 }
 
 pub fn update(state: &mut State, message: Message) -> Action {
     match message {
         Message::Save => Action::Save,
+        Message::Open => Action::Open,
         Message::Format(f) => Action::Editor(f.into()),
         Message::Undo => Action::Editor(EditorAction::Undo),
         Message::Redo => Action::Editor(EditorAction::Redo),
@@ -233,6 +237,11 @@ pub fn view<'a>(
     can_undo: bool,
     can_redo: bool,
 ) -> Element<'a, Message> {
+    let open_btn = button(icon::folder_open().size(16))
+        .padding([4, 8])
+        .style(theme::button::icon)
+        .on_press(Message::Open);
+
     let mut save_btn = button(icon::save().size(16))
         .padding([4, 8])
         .style(theme::button::icon);
@@ -333,7 +342,7 @@ pub fn view<'a>(
 
     let size = ctx.character.size.unwrap_or(crate::BASE_SIZE);
 
-    let file_group = group(row![save_btn]);
+    let file_group = group(row![open_btn, save_btn].spacing(GROUP_SPACING));
     let history_group = group(row![undo_btn, redo_btn].spacing(GROUP_SPACING));
     let format_group = group(row![bold_btn, italic_btn, underline_btn].spacing(GROUP_SPACING));
     let list_group =

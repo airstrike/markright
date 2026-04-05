@@ -6,3 +6,8 @@ edition = "2024"
 [dependencies]
 iced_core.workspace = true
 markright_core.workspace = true
+pulldown-cmark = { version = "0.13", default-features = false, optional = true }
+
+[features]
+default = []
+markdown = ["dep:pulldown-cmark"]
