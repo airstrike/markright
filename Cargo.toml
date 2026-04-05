@@ -28,8 +28,11 @@ reqwest.workspace = true
 
 
 [patch.crates-io]
-iced = { git = "https://github.com/airstrike/iced", branch = "dev" }
-iced_core = { git = "https://github.com/airstrike/iced", branch = "dev" }
-iced_graphics = { git = "https://github.com/airstrike/iced", branch = "dev" }
-iced_widget = { git = "https://github.com/airstrike/iced", branch = "dev" }
+# Using local iced checkout until commit ad6a03ef9 (heading field) lands on
+# airstrike/iced#dev — blocked on a pre-existing cargo-audit failure in
+# iced's dev branch (unrelated: rustls-webpki 0.102.8 from tungstenite example).
+iced = { path = "/Users/andy/projects/iced" }
+iced_core = { path = "/Users/andy/projects/iced/core" }
+iced_graphics = { path = "/Users/andy/projects/iced/graphics" }
+iced_widget = { path = "/Users/andy/projects/iced/widget" }
 cosmic-text = { git = "https://github.com/airstrike/cosmic-text", branch = "dev" }

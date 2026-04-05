@@ -150,6 +150,11 @@ fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
         props.push(format!("level={}", ps.level));
     }
 
+    // Heading (semantic level 1-6)
+    if let Some(h) = ps.heading {
+        props.push(format!("heading={h}"));
+    }
+
     // List
     if let Some(list) = &ps.list {
         let s = match list {
@@ -379,6 +384,18 @@ fn parse_paragraph_header(header: &str) -> Result<paragraph::Style, ParseError> 
                 message: format!("invalid level: {val}"),
                 offset: 0,
             })?;
+        } else if let Some(val) = token.strip_prefix("heading=") {
+            let h = val.parse::<u8>().map_err(|_| ParseError {
+                message: format!("invalid heading level: {val}"),
+                offset: 0,
+            })?;
+            if !(1..=6).contains(&h) {
+                return Err(ParseError {
+                    message: format!("heading level must be 1-6: {val}"),
+                    offset: 0,
+                });
+            }
+            ps.heading = Some(h);
         } else if let Some(val) = token.strip_prefix("list=") {
             ps.list = Some(parse_list(val)?);
         } else {
@@ -1266,6 +1283,24 @@ mod tests {
         let s = serialize(&lines);
         assert!(s.contains("sb=12"));
         assert!(s.contains("sa=8"));
+    }
+
+    #[test]
+    fn paragraph_heading_round_trips() {
+        let lines = vec![StyledLine {
+            text: "Title".to_string(),
+            runs: vec![StyleRun {
+                range: 0..5,
+                style: span::Style::default(),
+            }],
+            paragraph_style: paragraph::Style {
+                heading: Some(2),
+                ..Default::default()
+            },
+        }];
+        assert_round_trip(&lines);
+        let s = serialize(&lines);
+        assert!(s.contains("heading=2"));
     }
 
     #[test]

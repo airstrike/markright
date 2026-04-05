@@ -328,7 +328,7 @@ fn parse_markdown(input: &str) -> Vec<StyledLine> {
 fn paragraph_style_for(
     list_stack: &[ListKind],
     quote_depth: u8,
-    _heading: Option<HeadingLevel>,
+    heading: Option<HeadingLevel>,
 ) -> paragraph::Style {
     let mut ps = paragraph::Style::default();
     if let Some(last) = list_stack.last() {
@@ -345,7 +345,19 @@ fn paragraph_style_for(
             hanging: 0.0,
         };
     }
+    ps.heading = heading.map(heading_level_to_u8);
     ps
+}
+
+fn heading_level_to_u8(level: HeadingLevel) -> u8 {
+    match level {
+        HeadingLevel::H1 => 1,
+        HeadingLevel::H2 => 2,
+        HeadingLevel::H3 => 3,
+        HeadingLevel::H4 => 4,
+        HeadingLevel::H5 => 5,
+        HeadingLevel::H6 => 6,
+    }
 }
 
 fn code_block_paragraph_style() -> paragraph::Style {
@@ -397,12 +409,10 @@ fn serialize_line(out: &mut String, line: &StyledLine) {
         }
     }
 
-    // Heading prefix (detect from font size + bold on paragraph defaults).
-    let size = line.paragraph_style.style.size;
-    let is_bold_heading = line.paragraph_style.style.bold == Some(true) && size.is_some();
-    if is_bold_heading && line.paragraph_style.list.is_none() {
-        let level = heading_level_from_size(size.unwrap_or(16.0));
-        for _ in 0..level {
+    // Heading prefix, using the semantic heading tag.
+    let heading_level = line.paragraph_style.heading;
+    if let Some(level) = heading_level {
+        for _ in 0..level.min(6) {
             out.push('#');
         }
         out.push(' ');
@@ -412,9 +422,10 @@ fn serialize_line(out: &mut String, line: &StyledLine) {
     // paragraph-level defaults (it's already conveyed by the heading/list
     // prefix).
     let defaults = &line.paragraph_style.style;
+    let in_heading = heading_level.is_some();
     for run in &line.runs {
         let piece = &line.text[run.range.clone()];
-        write_styled(out, piece, &run.style, defaults, is_bold_heading);
+        write_styled(out, piece, &run.style, defaults, in_heading);
     }
     // If there were no runs, emit the raw text.
     if line.runs.is_empty() {
@@ -425,22 +436,6 @@ fn serialize_line(out: &mut String, line: &StyledLine) {
         if last_end < line.text.len() {
             out.push_str(&line.text[last_end..]);
         }
-    }
-}
-
-fn heading_level_from_size(size: f32) -> u8 {
-    if size >= 30.0 {
-        1
-    } else if size >= 26.0 {
-        2
-    } else if size >= 22.0 {
-        3
-    } else if size >= 19.0 {
-        4
-    } else if size >= 17.0 {
-        5
-    } else {
-        6
     }
 }
 
@@ -528,11 +523,30 @@ mod tests {
     }
 
     #[test]
-    fn heading_gets_large_size_and_bold() {
+    fn heading_tagged_with_level_and_visual_defaults() {
         let lines = parse("# Title");
         assert_eq!(lines[0].text, "Title");
+        // Semantic tag
+        assert_eq!(lines[0].paragraph_style.heading, Some(1));
+        // Visual defaults for rendering
         assert_eq!(lines[0].paragraph_style.style.bold, Some(true));
         assert_eq!(lines[0].paragraph_style.style.size, Some(32.0));
+    }
+
+    #[test]
+    fn heading_levels_map_h1_through_h6() {
+        let cases = [
+            ("# a", 1),
+            ("## b", 2),
+            ("### c", 3),
+            ("#### d", 4),
+            ("##### e", 5),
+            ("###### f", 6),
+        ];
+        for (input, expected) in cases {
+            let lines = parse(input);
+            assert_eq!(lines[0].paragraph_style.heading, Some(expected));
+        }
     }
 
     #[test]

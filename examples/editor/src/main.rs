@@ -349,16 +349,16 @@ fn key_binding(key_press: KeyPress) -> Option<Binding<Message>> {
     let KeyPress { key, modifiers, .. } = &key_press;
 
     // Cmd+S → Save
-    if let Some('s') = key.to_latin(key_press.physical_key) {
-        if modifiers.command() {
-            return Some(Binding::Custom(Message::Save));
-        }
+    if let Some('s') = key.to_latin(key_press.physical_key)
+        && modifiers.command()
+    {
+        return Some(Binding::Custom(Message::Save));
     }
     // Cmd+O → Open
-    if let Some('o') = key.to_latin(key_press.physical_key) {
-        if modifiers.command() {
-            return Some(Binding::Custom(Message::Open));
-        }
+    if let Some('o') = key.to_latin(key_press.physical_key)
+        && modifiers.command()
+    {
+        return Some(Binding::Custom(Message::Open));
     }
 
     // Fall through to default bindings
