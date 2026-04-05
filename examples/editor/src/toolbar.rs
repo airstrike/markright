@@ -1,4 +1,6 @@
-use iced::widget::{Space, button, combo_box, container, mouse_area, row, text, text_input};
+use iced::widget::{
+    Space, button, combo_box, container, mouse_area, pick_list, row, text, text_input,
+};
 use iced::{Color, Element, Length, Subscription, color, mouse};
 
 use markright::paragraph;
@@ -10,6 +12,48 @@ use crate::theme;
 
 const GROUP_SPACING: f32 = 1.0;
 const TOOLBAR_SPACING: f32 = 6.0;
+
+/// Semantic paragraph style shown in the toolbar picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParaStyle {
+    Body,
+    Heading(u8),
+}
+
+const PARA_STYLES: [ParaStyle; 7] = [
+    ParaStyle::Body,
+    ParaStyle::Heading(1),
+    ParaStyle::Heading(2),
+    ParaStyle::Heading(3),
+    ParaStyle::Heading(4),
+    ParaStyle::Heading(5),
+    ParaStyle::Heading(6),
+];
+
+impl std::fmt::Display for ParaStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParaStyle::Body => f.write_str("Body"),
+            ParaStyle::Heading(n) => write!(f, "Heading {n}"),
+        }
+    }
+}
+
+impl ParaStyle {
+    fn from_heading(heading: Option<u8>) -> Self {
+        match heading {
+            Some(n) if (1..=6).contains(&n) => ParaStyle::Heading(n),
+            _ => ParaStyle::Body,
+        }
+    }
+
+    fn to_heading(self) -> Option<u8> {
+        match self {
+            ParaStyle::Body => None,
+            ParaStyle::Heading(n) => Some(n),
+        }
+    }
+}
 
 const COLOR_SWATCHES: &[Option<Color>] = &[
     None,
@@ -357,6 +401,16 @@ pub fn view<'a>(
         .spacing(GROUP_SPACING),
     );
 
+    let current_para_style = ParaStyle::from_heading(ctx.paragraph.style.heading);
+    let para_picker = pick_list(Some(current_para_style), &PARA_STYLES[..], |style| {
+        style.to_string()
+    })
+    .on_select(|style: ParaStyle| Message::Format(Format::SetHeading(style.to_heading())))
+    .width(100)
+    .text_size(12)
+    .padding([2, 6]);
+    let para_group = group(para_picker);
+
     let current_font = font_name(ctx.character.font);
     let font_selector = combo_box(
         &state.font_list,
@@ -456,6 +510,7 @@ pub fn view<'a>(
     let mut toolbar_row = row![
         file_group,
         history_group,
+        para_group,
         format_group,
         list_group,
         align_group,

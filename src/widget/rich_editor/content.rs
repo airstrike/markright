@@ -609,7 +609,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
             | Format::IndentList
             | Format::DedentList
             | Format::SetLineHeight(_)
-            | Format::SetLineSpacing(_) => {}
+            | Format::SetLineSpacing(_)
+            | Format::SetHeading(_) => {}
         }
     }
 

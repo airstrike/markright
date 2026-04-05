@@ -155,6 +155,37 @@ pub fn format<E: Editor>(
                 style.line_spacing = Some(spacing);
             })
         }
+        Format::SetHeading(level) => {
+            let level = *level;
+            set_paragraph_field(editor, paragraph_styles, |style| {
+                style.heading = level;
+                match level {
+                    Some(n) => {
+                        style.style.bold = Some(true);
+                        style.style.size = Some(heading_size(n));
+                    }
+                    None => {
+                        style.style.bold = None;
+                        style.style.size = None;
+                    }
+                }
+            })
+        }
+    }
+}
+
+/// Conventional font size for each heading level.
+///
+/// Matches the markdown adapter's mapping so `SetHeading` and parsing
+/// markdown produce identical styles.
+fn heading_size(level: u8) -> f32 {
+    match level {
+        1 => 32.0,
+        2 => 28.0,
+        3 => 24.0,
+        4 => 20.0,
+        5 => 18.0,
+        _ => 16.0,
     }
 }
 

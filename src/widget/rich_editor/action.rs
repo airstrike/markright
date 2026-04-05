@@ -95,6 +95,13 @@ pub enum Format {
     SetLineHeight(crate::core::text::LineHeight),
     /// Set line spacing for the current line(s).
     SetLineSpacing(paragraph::Spacing),
+    /// Set or clear the heading semantic tag (1-6) on the current line(s).
+    ///
+    /// Setting a heading also applies conventional visual defaults
+    /// (bold + size) to the paragraph's character defaults; clearing
+    /// removes them. This matches how the markdown adapter parses
+    /// heading syntax, so the two paths are interchangeable.
+    SetHeading(Option<u8>),
 }
 
 /// Convert our [`Action`] to an iced editor [`Action`] when possible.
