@@ -97,7 +97,9 @@ pub fn to_string(content: &Content<iced::Renderer>) -> String {
     ));
 
     out.push('\n');
-    out.push_str(&content.serialize());
+    out.push_str(&markright_document::format::serialize(
+        &content.styled_lines(),
+    ));
 
     out
 }

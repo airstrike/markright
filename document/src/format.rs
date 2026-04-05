@@ -10,7 +10,22 @@ use iced_core::text::rich_editor::paragraph::{self, Bullet, List, Number, Spacin
 use iced_core::text::rich_editor::span;
 use iced_core::{Color, Font, Pixels, font};
 
-use crate::{StyleRun, StyledLine};
+use markright_core::{StyleRun, StyledLine};
+
+/// The `.mr` document format.
+pub struct Markright;
+
+impl markright_core::Format for Markright {
+    type Error = ParseError;
+
+    fn parse(input: &str) -> Result<Vec<StyledLine>, Self::Error> {
+        parse(input)
+    }
+
+    fn serialize(lines: &[StyledLine]) -> String {
+        serialize(lines)
+    }
+}
 
 /// Serialize styled lines to `.mr` format.
 pub fn serialize(lines: &[StyledLine]) -> String {

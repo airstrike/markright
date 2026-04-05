@@ -1,4 +1,4 @@
-use markright_document::paragraph;
+use markright_core::paragraph;
 
 /// Default indent per list level in pixels.
 pub const DEFAULT_LIST_INDENT: f32 = 20.0;

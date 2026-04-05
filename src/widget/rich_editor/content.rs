@@ -3,7 +3,7 @@
 
 use crate::core::text::editor::Position;
 use crate::core::text::rich_editor::{self, Editor as _, paragraph, span};
-use markright_document::{History, Op, StyledLine as DocStyledLine};
+use markright_core::{History, Op, StyledLine as DocStyledLine};
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -14,7 +14,7 @@ use super::list;
 use super::operation;
 
 pub use crate::core::text::editor::{Cursor, Line, LineEnding};
-pub use markright_document::{StyleRun, StyledLine};
+pub use markright_core::{StyleRun, StyledLine};
 
 /// Returns the style at the first non-empty character in a selection.
 ///
@@ -82,14 +82,6 @@ impl<R: rich_editor::Renderer> Content<R> {
         }))
     }
 
-    /// Parse `.mr` format markup into a [`Content`].
-    ///
-    /// This is the primary way to load a saved document.
-    pub fn parse(input: &str) -> Result<Self, markright_document::format::ParseError> {
-        let lines = markright_document::format::parse(input)?;
-        Ok(Self::from_styled_lines(&lines))
-    }
-
     /// Create a [`Content`] from styled lines.
     pub fn from_styled_lines(lines: &[DocStyledLine]) -> Self {
         // Join all line texts with \n
@@ -152,16 +144,11 @@ impl<R: rich_editor::Renderer> Content<R> {
             .map(|i| {
                 let line = internal.editor.line(i);
                 let len = line.as_ref().map(|l| l.text.len()).unwrap_or(0);
-                let mut styled = markright_document::read_styled_line(&internal.editor, i, 0..len);
+                let mut styled = markright_core::read_styled_line(&internal.editor, i, 0..len);
                 styled.paragraph_style = internal.paragraph_style(i).clone();
                 styled
             })
             .collect()
-    }
-
-    /// Serialize the content to `.mr` format.
-    pub fn serialize(&self) -> String {
-        markright_document::format::serialize(&self.styled_lines())
     }
 
     /// Perform an [`Action`] on the content.
@@ -264,11 +251,11 @@ impl<R: rich_editor::Renderer> Content<R> {
     }
 
     /// Returns per-line styled content for debugging/inspection.
-    pub fn styled_line(&self, index: usize) -> Option<markright_document::StyledLine> {
+    pub fn styled_line(&self, index: usize) -> Option<markright_core::StyledLine> {
         let internal = self.0.borrow();
         let line = internal.editor.line(index)?;
         let len = line.text.len();
-        let mut styled = markright_document::read_styled_line(&internal.editor, index, 0..len);
+        let mut styled = markright_core::read_styled_line(&internal.editor, index, 0..len);
         styled.paragraph_style = internal.paragraph_style(index).clone();
         Some(styled)
     }
@@ -325,7 +312,7 @@ impl<R: rich_editor::Renderer> Content<R> {
     /// document. Also clears the attribute from paragraph character defaults.
     ///
     /// Recorded as one undo group so the user can restore everything with Cmd+Z.
-    pub fn strip_attr(&self, attr: markright_document::SpanAttr) {
+    pub fn strip_attr(&self, attr: markright_core::SpanAttr) {
         self.0.borrow_mut().strip_attr(attr);
     }
 
@@ -334,28 +321,28 @@ impl<R: rich_editor::Renderer> Content<R> {
     pub fn set_color(&self, color: crate::core::Color) {
         let mut internal = self.0.borrow_mut();
         internal.default_style.color = Some(color);
-        internal.strip_attr(markright_document::SpanAttr::Color(None));
+        internal.strip_attr(markright_core::SpanAttr::Color(None));
     }
 
     /// Set the document's default font and strip all per-span font overrides.
     pub fn set_font(&self, font: crate::core::Font) {
         let mut internal = self.0.borrow_mut();
         internal.default_style.font = Some(font);
-        internal.strip_attr(markright_document::SpanAttr::Font(None));
+        internal.strip_attr(markright_core::SpanAttr::Font(None));
     }
 
     /// Set the document's default font size and strip all per-span size overrides.
     pub fn set_font_size(&self, size: f32) {
         let mut internal = self.0.borrow_mut();
         internal.default_style.size = Some(size);
-        internal.strip_attr(markright_document::SpanAttr::Size(None));
+        internal.strip_attr(markright_core::SpanAttr::Size(None));
     }
 
     /// Set the document's default letter spacing and strip all per-span overrides.
     pub fn set_letter_spacing(&self, spacing: f32) {
         let mut internal = self.0.borrow_mut();
         internal.default_style.letter_spacing = Some(spacing);
-        internal.strip_attr(markright_document::SpanAttr::LetterSpacing(None));
+        internal.strip_attr(markright_core::SpanAttr::LetterSpacing(None));
     }
 
     /// Set alignment on every paragraph. Recorded as one undo group.
@@ -628,8 +615,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
 
     /// Strip all per-span overrides of `attr` and clear it from paragraph
     /// character defaults. Recorded as one undo group.
-    fn strip_attr(&mut self, attr: markright_document::SpanAttr) {
-        use markright_document::SpanAttr;
+    fn strip_attr(&mut self, attr: markright_core::SpanAttr) {
+        use markright_core::SpanAttr;
 
         // First: clear paragraph character defaults and rebuild ALL line
         // defaults. This must happen BEFORE reading/stripping spans, because
@@ -658,7 +645,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 continue;
             }
             let range = 0..len;
-            let runs = markright_document::read_style_runs(&self.editor, line, range.clone());
+            let runs = markright_core::read_style_runs(&self.editor, line, range.clone());
             let old_values: Vec<(std::ops::Range<usize>, SpanAttr)> = runs
                 .iter()
                 .filter(|r| attr.is_set_in(&r.style))
@@ -688,7 +675,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
         let count = self.editor.line_count();
 
         for line in 0..count {
-            let current = markright_document::Alignment::from_iced(
+            let current = markright_core::Alignment::from_iced(
                 self.paragraph_styles.get(line).and_then(|ps| ps.alignment),
             );
             if current == alignment {

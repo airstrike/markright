@@ -3,7 +3,7 @@
 
 use crate::core::text::LineHeight;
 use crate::core::text::rich_editor::{Editor, span};
-use markright_document::{self as document, Alignment, Op, SpanAttr, paragraph};
+use markright_core::{self as document, Alignment, Op, SpanAttr, paragraph};
 use std::ops::Range;
 
 use super::super::action::Format;

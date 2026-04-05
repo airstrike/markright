@@ -3,6 +3,7 @@
 
 use iced::{Color, Font, Size, font};
 use markright::widget::rich_editor::{Action, Content, Format, Motion};
+use markright_document::format as mr;
 
 type C = Content<iced::Renderer>;
 
@@ -114,15 +115,15 @@ fn set_font_serialization_has_no_fonts() {
     // Set whole doc to serif
     c.set_font(SERIF);
 
-    let mr = c.serialize();
+    let output = mr::serialize(&c.styled_lines());
     assert!(
-        !mr.contains("f="),
-        "font attributes should not appear in serialization.\n.mr:\n{mr}"
+        !output.contains("f="),
+        "font attributes should not appear in serialization.\n.mr:\n{output}"
     );
     // Bold should survive
     assert!(
-        mr.contains("{{b} second}"),
-        "bold on 'second' should survive.\n.mr:\n{mr}"
+        output.contains("{{b} second}"),
+        "bold on 'second' should survive.\n.mr:\n{output}"
     );
 }
 

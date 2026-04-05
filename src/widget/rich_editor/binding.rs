@@ -4,7 +4,7 @@ use super::{Alignment, Format, Motion, Status};
 use crate::core::SmolStr;
 use crate::core::keyboard;
 use crate::core::keyboard::key;
-use markright_document::paragraph;
+use markright_core::paragraph;
 use std::ops;
 
 // A binding to an action in the [`RichEditor`].

@@ -4,8 +4,8 @@ use std::sync::Arc;
 pub use crate::core::text::editor::{Cursor, Line, LineEnding, Motion, Position, Selection};
 use crate::core::{Color, Font, Point};
 
-pub use markright_document::Alignment;
-use markright_document::paragraph;
+pub use markright_core::Alignment;
+use markright_core::paragraph;
 
 /// Top-level editor action -- navigation, selection, and edits.
 #[derive(Debug, Clone, PartialEq)]

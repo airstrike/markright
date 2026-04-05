@@ -3,7 +3,7 @@
 use super::action::Alignment;
 use crate::core::text::LineHeight;
 use crate::core::{Color, Font};
-use markright_document::paragraph;
+use markright_core::paragraph;
 
 /// Formatting context at the current cursor position.
 #[derive(Debug, Clone, Default)]

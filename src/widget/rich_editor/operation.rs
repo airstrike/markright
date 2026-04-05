@@ -9,7 +9,7 @@ mod format;
 
 use crate::core::text::editor as iced_editor;
 use crate::core::text::rich_editor::{Editor, paragraph};
-use markright_document::{self as document, Alignment, Op, SpanAttr};
+use markright_core::{self as document, Alignment, Op, SpanAttr};
 use std::sync::Arc;
 
 pub use crate::core::text::editor::{Cursor, Position};

@@ -7,6 +7,8 @@ mod toolbar;
 
 use std::path::PathBuf;
 
+use markright_document::format as mr;
+
 use iced::clipboard;
 use iced::widget::operation::focus;
 use iced::widget::{column, container, mouse_area, row, rule, space, text};
@@ -64,16 +66,20 @@ enum Message {
 impl App {
     fn new() -> (Self, Task<Message>) {
         let fallback = || {
-            Content::parse(include_str!("../sample.mr")).unwrap_or_else(|e| {
-                tracing::warn!("Failed to parse sample: {e}");
-                Content::with_text("")
-            })
+            mr::parse(include_str!("../sample.mr"))
+                .map(|lines| Content::from_styled_lines(&lines))
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to parse sample: {e}");
+                    Content::with_text("")
+                })
         };
         let content = match std::fs::read_to_string(document_path()) {
-            Ok(mr) => Content::parse(&mr).unwrap_or_else(|e| {
-                tracing::warn!("Failed to parse saved document: {e}");
-                fallback()
-            }),
+            Ok(text) => mr::parse(&text)
+                .map(|lines| Content::from_styled_lines(&lines))
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to parse saved document: {e}");
+                    fallback()
+                }),
             Err(_) => fallback(),
         };
 
@@ -137,7 +143,7 @@ impl App {
                         }
                     }
                     toolbar::Action::Save => {
-                        let mr = self.content.serialize();
+                        let mr = mr::serialize(&self.content.styled_lines());
                         Task::perform(save(mr), Message::Saved)
                     }
                     toolbar::Action::ToggleTheme => {
@@ -192,7 +198,7 @@ impl App {
             Message::CopyDebug(s) => clipboard::write(s).discard(),
             Message::FocusEditor => focus("editor"),
             Message::Save => {
-                let mr = self.content.serialize();
+                let mr = mr::serialize(&self.content.styled_lines());
                 Task::perform(save(mr), Message::Saved)
             }
             Message::Saved(result) => {

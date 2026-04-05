@@ -2,7 +2,7 @@
 
 use crate::core::text::editor;
 use crate::core::text::rich_editor::{self, Editor};
-use markright_document::{self as document, Op, StyleRun, StyledText};
+use markright_core::{self as document, Op, StyleRun, StyledText};
 use std::sync::Arc;
 
 use super::{Position, iced_edit, ordered_positions};

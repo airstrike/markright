@@ -1,19 +1,13 @@
 //! # Document
 //!
-//! Operation-based document model for markright's rich text editor.
+//! The `.mr` format adapter for markright's rich text editor.
 //!
-//! Provides atomic operations ([`Op`]) for all document mutations and
-//! an undo/redo [`History`] built on those operations. Designed so a
-//! future `crdt` subcrate can consume/produce the same operations.
+//! Implements [`Format`] as [`Markright`](format::Markright) for the `.mr`
+//! serialization format. Re-exports everything from [`markright_core`] for
+//! convenience.
 
-pub mod capture;
 pub mod format;
-pub mod history;
-pub mod op;
 
-/// Paragraph-level formatting types, re-exported from `iced_core`.
-pub use iced_core::text::rich_editor::paragraph;
-
-pub use capture::{read_style_runs, read_styled_line, read_styled_text};
-pub use history::{History, UndoGroup};
-pub use op::{Alignment, Op, SpanAttr, StyleRun, StyledLine, StyledText};
+// Re-export the full core API so existing consumers keep working.
+pub use markright_core::*;
+pub use markright_core::{capture, history, op};

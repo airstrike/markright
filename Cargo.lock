@@ -734,6 +734,7 @@ dependencies = [
  "iced",
  "iced_lucide",
  "markright",
+ "markright_document",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1967,16 +1968,24 @@ dependencies = [
  "iced",
  "iced_core",
  "iced_graphics",
+ "markright_core",
  "markright_document",
  "reqwest",
+]
+
+[[package]]
+name = "markright_core"
+version = "0.1.0"
+dependencies = [
+ "iced_core",
 ]
 
 [[package]]
 name = "markright_document"
 version = "0.1.0"
 dependencies = [
- "cosmic-text",
  "iced_core",
+ "markright_core",
 ]
 
 [[package]]
@@ -3685,6 +3694,7 @@ dependencies = [
  "iced_lucide",
  "indexmap",
  "markright",
+ "markright_document",
 ]
 
 [[package]]
