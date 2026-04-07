@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 1b34975bea23315170130a907546080144e97dead4a070cadcd3fa72f368ce74
+// 8614967daa3cb4481d348f2864a2052bd4835fde5712c16291e5c2a32d14cfe0
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -12,6 +12,7 @@ pub const FONT: &[u8] = include_bytes!("../fonts/lucide.ttf");
 pub const ALL_ICONS: &[(&str, &str)] = &[
     ("bold", "\u{E05D}"),
     ("clipboard_copy", "\u{E225}"),
+    ("folder_open", "\u{E247}"),
     ("indent_decrease", "\u{E107}"),
     ("indent_increase", "\u{E108}"),
     ("italic", "\u{E0FB}"),
@@ -37,6 +38,10 @@ pub fn bold<'a>() -> Text<'a> {
 
 pub fn clipboard_copy<'a>() -> Text<'a> {
     icon("\u{E225}")
+}
+
+pub fn folder_open<'a>() -> Text<'a> {
+    icon("\u{E247}")
 }
 
 pub fn indent_decrease<'a>() -> Text<'a> {

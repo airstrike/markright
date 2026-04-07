@@ -1,4 +1,4 @@
-use markright_document::paragraph;
+use markright_core::paragraph;
 
 /// Default indent per list level in pixels.
 pub const DEFAULT_LIST_INDENT: f32 = 20.0;
@@ -37,14 +37,13 @@ pub fn marker_text(list: &paragraph::List, ordinal: usize) -> String {
 
 /// Count the ordinal position of `line` among consecutive list items at the
 /// same level.
-pub fn count_ordinal(paragraph_styles: &[paragraph::Style], line: usize) -> usize {
-    let style = &paragraph_styles[line];
-    let level = style.level;
+pub fn count_ordinal(paragraphs: &[markright_core::Paragraph], line: usize) -> usize {
+    let level = paragraphs[line].style.level;
     let mut ordinal = 1;
     let mut i = line;
     while i > 0 {
         i -= 1;
-        let prev = &paragraph_styles[i];
+        let prev = &paragraphs[i].style;
         if prev.level < level || prev.list.is_none() {
             break;
         }
@@ -155,34 +154,48 @@ mod tests {
 
     #[test]
     fn ordinal_counting() {
+        use markright_core::Paragraph;
+
         // Lists start at level 1; level 2 is nested.
-        let styles = vec![
-            paragraph::Style {
-                list: Some(paragraph::List::Bullet(paragraph::Bullet::Disc)),
-                level: 1,
-                ..Default::default()
-            },
-            paragraph::Style {
-                list: Some(paragraph::List::Bullet(paragraph::Bullet::Disc)),
-                level: 1,
-                ..Default::default()
-            },
-            paragraph::Style {
-                list: Some(paragraph::List::Bullet(paragraph::Bullet::Circle)),
-                level: 2,
-                ..Default::default()
-            },
-            paragraph::Style {
-                list: Some(paragraph::List::Bullet(paragraph::Bullet::Disc)),
-                level: 1,
-                ..Default::default()
-            },
+        let paragraphs = vec![
+            Paragraph::new(
+                markright_core::Name::BODY,
+                paragraph::Style {
+                    list: Some(paragraph::List::Bullet(paragraph::Bullet::Disc)),
+                    level: 1,
+                    ..Default::default()
+                },
+            ),
+            Paragraph::new(
+                markright_core::Name::BODY,
+                paragraph::Style {
+                    list: Some(paragraph::List::Bullet(paragraph::Bullet::Disc)),
+                    level: 1,
+                    ..Default::default()
+                },
+            ),
+            Paragraph::new(
+                markright_core::Name::BODY,
+                paragraph::Style {
+                    list: Some(paragraph::List::Bullet(paragraph::Bullet::Circle)),
+                    level: 2,
+                    ..Default::default()
+                },
+            ),
+            Paragraph::new(
+                markright_core::Name::BODY,
+                paragraph::Style {
+                    list: Some(paragraph::List::Bullet(paragraph::Bullet::Disc)),
+                    level: 1,
+                    ..Default::default()
+                },
+            ),
         ];
 
-        assert_eq!(count_ordinal(&styles, 0), 1);
-        assert_eq!(count_ordinal(&styles, 1), 2);
-        assert_eq!(count_ordinal(&styles, 2), 1); // nested, resets
-        assert_eq!(count_ordinal(&styles, 3), 3); // back to level 1
+        assert_eq!(count_ordinal(&paragraphs, 0), 1);
+        assert_eq!(count_ordinal(&paragraphs, 1), 2);
+        assert_eq!(count_ordinal(&paragraphs, 2), 1); // nested, resets
+        assert_eq!(count_ordinal(&paragraphs, 3), 3); // back to level 1
     }
 
     #[test]

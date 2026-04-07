@@ -105,7 +105,7 @@ fn enter_creates_new_bullet_paragraph() {
     let c = content("");
     c.perform(set_bullet());
     c.perform(Edit::Insert('a'));
-    c.perform(Edit::Enter);
+    c.perform(Edit::Enter { inherit: false });
     c.update_layout(BOUNDS);
 
     assert_eq!(c.line_count(), 2, "should have 2 lines after Enter");
@@ -136,7 +136,7 @@ fn new_bullet_line_x_offset_matches_original() {
 
     let geom0 = c.line_geometry(0).expect("line 0 should have geometry");
 
-    c.perform(Edit::Enter);
+    c.perform(Edit::Enter { inherit: false });
     c.update_layout(BOUNDS);
 
     let geom1 = c.line_geometry(1).expect("line 1 should have geometry");
@@ -158,7 +158,7 @@ fn cursor_x_on_new_bullet_line_reflects_margin() {
 
     c.perform(set_bullet());
     c.perform(Edit::Insert('a'));
-    c.perform(Edit::Enter);
+    c.perform(Edit::Enter { inherit: false });
     c.update_layout(BOUNDS);
 
     let ctx = c.cursor_context();
@@ -190,7 +190,7 @@ fn enter_on_right_aligned_bullet_preserves_alignment() {
     c.perform(Edit::Insert('e'));
     c.update_layout(BOUNDS);
 
-    c.perform(Edit::Enter);
+    c.perform(Edit::Enter { inherit: false });
     c.perform(Edit::Insert('B'));
     c.perform(Edit::Insert('a'));
     c.perform(Edit::Insert('n'));

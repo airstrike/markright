@@ -8,8 +8,8 @@ mod edit;
 mod format;
 
 use crate::core::text::editor as iced_editor;
-use crate::core::text::rich_editor::{Editor, paragraph};
-use markright_document::{self as document, Alignment, Op, SpanAttr};
+use crate::core::text::rich_editor::Editor;
+use markright_core::{self as document, Op, Paragraph, SpanAttr};
 use std::sync::Arc;
 
 pub use crate::core::text::editor::{Cursor, Position};
@@ -33,8 +33,8 @@ pub fn ordered_positions<'a>(a: &'a Position, b: &'a Position) -> (&'a Position,
 /// Replay an operation on the editor.
 ///
 /// Does NOT return an `Op` — this is intentional; replay is not recorded.
-/// `paragraph_styles` provides the authoritative paragraph styles.
-pub fn apply_op<E: Editor>(editor: &mut E, op: &Op, paragraph_styles: &[paragraph::Style]) {
+/// `paragraphs` provides the authoritative paragraph data.
+pub fn apply_op<E: Editor>(editor: &mut E, op: &Op, _paragraphs: &[Paragraph]) {
     match op {
         Op::InsertText { line, col, content } => {
             editor.move_to(Cursor {
@@ -112,13 +112,6 @@ pub fn apply_op<E: Editor>(editor: &mut E, op: &Op, paragraph_styles: &[paragrap
                 }
             }
         }
-        Op::SetAlignment {
-            line, alignment, ..
-        } => {
-            let mut ps = paragraph_styles.get(*line).cloned().unwrap_or_default();
-            ps.alignment = Some(alignment.to_iced());
-            editor.set_paragraph_style(*line, &ps);
-        }
         Op::DeleteRange {
             start_line,
             start_col,
@@ -170,20 +163,13 @@ pub fn apply_op<E: Editor>(editor: &mut E, op: &Op, paragraph_styles: &[paragrap
                         &run.style,
                     );
                 }
-                editor.set_paragraph_style(target_line, &styled_line.paragraph_style);
+                editor.set_paragraph_style(target_line, &styled_line.paragraph.style);
             }
         }
-        // SetParagraphStyle is a document-model operation — the paragraph::Style
+        // SetParagraph is a document-model operation — the Paragraph
         // vector lives in Content, not in the iced editor. Content handles this
-        // op directly (Phase 2).
-        Op::SetParagraphStyle { .. } => {}
-        Op::SetLineHeight {
-            line, line_height, ..
-        } => {
-            let mut ps = paragraph_styles.get(*line).cloned().unwrap_or_default();
-            ps.line_height = *line_height;
-            editor.set_paragraph_style(*line, &ps);
-        }
+        // op directly.
+        Op::SetParagraph { .. } => {}
     }
 }
 
@@ -237,29 +223,7 @@ pub fn capture_op_state<E: Editor>(editor: &E, op: &Op) -> Op {
                 old_values,
             }
         }
-        Op::SetAlignment {
-            line, alignment, ..
-        } => {
-            let old_alignment = Alignment::from_iced(editor.paragraph_style_at(*line).alignment);
-            Op::SetAlignment {
-                line: *line,
-                alignment: *alignment,
-                old_alignment,
-            }
-        }
-        Op::SetLineHeight {
-            line, line_height, ..
-        } => {
-            let old_line_height = editor.paragraph_style_at(*line).line_height;
-            Op::SetLineHeight {
-                line: *line,
-                line_height: *line_height,
-                old_line_height,
-            }
-        }
-        // Range ops and paragraph style ops are self-contained — no state capture needed.
-        Op::DeleteRange { .. } | Op::InsertRange { .. } | Op::SetParagraphStyle { .. } => {
-            op.clone()
-        }
+        // Range ops and SetParagraph are self-contained — no state capture needed.
+        Op::DeleteRange { .. } | Op::InsertRange { .. } | Op::SetParagraph { .. } => op.clone(),
     }
 }

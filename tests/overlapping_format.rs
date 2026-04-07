@@ -497,7 +497,7 @@ fn new_line_inherits_font_from_previous_line() {
 
     // Move to end, press Enter, type on the new line
     c.perform(Action::Move(Motion::End));
-    c.perform(Edit::Enter);
+    c.perform(Edit::Enter { inherit: false });
     c.perform(Edit::Insert('a'));
 
     let ctx = c.cursor_context();

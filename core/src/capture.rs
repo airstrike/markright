@@ -6,6 +6,7 @@ use std::ops::Range;
 use iced_core::text::rich_editor::Editor;
 
 use super::op::{StyleRun, StyledLine, StyledText};
+use crate::paragraph::{Name, Paragraph};
 
 /// Read character-style runs from the editor over a column range on one line.
 ///
@@ -58,7 +59,7 @@ pub fn read_styled_line<E: Editor>(editor: &E, line: usize, col_range: Range<usi
     StyledLine {
         text,
         runs,
-        paragraph_style: editor.paragraph_style_at(line),
+        paragraph: Paragraph::new(Name::BODY, editor.paragraph_style_at(line)),
     }
 }
 

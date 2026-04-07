@@ -180,7 +180,10 @@ impl App {
                     }
                     for &id in &selected {
                         if let Some(tb) = self.textboxes.get(&id) {
-                            eprintln!("--- box {id:?} ---\n{}", tb.content.serialize());
+                            eprintln!(
+                                "--- box {id:?} ---\n{}",
+                                markright_document::format::serialize(&tb.content.styled_lines())
+                            );
                         }
                     }
                     Task::none()

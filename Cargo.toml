@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "document", "examples/*"]
+members = [".", "core", "document", "examples/*"]
 
 [workspace.dependencies]
 cosmic-text = "0.18"
@@ -7,6 +7,7 @@ iced = { version = "0.15.0-dev", features = ["advanced", "tokio"] }
 iced_core = "0.15.0-dev"
 iced_graphics = "0.15.0-dev"
 iced_widget = "0.15.0-dev"
+markright_core = { path = "core" }
 markright_document = { path = "document" }
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 
@@ -17,11 +18,12 @@ edition = "2024"
 
 [dependencies]
 iced_core.workspace = true
-markright_document.workspace = true
+markright_core.workspace = true
 
 [dev-dependencies]
 iced.workspace = true
 iced_graphics.workspace = true
+markright_document.workspace = true
 reqwest.workspace = true
 
 

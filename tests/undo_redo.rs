@@ -335,7 +335,7 @@ fn enter_then_undo_merges_line() {
         c.perform(Action::Move(Motion::Right));
     }
 
-    c.perform(Action::Edit(Edit::Enter));
+    c.perform(Action::Edit(Edit::Enter { inherit: false }));
     assert_eq!(
         c.line_count(),
         original_lines + 1,

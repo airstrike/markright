@@ -4,8 +4,8 @@ use std::sync::Arc;
 pub use crate::core::text::editor::{Cursor, Line, LineEnding, Motion, Position, Selection};
 use crate::core::{Color, Font, Point};
 
-pub use markright_document::Alignment;
-use markright_document::paragraph;
+pub use markright_core::Alignment;
+use markright_core::paragraph;
 
 /// Top-level editor action -- navigation, selection, and edits.
 #[derive(Debug, Clone, PartialEq)]
@@ -56,7 +56,11 @@ pub enum Edit {
     /// Paste text at the cursor.
     Paste(Arc<String>),
     /// Break the current line (Enter key).
-    Enter,
+    ///
+    /// When `inherit` is true (Shift+Enter), the new line inherits the
+    /// current paragraph's name and style. When false (plain Enter),
+    /// headings demote to BODY if the cursor is at the end of the line.
+    Enter { inherit: bool },
     /// Delete the previous character.
     Backspace,
     /// Delete the next character.
@@ -95,6 +99,12 @@ pub enum Format {
     SetLineHeight(crate::core::text::LineHeight),
     /// Set line spacing for the current line(s).
     SetLineSpacing(paragraph::Spacing),
+    /// Set the paragraph name (e.g. heading, code-block) on the current line(s).
+    SetName(markright_core::Name),
+    /// Set or clear space before the paragraph.
+    SetSpaceBefore(Option<f32>),
+    /// Set or clear space after the paragraph.
+    SetSpaceAfter(Option<f32>),
 }
 
 /// Convert our [`Action`] to an iced editor [`Action`] when possible.
@@ -108,7 +118,7 @@ pub(crate) fn to_iced_action(action: &Action) -> Option<crate::core::text::edito
             let iced_edit = match edit {
                 Edit::Insert(c) => editor::Edit::Insert(*c),
                 Edit::Paste(s) => editor::Edit::Paste(Arc::clone(s)),
-                Edit::Enter => editor::Edit::Enter,
+                Edit::Enter { .. } => editor::Edit::Enter,
                 Edit::Backspace => editor::Edit::Backspace,
                 Edit::Delete => editor::Edit::Delete,
                 Edit::Format(_) => return None,

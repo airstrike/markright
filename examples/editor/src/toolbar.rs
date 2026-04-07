@@ -1,7 +1,10 @@
-use iced::widget::{Space, button, combo_box, container, mouse_area, row, text, text_input};
+use iced::widget::{
+    Space, button, combo_box, container, mouse_area, pick_list, row, text, text_input,
+};
 use iced::{Color, Element, Length, Subscription, color, mouse};
 
 use markright::paragraph;
+use markright::paragraph::Name;
 use markright::widget::rich_editor::{self, Action as EditorAction, Alignment, Format, cursor};
 
 use crate::icon;
@@ -10,6 +13,41 @@ use crate::theme;
 
 const GROUP_SPACING: f32 = 1.0;
 const TOOLBAR_SPACING: f32 = 6.0;
+
+/// Wrapper around [`Name`] with user-friendly `Display` for the toolbar picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ParaName(Name);
+
+const PARA_NAMES: [ParaName; 10] = [
+    ParaName(Name::BODY),
+    ParaName(Name::HEADING_1),
+    ParaName(Name::HEADING_2),
+    ParaName(Name::HEADING_3),
+    ParaName(Name::HEADING_4),
+    ParaName(Name::HEADING_5),
+    ParaName(Name::HEADING_6),
+    ParaName(Name::CODE_BLOCK),
+    ParaName(Name::BLOCK_QUOTE),
+    ParaName(Name::RULE),
+];
+
+impl std::fmt::Display for ParaName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Name::BODY => f.write_str("Body"),
+            Name::HEADING_1 => f.write_str("Heading 1"),
+            Name::HEADING_2 => f.write_str("Heading 2"),
+            Name::HEADING_3 => f.write_str("Heading 3"),
+            Name::HEADING_4 => f.write_str("Heading 4"),
+            Name::HEADING_5 => f.write_str("Heading 5"),
+            Name::HEADING_6 => f.write_str("Heading 6"),
+            Name::CODE_BLOCK => f.write_str("Code Block"),
+            Name::BLOCK_QUOTE => f.write_str("Block Quote"),
+            Name::RULE => f.write_str("Rule"),
+            _ => write!(f, "{}", self.0),
+        }
+    }
+}
 
 const COLOR_SWATCHES: &[Option<Color>] = &[
     None,
@@ -27,6 +65,8 @@ pub struct State {
     recent_fonts: Vec<String>,
     letter_spacing_input: String,
     line_height_input: String,
+    space_before_input: String,
+    space_after_input: String,
     pull: Option<pull::Pull>,
     show_debug: bool,
 }
@@ -45,6 +85,8 @@ impl Default for State {
             recent_fonts: Vec::new(),
             letter_spacing_input: "0.00".into(),
             line_height_input: "1.3".into(),
+            space_before_input: "0".into(),
+            space_after_input: "0".into(),
             pull: None,
             show_debug: false,
         }
@@ -67,6 +109,18 @@ impl State {
             Some(markright::LineHeight::Absolute(px)) => format!("{:.1}", px.0),
             None => "1.3".into(),
         };
+        self.space_before_input = ctx
+            .paragraph
+            .style
+            .space_before
+            .map(|v| format!("{v:.0}"))
+            .unwrap_or_else(|| "0".into());
+        self.space_after_input = ctx
+            .paragraph
+            .style
+            .spacing_after
+            .map(|v| format!("{v:.0}"))
+            .unwrap_or_else(|| "0".into());
     }
 
     /// Rebuild the font combo-box: recently-used first, then the rest
@@ -90,6 +144,7 @@ impl State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    Open,
     Save,
     Format(Format),
     Undo,
@@ -100,6 +155,10 @@ pub enum Message {
     LetterSpacingSubmit,
     LineHeightInput(String),
     LineHeightSubmit,
+    SpaceBeforeInput(String),
+    SpaceBeforeSubmit,
+    SpaceAfterInput(String),
+    SpaceAfterSubmit,
     SetColor(Option<Color>),
     Pull(pull::Message),
     ToggleTheme,
@@ -123,11 +182,14 @@ pub enum Action {
     ToggleDebug { opening: bool },
     /// Save the document.
     Save,
+    /// Open a file (shows native file dialog).
+    Open,
 }
 
 pub fn update(state: &mut State, message: Message) -> Action {
     match message {
         Message::Save => Action::Save,
+        Message::Open => Action::Open,
         Message::Format(f) => Action::Editor(f.into()),
         Message::Undo => Action::Editor(EditorAction::Undo),
         Message::Redo => Action::Editor(EditorAction::Redo),
@@ -161,6 +223,28 @@ pub fn update(state: &mut State, message: Message) -> Action {
                 Action::FocusEditor
             }
         }
+        Message::SpaceBeforeInput(s) => {
+            state.space_before_input = s;
+            Action::None
+        }
+        Message::SpaceBeforeSubmit => {
+            if let Ok(v) = state.space_before_input.parse::<f32>() {
+                Action::Editor(Format::SetSpaceBefore(Some(v)).into())
+            } else {
+                Action::FocusEditor
+            }
+        }
+        Message::SpaceAfterInput(s) => {
+            state.space_after_input = s;
+            Action::None
+        }
+        Message::SpaceAfterSubmit => {
+            if let Ok(v) = state.space_after_input.parse::<f32>() {
+                Action::Editor(Format::SetSpaceAfter(Some(v)).into())
+            } else {
+                Action::FocusEditor
+            }
+        }
         Message::SetColor(color) => Action::Editor(Format::SetColor(color).into()),
         Message::Pull(msg) => match msg {
             pull::Message::Start(pull::Kind::LetterSpacing) => {
@@ -171,6 +255,16 @@ pub fn update(state: &mut State, message: Message) -> Action {
             pull::Message::Start(pull::Kind::LineHeight) => {
                 let current = state.line_height_input.parse::<f32>().unwrap_or(1.3);
                 state.pull = Some(pull::Pull::line_height(current));
+                Action::None
+            }
+            pull::Message::Start(pull::Kind::SpaceBefore) => {
+                let current = state.space_before_input.parse::<f32>().unwrap_or(0.0);
+                state.pull = Some(pull::Pull::space_before(current));
+                Action::None
+            }
+            pull::Message::Start(pull::Kind::SpaceAfter) => {
+                let current = state.space_after_input.parse::<f32>().unwrap_or(0.0);
+                state.pull = Some(pull::Pull::space_after(current));
                 Action::None
             }
             pull::Message::Move(position) => {
@@ -184,6 +278,14 @@ pub fn update(state: &mut State, message: Message) -> Action {
                         pull::Pull::LineHeight(_) => {
                             state.line_height_input = format!("{value}");
                             Action::Pending(Format::SetLineHeight(value.into()).into())
+                        }
+                        pull::Pull::SpaceBefore(_) => {
+                            state.space_before_input = format!("{value:.0}");
+                            Action::Pending(Format::SetSpaceBefore(Some(value)).into())
+                        }
+                        pull::Pull::SpaceAfter(_) => {
+                            state.space_after_input = format!("{value:.0}");
+                            Action::Pending(Format::SetSpaceAfter(Some(value)).into())
                         }
                     }
                 } else {
@@ -233,6 +335,11 @@ pub fn view<'a>(
     can_undo: bool,
     can_redo: bool,
 ) -> Element<'a, Message> {
+    let open_btn = button(icon::folder_open().size(16))
+        .padding([4, 8])
+        .style(theme::button::icon)
+        .on_press(Message::Open);
+
     let mut save_btn = button(icon::save().size(16))
         .padding([4, 8])
         .style(theme::button::icon);
@@ -333,7 +440,7 @@ pub fn view<'a>(
 
     let size = ctx.character.size.unwrap_or(crate::BASE_SIZE);
 
-    let file_group = group(row![save_btn]);
+    let file_group = group(row![open_btn, save_btn].spacing(GROUP_SPACING));
     let history_group = group(row![undo_btn, redo_btn].spacing(GROUP_SPACING));
     let format_group = group(row![bold_btn, italic_btn, underline_btn].spacing(GROUP_SPACING));
     let list_group =
@@ -347,6 +454,14 @@ pub fn view<'a>(
         ]
         .spacing(GROUP_SPACING),
     );
+
+    let current_name = ParaName(ctx.paragraph.name);
+    let para_picker = pick_list(Some(current_name), &PARA_NAMES[..], |n| n.to_string())
+        .on_select(|n: ParaName| Message::Format(Format::SetName(n.0)))
+        .width(110)
+        .text_size(12)
+        .padding([2, 6]);
+    let para_group = group(para_picker);
 
     let current_font = font_name(ctx.character.font);
     let font_selector = combo_box(
@@ -405,12 +520,38 @@ pub fn view<'a>(
         .align_x(iced::Alignment::End)
         .style(theme::combo_box::toolbar);
 
+    let space_before_label = mouse_area(container(text("sb").size(11)).padding([0, 4]))
+        .interaction(mouse::Interaction::ResizingVertically)
+        .on_press(Message::Pull(pull::Message::Start(pull::Kind::SpaceBefore)));
+    let space_before_input = text_input("0", &state.space_before_input)
+        .on_input(Message::SpaceBeforeInput)
+        .on_submit(Message::SpaceBeforeSubmit)
+        .width(36)
+        .size(12)
+        .align_x(iced::Alignment::End)
+        .style(theme::combo_box::toolbar);
+
+    let space_after_label = mouse_area(container(text("sa").size(11)).padding([0, 4]))
+        .interaction(mouse::Interaction::ResizingVertically)
+        .on_press(Message::Pull(pull::Message::Start(pull::Kind::SpaceAfter)));
+    let space_after_input = text_input("0", &state.space_after_input)
+        .on_input(Message::SpaceAfterInput)
+        .on_submit(Message::SpaceAfterSubmit)
+        .width(36)
+        .size(12)
+        .align_x(iced::Alignment::End)
+        .style(theme::combo_box::toolbar);
+
     let spacing_group = group(
         row![
             letter_spacing_label,
             letter_spacing_input,
             line_height_label,
             line_height_input,
+            space_before_label,
+            space_before_input,
+            space_after_label,
+            space_after_input,
         ]
         .spacing(GROUP_SPACING)
         .align_y(iced::Alignment::Center),
@@ -447,6 +588,7 @@ pub fn view<'a>(
     let mut toolbar_row = row![
         file_group,
         history_group,
+        para_group,
         format_group,
         list_group,
         align_group,

@@ -1,9 +1,10 @@
 use std::ops::Range;
 
 use iced_core::font::OpticalSize;
-use iced_core::text::LineHeight;
-use iced_core::text::rich_editor::{paragraph, span};
+use iced_core::text::rich_editor::span;
 use iced_core::{Color, Font};
+
+use crate::paragraph::Paragraph;
 
 /// Text alignment for paragraphs.
 ///
@@ -143,8 +144,8 @@ pub struct StyledText {
 pub struct StyledLine {
     pub text: String,
     pub runs: Vec<StyleRun>,
-    /// Unified paragraph style (alignment, character defaults, spacing, indent, level, list).
-    pub paragraph_style: paragraph::Style,
+    /// The paragraph's name, visual style, and override tracking.
+    pub paragraph: Paragraph,
 }
 
 /// An atomic document operation.
@@ -180,12 +181,6 @@ pub enum Op {
         attr: SpanAttr,
         old_values: Vec<(Range<usize>, SpanAttr)>,
     },
-    /// Set paragraph alignment on a line.
-    SetAlignment {
-        line: usize,
-        alignment: Alignment,
-        old_alignment: Alignment,
-    },
     /// Delete a multi-line selection. Self-contained for undo.
     DeleteRange {
         start_line: usize,
@@ -200,17 +195,11 @@ pub enum Op {
         start_col: usize,
         lines: Vec<StyledLine>,
     },
-    /// Set the paragraph style (spacing, indent, level, list) on a line.
-    SetParagraphStyle {
+    /// Set the full paragraph (name, style, overrides) on a line.
+    SetParagraph {
         line: usize,
-        style: Box<paragraph::Style>,
-        old_style: Box<paragraph::Style>,
-    },
-    /// Set line height on a line.
-    SetLineHeight {
-        line: usize,
-        line_height: Option<LineHeight>,
-        old_line_height: Option<LineHeight>,
+        paragraph: Box<Paragraph>,
+        old_paragraph: Box<Paragraph>,
     },
 }
 
@@ -274,17 +263,6 @@ impl Op {
                         .collect()
                 }
             }
-            Op::SetAlignment {
-                line,
-                alignment,
-                old_alignment,
-            } => {
-                vec![Op::SetAlignment {
-                    line: *line,
-                    alignment: *old_alignment,
-                    old_alignment: *alignment,
-                }]
-            }
             Op::DeleteRange {
                 start_line,
                 start_col,
@@ -311,26 +289,15 @@ impl Op {
                     lines: lines.clone(),
                 }]
             }
-            Op::SetParagraphStyle {
+            Op::SetParagraph {
                 line,
-                style,
-                old_style,
+                paragraph,
+                old_paragraph,
             } => {
-                vec![Op::SetParagraphStyle {
+                vec![Op::SetParagraph {
                     line: *line,
-                    style: old_style.clone(),
-                    old_style: style.clone(),
-                }]
-            }
-            Op::SetLineHeight {
-                line,
-                line_height,
-                old_line_height,
-            } => {
-                vec![Op::SetLineHeight {
-                    line: *line,
-                    line_height: *old_line_height,
-                    old_line_height: *line_height,
+                    paragraph: old_paragraph.clone(),
+                    old_paragraph: paragraph.clone(),
                 }]
             }
         }
@@ -500,29 +467,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn set_alignment_inverse_swaps() {
-        let op = Op::SetAlignment {
-            line: 0,
-            alignment: Alignment::Center,
-            old_alignment: Alignment::Left,
-        };
-        let inv = op.inverse();
-        assert_eq!(inv.len(), 1);
-        match &inv[0] {
-            Op::SetAlignment {
-                line,
-                alignment,
-                old_alignment,
-            } => {
-                assert_eq!(*line, 0);
-                assert_eq!(*alignment, Alignment::Left);
-                assert_eq!(*old_alignment, Alignment::Center);
-            }
-            other => panic!("expected SetAlignment, got {other:?}"),
-        }
-    }
-
     fn sample_styled_line(text: &str) -> StyledLine {
         StyledLine {
             text: text.to_string(),
@@ -530,7 +474,7 @@ mod tests {
                 range: 0..text.len(),
                 style: span::Style::default(),
             }],
-            paragraph_style: paragraph::Style::default(),
+            paragraph: Paragraph::default(),
         }
     }
 
@@ -686,68 +630,66 @@ mod tests {
     }
 
     #[test]
-    fn set_paragraph_style_inverse_swaps() {
-        let old = paragraph::Style {
-            level: 0,
-            ..Default::default()
-        };
-        let new = paragraph::Style {
-            level: 1,
-            list: Some(paragraph::List::Bullet(paragraph::Bullet::Disc)),
-            indent: paragraph::Indent {
-                left: 36.0,
-                hanging: 18.0,
+    fn set_paragraph_inverse_swaps() {
+        use crate::paragraph::{self, Name};
+        let old = Paragraph::default();
+        let new = Paragraph::new(
+            Name::HEADING_1,
+            paragraph::Style {
+                style: span::Style {
+                    bold: Some(true),
+                    size: Some(32.0),
+                    ..span::Style::default()
+                },
+                space_before: Some(24.0),
+                spacing_after: Some(12.0),
+                ..Default::default()
             },
-            ..Default::default()
-        };
-        let op = Op::SetParagraphStyle {
+        );
+        let op = Op::SetParagraph {
             line: 2,
-            style: Box::new(new.clone()),
-            old_style: Box::new(old.clone()),
+            paragraph: Box::new(new.clone()),
+            old_paragraph: Box::new(old.clone()),
         };
         let inv = op.inverse();
         assert_eq!(inv.len(), 1);
         match &inv[0] {
-            Op::SetParagraphStyle {
+            Op::SetParagraph {
                 line,
-                style,
-                old_style,
+                paragraph,
+                old_paragraph,
             } => {
                 assert_eq!(*line, 2);
-                assert_eq!(**style, old);
-                assert_eq!(**old_style, new);
+                assert_eq!(**paragraph, old);
+                assert_eq!(**old_paragraph, new);
             }
-            other => panic!("expected SetParagraphStyle, got {other:?}"),
+            other => panic!("expected SetParagraph, got {other:?}"),
         }
     }
 
     #[test]
-    fn set_paragraph_style_double_inverse_matches_original() {
-        let style = paragraph::Style {
-            level: 2,
-            line_spacing: Some(paragraph::Spacing::Multiple(1.5)),
-            space_before: Some(12.0),
-            ..Default::default()
-        };
-        let op = Op::SetParagraphStyle {
+    fn set_paragraph_double_inverse_matches_original() {
+        use crate::paragraph::Name;
+        let p = Paragraph::new(Name::HEADING_2, crate::paragraph::Style::default());
+        let op = Op::SetParagraph {
             line: 0,
-            style: Box::new(style.clone()),
-            old_style: Box::new(paragraph::Style::default()),
+            paragraph: Box::new(p.clone()),
+            old_paragraph: Box::new(Paragraph::default()),
         };
         let inv = op.inverse();
         let double_inv = inv[0].inverse();
         assert_eq!(double_inv.len(), 1);
         match &double_inv[0] {
-            Op::SetParagraphStyle {
+            Op::SetParagraph {
                 line,
-                style: s,
-                old_style,
+                paragraph,
+                old_paragraph,
             } => {
                 assert_eq!(*line, 0);
-                assert_eq!(**s, style);
-                assert_eq!(**old_style, paragraph::Style::default());
+                assert_eq!(**paragraph, p);
+                assert_eq!(**old_paragraph, Paragraph::default());
             }
-            other => panic!("expected SetParagraphStyle, got {other:?}"),
+            other => panic!("expected SetParagraph, got {other:?}"),
         }
     }
 }

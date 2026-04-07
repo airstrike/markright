@@ -3,6 +3,7 @@
 
 use iced::{Color, Size};
 use markright::widget::rich_editor::{Action, Content, Format, Motion};
+use markright_document::format as mr;
 
 type C = Content<iced::Renderer>;
 
@@ -80,19 +81,19 @@ fn set_color_serialization_has_no_colors() {
     // Set whole doc to blue
     c.set_color(BLUE);
 
-    let mr = c.serialize();
+    let output = mr::serialize(&c.styled_lines());
     assert!(
-        !mr.contains("ff0000"),
-        "red color should not appear in serialization.\n.mr:\n{mr}"
+        !output.contains("ff0000"),
+        "red color should not appear in serialization.\n.mr:\n{output}"
     );
     assert!(
-        !mr.contains("0000ff"),
-        "blue color should not appear in serialization (it's on the widget, not spans).\n.mr:\n{mr}"
+        !output.contains("0000ff"),
+        "blue color should not appear in serialization (it's on the widget, not spans).\n.mr:\n{output}"
     );
     // Bold should survive
     assert!(
-        mr.contains("{{b} second}"),
-        "bold on 'second' should survive.\n.mr:\n{mr}"
+        output.contains("{{b} second}"),
+        "bold on 'second' should survive.\n.mr:\n{output}"
     );
 }
 
@@ -100,16 +101,16 @@ fn set_color_serialization_has_no_colors() {
 #[test]
 fn set_color_strips_paragraph_default_colors() {
     let input = ">|d:c=ff0000|\nRed paragraph";
-    let c = C::parse(input).expect("parse failed");
+    let c = C::from_styled_lines(&mr::parse(input).expect("parse failed"));
 
     c.set_color(BLUE);
 
     let lines = c.styled_lines();
     // Paragraph default color should be None
     assert_eq!(
-        lines[0].paragraph_style.style.color, None,
+        lines[0].paragraph.style.style.color, None,
         "paragraph default color should be stripped.\nParagraph style: {:?}",
-        lines[0].paragraph_style,
+        lines[0].paragraph,
     );
 }
 
@@ -179,10 +180,10 @@ fn set_color_twice_second_overrides_first() {
 
     // Serialization should have no colors at all — blue is on default_style,
     // not baked into spans.
-    let mr = c.serialize();
+    let output = mr::serialize(&c.styled_lines());
     assert!(
-        !mr.contains("c="),
-        "no color should appear in serialization after second set_color.\n.mr:\n{mr}"
+        !output.contains("c="),
+        "no color should appear in serialization after second set_color.\n.mr:\n{output}"
     );
 
     // After layout, all lines should be uniform (no stale green leaking).

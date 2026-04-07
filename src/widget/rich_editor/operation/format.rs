@@ -3,7 +3,9 @@
 
 use crate::core::text::LineHeight;
 use crate::core::text::rich_editor::{Editor, span};
-use markright_document::{self as document, Alignment, Op, SpanAttr, paragraph};
+use markright_core::{
+    self as document, Alignment, Name, Op, Paragraph, SpanAttr, Theme, paragraph,
+};
 use std::ops::Range;
 
 use super::super::action::Format;
@@ -16,11 +18,13 @@ use super::{Cursor, Position, ordered_positions};
 /// applies). Returns an empty vec when there's no selection — the caller should
 /// update pending_style instead.
 ///
-/// `paragraph_styles` is the current per-line paragraph style storage from Content.
+/// `paragraphs` is the current per-line paragraph data from Content.
+/// `theme` provides the paragraph name → style mapping.
 pub fn format<E: Editor>(
     editor: &mut E,
     fmt: &Format,
-    paragraph_styles: &[paragraph::Style],
+    paragraphs: &[Paragraph],
+    theme: &Theme,
 ) -> Vec<Op> {
     let cursor = editor.cursor();
     let has_selection = cursor.selection.is_some();
@@ -53,7 +57,7 @@ pub fn format<E: Editor>(
                 .unwrap_or(false);
             set_attr_in_selection(editor, SpanAttr::Underline(Some(!is_underline)))
         }
-        Format::SetAlignment(alignment) => set_alignment(editor, *alignment, paragraph_styles),
+        Format::SetAlignment(alignment) => set_alignment(editor, *alignment, paragraphs),
         Format::SetFont(font) => {
             if !has_selection {
                 return vec![];
@@ -78,9 +82,9 @@ pub fn format<E: Editor>(
             }
             set_attr_in_selection(editor, SpanAttr::LetterSpacing(Some(*ls)))
         }
-        Format::SetList(list) => set_paragraph_field(editor, paragraph_styles, |style| {
+        Format::SetList(list_val) => set_paragraph_field(editor, paragraphs, |para| {
             let same_kind = matches!(
-                (&style.list, list),
+                (&para.style.list, list_val),
                 (
                     Some(paragraph::List::Bullet(_)),
                     Some(paragraph::List::Bullet(_))
@@ -91,68 +95,86 @@ pub fn format<E: Editor>(
             );
             if same_kind {
                 // Toggle off — same list kind already set.
-                style.list = None;
-                style.level = 0;
+                para.style.list = None;
+                para.style.level = 0;
             } else {
-                style.list = list.clone();
+                para.style.list = list_val.clone();
                 // Entering a list puts text at level 1 (bullet occupies level-0 margin).
-                if style.level == 0 {
-                    style.level = 1;
+                if para.style.level == 0 {
+                    para.style.level = 1;
                 }
             }
         }),
-        Format::IndentList => set_paragraph_field(editor, paragraph_styles, |style| {
-            if style.list.is_some() {
+        Format::IndentList => set_paragraph_field(editor, paragraphs, |para| {
+            if para.style.list.is_some() {
                 // Inside a list: Tab demotes (increases nesting depth).
-                if style.level < 8 {
-                    style.level += 1;
-                    match &mut style.list {
+                if para.style.level < 8 {
+                    para.style.level += 1;
+                    match &mut para.style.list {
                         Some(paragraph::List::Bullet(b)) => {
-                            *b = list::bullet_for_level(style.level.saturating_sub(1));
+                            *b = list::bullet_for_level(para.style.level.saturating_sub(1));
                         }
                         Some(paragraph::List::Ordered(n)) => {
-                            *n = list::number_for_level(style.level.saturating_sub(1));
+                            *n = list::number_for_level(para.style.level.saturating_sub(1));
                         }
                         _ => {}
                     }
                 }
             } else {
                 // No list: Tab just indents.
-                if style.level < 8 {
-                    style.level += 1;
+                if para.style.level < 8 {
+                    para.style.level += 1;
                 }
             }
         }),
-        Format::DedentList => set_paragraph_field(editor, paragraph_styles, |style| {
-            if style.list.is_some() {
+        Format::DedentList => set_paragraph_field(editor, paragraphs, |para| {
+            if para.style.list.is_some() {
                 // Inside a list: Shift+Tab promotes (decreases nesting).
                 // Level 1 is the base list level — going below removes the list.
-                if style.level > 1 {
-                    style.level -= 1;
-                    match &mut style.list {
+                if para.style.level > 1 {
+                    para.style.level -= 1;
+                    match &mut para.style.list {
                         Some(paragraph::List::Bullet(b)) => {
-                            *b = list::bullet_for_level(style.level.saturating_sub(1));
+                            *b = list::bullet_for_level(para.style.level.saturating_sub(1));
                         }
                         Some(paragraph::List::Ordered(n)) => {
-                            *n = list::number_for_level(style.level.saturating_sub(1));
+                            *n = list::number_for_level(para.style.level.saturating_sub(1));
                         }
                         _ => {}
                     }
                 } else {
                     // At base list level — remove the list entirely.
-                    style.list = None;
-                    style.level = 0;
+                    para.style.list = None;
+                    para.style.level = 0;
                 }
-            } else if style.level > 0 {
+            } else if para.style.level > 0 {
                 // No list: Shift+Tab just dedents.
-                style.level -= 1;
+                para.style.level -= 1;
             }
         }),
-        Format::SetLineHeight(lh) => set_line_height(editor, *lh, paragraph_styles),
+        Format::SetLineHeight(lh) => set_line_height(editor, *lh, paragraphs),
         Format::SetLineSpacing(spacing) => {
             let spacing = *spacing;
-            set_paragraph_field(editor, paragraph_styles, |style| {
-                style.line_spacing = Some(spacing);
+            set_paragraph_field(editor, paragraphs, |para| {
+                para.style.line_spacing = Some(spacing);
+            })
+        }
+        Format::SetName(name) => {
+            let name = *name;
+            set_name(editor, paragraphs, theme, name)
+        }
+        Format::SetSpaceBefore(space) => {
+            let space = *space;
+            set_paragraph_field(editor, paragraphs, |para| {
+                para.style.space_before = space;
+                para.set_override(markright_core::OverrideSet::SPACE_BEFORE);
+            })
+        }
+        Format::SetSpaceAfter(space) => {
+            let space = *space;
+            set_paragraph_field(editor, paragraphs, |para| {
+                para.style.spacing_after = space;
+                para.set_override(markright_core::OverrideSet::SPACING_AFTER);
             })
         }
     }
@@ -242,7 +264,7 @@ fn set_attr_on_line<E: Editor>(
 fn set_line_height<E: Editor>(
     editor: &mut E,
     line_height: LineHeight,
-    paragraph_styles: &[paragraph::Style],
+    paragraphs: &[Paragraph],
 ) -> Vec<Op> {
     let cursor = editor.cursor();
     let lines = if let Some(ref sel) = cursor.selection {
@@ -253,15 +275,15 @@ fn set_line_height<E: Editor>(
     };
     lines
         .map(|line| {
-            let current = paragraph_styles.get(line).cloned().unwrap_or_default();
-            let old_line_height = current.line_height;
-            let mut ps = current;
-            ps.line_height = Some(line_height);
-            editor.set_paragraph_style(line, &ps);
-            Op::SetLineHeight {
+            let old = paragraphs.get(line).cloned().unwrap_or_default();
+            let mut new = old.clone();
+            new.style.line_height = Some(line_height);
+            new.set_override(markright_core::OverrideSet::LINE_HEIGHT);
+            editor.set_paragraph_style(line, &new.style);
+            Op::SetParagraph {
                 line,
-                line_height: Some(line_height),
-                old_line_height,
+                paragraph: Box::new(new),
+                old_paragraph: Box::new(old),
             }
         })
         .collect()
@@ -271,7 +293,7 @@ fn set_line_height<E: Editor>(
 fn set_alignment<E: Editor>(
     editor: &mut E,
     alignment: Alignment,
-    paragraph_styles: &[paragraph::Style],
+    paragraphs: &[Paragraph],
 ) -> Vec<Op> {
     let cursor = editor.cursor();
     let lines = if let Some(ref sel) = cursor.selection {
@@ -282,15 +304,15 @@ fn set_alignment<E: Editor>(
     };
     lines
         .map(|line| {
-            let current = paragraph_styles.get(line).cloned().unwrap_or_default();
-            let old_alignment = Alignment::from_iced(current.alignment);
-            let mut ps = current;
-            ps.alignment = Some(alignment.to_iced());
-            editor.set_paragraph_style(line, &ps);
-            Op::SetAlignment {
+            let old = paragraphs.get(line).cloned().unwrap_or_default();
+            let mut new = old.clone();
+            new.style.alignment = Some(alignment.to_iced());
+            new.set_override(markright_core::OverrideSet::ALIGNMENT);
+            editor.set_paragraph_style(line, &new.style);
+            Op::SetParagraph {
                 line,
-                alignment,
-                old_alignment,
+                paragraph: Box::new(new),
+                old_paragraph: Box::new(old),
             }
         })
         .collect()
@@ -298,12 +320,12 @@ fn set_alignment<E: Editor>(
 
 /// Set a paragraph-level field on lines covered by the current cursor/selection.
 ///
-/// `apply` is a closure that mutates a cloned `paragraph::Style` to produce the
-/// new value. Returns one `SetParagraphStyle` op per affected line.
+/// `apply` is a closure that mutates a cloned `Paragraph` to produce the
+/// new value. Returns one `SetParagraph` op per affected line.
 fn set_paragraph_field<E: Editor>(
     editor: &E,
-    paragraph_styles: &[paragraph::Style],
-    apply: impl Fn(&mut paragraph::Style),
+    paragraphs: &[Paragraph],
+    apply: impl Fn(&mut Paragraph),
 ) -> Vec<Op> {
     let cursor = editor.cursor();
     let lines = if let Some(ref sel) = cursor.selection {
@@ -315,13 +337,46 @@ fn set_paragraph_field<E: Editor>(
 
     lines
         .map(|line| {
-            let old_style = paragraph_styles.get(line).cloned().unwrap_or_default();
-            let mut new_style = old_style.clone();
-            apply(&mut new_style);
-            Op::SetParagraphStyle {
+            let old = paragraphs.get(line).cloned().unwrap_or_default();
+            let mut new = old.clone();
+            apply(&mut new);
+            Op::SetParagraph {
                 line,
-                style: Box::new(new_style),
-                old_style: Box::new(old_style),
+                paragraph: Box::new(new),
+                old_paragraph: Box::new(old),
+            }
+        })
+        .collect()
+}
+
+/// Set the paragraph name on lines covered by the current cursor/selection.
+///
+/// Uses the theme to apply the appropriate visual style for the given name,
+/// preserving any user overrides.
+fn set_name<E: Editor>(
+    editor: &mut E,
+    paragraphs: &[Paragraph],
+    theme: &Theme,
+    name: Name,
+) -> Vec<Op> {
+    let cursor = editor.cursor();
+    let lines = if let Some(ref sel) = cursor.selection {
+        let (start, end) = ordered_positions(&cursor.position, sel);
+        start.line..=end.line
+    } else {
+        cursor.position.line..=cursor.position.line
+    };
+
+    lines
+        .map(|line| {
+            let old = paragraphs.get(line).cloned().unwrap_or_default();
+            let mut new = old.clone();
+            theme.apply(&mut new, name);
+            editor.set_paragraph_style(line, &new.style);
+            Op::SetParagraph {
+                line,
+                paragraph: Box::new(new),
+                old_paragraph: Box::new(old),
             }
         })
         .collect()

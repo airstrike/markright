@@ -4,7 +4,7 @@ use super::{Alignment, Format, Motion, Status};
 use crate::core::SmolStr;
 use crate::core::keyboard;
 use crate::core::keyboard::key;
-use markright_document::paragraph;
+use markright_core::paragraph;
 use std::ops;
 
 // A binding to an action in the [`RichEditor`].
@@ -31,7 +31,7 @@ pub enum Binding<Message> {
     /// Insert a character.
     Insert(char),
     /// Break the line (Enter).
-    Enter,
+    Enter { inherit: bool },
     /// Delete previous character.
     Backspace,
     /// Delete next character.
@@ -133,7 +133,10 @@ impl<Message> Binding<Message> {
                 Some(Self::Format(Format::DedentList))
             }
             keyboard::Key::Named(key::Named::Tab) => Some(Self::Format(Format::IndentList)),
-            keyboard::Key::Named(key::Named::Enter) => Some(Self::Enter),
+            keyboard::Key::Named(key::Named::Enter) if modifiers.shift() => {
+                Some(Self::Enter { inherit: true })
+            }
+            keyboard::Key::Named(key::Named::Enter) => Some(Self::Enter { inherit: false }),
             keyboard::Key::Named(key::Named::Backspace) => Some(Self::Backspace),
             keyboard::Key::Named(key::Named::Delete)
                 if text.is_none() || text.as_deref() == Some("\u{7f}") =>

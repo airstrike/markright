@@ -675,8 +675,8 @@ where
                             Binding::Insert(c) => {
                                 publish(Action::Edit(Edit::Insert(c)));
                             }
-                            Binding::Enter => {
-                                publish(Action::Edit(Edit::Enter));
+                            Binding::Enter { inherit } => {
+                                publish(Action::Edit(Edit::Enter { inherit }));
                             }
                             Binding::Backspace => {
                                 publish(Action::Edit(Edit::Backspace));
@@ -811,6 +811,114 @@ where
                 );
             }
         } else {
+            // Draw paragraph fills and borders behind text
+            let line_count = internal.editor.line_count();
+            for line_idx in 0..line_count {
+                let para = internal.paragraph(line_idx);
+                if para.style.fill.is_none() && para.style.borders.is_none() {
+                    continue;
+                }
+
+                let Some(geom) = internal.editor.line_geometry(line_idx) else {
+                    continue;
+                };
+
+                // Compute paragraph rect: full width, from line_top to next
+                // paragraph's line_top (or line_top + line_height for last).
+                let top = geom.line_top;
+                let bottom = if line_idx + 1 < line_count {
+                    internal
+                        .editor
+                        .line_geometry(line_idx + 1)
+                        .map(|g| g.line_top)
+                        .unwrap_or(top + geom.line_height)
+                } else {
+                    top + geom.line_height
+                };
+                let para_rect = Rectangle {
+                    x: text_bounds.x,
+                    y: text_bounds.y + top,
+                    width: text_bounds.width,
+                    height: bottom - top,
+                };
+
+                // Draw fill
+                if let Some(fill) = &para.style.fill {
+                    let fill_rect = match fill.height {
+                        None => para_rect,
+                        Some(h) => {
+                            let y = para_rect.y + (para_rect.height - h) / 2.0;
+                            Rectangle {
+                                y,
+                                height: h,
+                                ..para_rect
+                            }
+                        }
+                    };
+                    renderer.fill_quad(
+                        renderer::Quad {
+                            bounds: fill_rect,
+                            ..renderer::Quad::default()
+                        },
+                        fill.color,
+                    );
+                }
+
+                // Draw borders
+                if let Some(borders) = &para.style.borders {
+                    if let Some(b) = &borders.top {
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds: Rectangle {
+                                    height: b.width,
+                                    ..para_rect
+                                },
+                                ..renderer::Quad::default()
+                            },
+                            b.color,
+                        );
+                    }
+                    if let Some(b) = &borders.bottom {
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds: Rectangle {
+                                    y: para_rect.y + para_rect.height - b.width,
+                                    height: b.width,
+                                    ..para_rect
+                                },
+                                ..renderer::Quad::default()
+                            },
+                            b.color,
+                        );
+                    }
+                    if let Some(b) = &borders.left {
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds: Rectangle {
+                                    width: b.width,
+                                    ..para_rect
+                                },
+                                ..renderer::Quad::default()
+                            },
+                            b.color,
+                        );
+                    }
+                    if let Some(b) = &borders.right {
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds: Rectangle {
+                                    x: para_rect.x + para_rect.width - b.width,
+                                    width: b.width,
+                                    ..para_rect
+                                },
+                                ..renderer::Quad::default()
+                            },
+                            b.color,
+                        );
+                    }
+                }
+            }
+
             renderer.fill_rich_editor(
                 &internal.editor,
                 text_bounds.position(),
@@ -824,8 +932,8 @@ where
             let list_indent = internal.list_indent;
 
             for line_idx in 0..line_count {
-                let para_style = internal.paragraph_style(line_idx);
-                let Some(ref list_style) = para_style.list else {
+                let para = internal.paragraph(line_idx);
+                let Some(ref list_style) = para.style.list else {
                     continue;
                 };
 
@@ -833,7 +941,7 @@ where
                     continue;
                 };
 
-                let ordinal = list::count_ordinal(&internal.paragraph_styles, line_idx);
+                let ordinal = list::count_ordinal(&internal.paragraphs, line_idx);
                 let marker = list::marker_text(list_style, ordinal);
 
                 // x_offset already includes margin + alignment correction,

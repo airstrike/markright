@@ -7,6 +7,8 @@ use iced::{Event, Point, Subscription, event, mouse};
 pub enum Kind {
     LetterSpacing,
     LineHeight,
+    SpaceBefore,
+    SpaceAfter,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +40,8 @@ pub enum Axis {
 pub enum Pull {
     LetterSpacing(State),
     LineHeight(State),
+    SpaceBefore(State),
+    SpaceAfter(State),
 }
 
 /// Internals of an active pull.
@@ -62,10 +66,26 @@ impl Pull {
         })
     }
 
+    pub fn space_before(start_value: f32) -> Self {
+        Self::SpaceBefore(State {
+            start_value,
+            origin: None,
+        })
+    }
+
+    pub fn space_after(start_value: f32) -> Self {
+        Self::SpaceAfter(State {
+            start_value,
+            origin: None,
+        })
+    }
+
     fn state_and_config(&mut self) -> (&mut State, &'static Config) {
         match self {
             Self::LetterSpacing(s) => (s, &LETTER_SPACING),
             Self::LineHeight(s) => (s, &LINE_HEIGHT),
+            Self::SpaceBefore(s) => (s, &SPACE_BEFORE),
+            Self::SpaceAfter(s) => (s, &SPACE_AFTER),
         }
     }
 
@@ -125,4 +145,20 @@ pub const LINE_HEIGHT: Config = Config {
     precision: 0.1,
     min: 0.5,
     max: 5.0,
+};
+
+pub const SPACE_BEFORE: Config = Config {
+    axis: Axis::Vertical,
+    sensitivity: 0.5,
+    precision: 1.0,
+    min: 0.0,
+    max: 100.0,
+};
+
+pub const SPACE_AFTER: Config = Config {
+    axis: Axis::Vertical,
+    sensitivity: 0.5,
+    precision: 1.0,
+    min: 0.0,
+    max: 100.0,
 };

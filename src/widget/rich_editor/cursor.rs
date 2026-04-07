@@ -3,7 +3,7 @@
 use super::action::Alignment;
 use crate::core::text::LineHeight;
 use crate::core::{Color, Font};
-use markright_document::paragraph;
+use markright_core::paragraph;
 
 /// Formatting context at the current cursor position.
 #[derive(Debug, Clone, Default)]
@@ -28,6 +28,7 @@ pub struct Character {
 /// Per-paragraph formatting at cursor.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Paragraph {
+    pub name: markright_core::Name,
     pub alignment: Alignment,
     pub spacing_after: f32,
     /// Line height, or None if using the buffer default.
@@ -39,6 +40,7 @@ pub struct Paragraph {
 impl Default for Paragraph {
     fn default() -> Self {
         Self {
+            name: markright_core::Name::default(),
             alignment: Alignment::Left,
             spacing_after: 0.0,
             line_height: None,

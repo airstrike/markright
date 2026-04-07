@@ -3,7 +3,7 @@
 
 use crate::core::text::editor::Position;
 use crate::core::text::rich_editor::{self, Editor as _, paragraph, span};
-use markright_document::{History, Op, StyledLine as DocStyledLine};
+use markright_core::{History, Op, Paragraph, StyledLine as DocStyledLine, Theme};
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -14,7 +14,7 @@ use super::list;
 use super::operation;
 
 pub use crate::core::text::editor::{Cursor, Line, LineEnding};
-pub use markright_document::{StyleRun, StyledLine};
+pub use markright_core::{StyleRun, StyledLine};
 
 /// Returns the style at the first non-empty character in a selection.
 ///
@@ -57,11 +57,13 @@ pub(crate) struct Internal<R: rich_editor::Renderer> {
     /// Document-level default style — fills in `None` span fields during
     /// `resolve_style` and `cursor_context`.
     pub(crate) default_style: span::Style,
-    /// Per-line paragraph styles (alignment, line height, spacing, indent, level, list).
+    /// Per-line paragraphs (name, style, overrides).
     /// Kept in sync with the editor's line count.
-    pub(crate) paragraph_styles: Vec<paragraph::Style>,
+    pub(crate) paragraphs: Vec<Paragraph>,
     /// Pixels per indent level for list items.
     pub(crate) list_indent: f32,
+    /// Theme mapping paragraph names to default styles.
+    pub(crate) theme: Theme,
 }
 
 impl<R: rich_editor::Renderer> Content<R> {
@@ -77,17 +79,16 @@ impl<R: rich_editor::Renderer> Content<R> {
             pending_style: None,
             history: History::new(),
             default_style: span::Style::default(),
-            paragraph_styles: vec![paragraph::Style::default()],
+            paragraphs: vec![Paragraph::default()],
             list_indent: list::DEFAULT_LIST_INDENT,
+            theme: Theme::default(),
         }))
     }
 
-    /// Parse `.mr` format markup into a [`Content`].
-    ///
-    /// This is the primary way to load a saved document.
-    pub fn parse(input: &str) -> Result<Self, markright_document::format::ParseError> {
-        let lines = markright_document::format::parse(input)?;
-        Ok(Self::from_styled_lines(&lines))
+    /// Set the theme used for paragraph name → style mapping.
+    pub fn with_theme(self, theme: Theme) -> Self {
+        self.0.borrow_mut().theme = theme;
+        self
     }
 
     /// Create a [`Content`] from styled lines.
@@ -112,10 +113,16 @@ impl<R: rich_editor::Renderer> Content<R> {
 
             for (i, line) in lines.iter().enumerate() {
                 // Apply paragraph style first so character defaults take effect
-                if line.paragraph_style != paragraph::Style::default() {
+                if line.paragraph.style != paragraph::Style::default() {
                     internal
                         .editor
-                        .set_paragraph_style(i, &line.paragraph_style);
+                        .set_paragraph_style(i, &line.paragraph.style);
+                }
+                // Wire spacing to cosmic-text margins
+                let sb = line.paragraph.style.space_before.unwrap_or(0.0);
+                let sa = line.paragraph.style.spacing_after.unwrap_or(0.0);
+                if sb != 0.0 || sa != 0.0 {
+                    internal.editor.set_paragraph_spacing(i, sb, sa);
                 }
                 // Then apply span overrides — skip default-styled runs so they
                 // inherit paragraph character defaults instead of overriding them
@@ -128,14 +135,14 @@ impl<R: rich_editor::Renderer> Content<R> {
                 }
             }
 
-            // Set paragraph styles vector
-            internal.paragraph_styles = lines.iter().map(|l| l.paragraph_style.clone()).collect();
+            // Set paragraphs vector
+            internal.paragraphs = lines.iter().map(|l| l.paragraph.clone()).collect();
 
             // Sync margins for list items
             let margins: Vec<f32> = internal
-                .paragraph_styles
+                .paragraphs
                 .iter()
-                .map(|s| list::compute_margin(s, internal.list_indent))
+                .map(|p| list::compute_margin(&p.style, internal.list_indent))
                 .collect();
             for (i, margin) in margins.into_iter().enumerate() {
                 internal.editor.set_margin_left(i, margin);
@@ -152,16 +159,11 @@ impl<R: rich_editor::Renderer> Content<R> {
             .map(|i| {
                 let line = internal.editor.line(i);
                 let len = line.as_ref().map(|l| l.text.len()).unwrap_or(0);
-                let mut styled = markright_document::read_styled_line(&internal.editor, i, 0..len);
-                styled.paragraph_style = internal.paragraph_style(i).clone();
+                let mut styled = markright_core::read_styled_line(&internal.editor, i, 0..len);
+                styled.paragraph = internal.paragraph(i).clone();
                 styled
             })
             .collect()
-    }
-
-    /// Serialize the content to `.mr` format.
-    pub fn serialize(&self) -> String {
-        markright_document::format::serialize(&self.styled_lines())
     }
 
     /// Perform an [`Action`] on the content.
@@ -238,7 +240,7 @@ impl<R: rich_editor::Renderer> Content<R> {
         internal.fill_from_defaults(&mut char_style);
 
         let line = editor_cursor.position.line;
-        let para_style = internal.paragraph_style(line).clone();
+        let para = internal.paragraph(line).clone();
 
         cursor::Context {
             character: cursor::Character {
@@ -251,10 +253,11 @@ impl<R: rich_editor::Renderer> Content<R> {
                 letter_spacing: char_style.letter_spacing,
             },
             paragraph: cursor::Paragraph {
-                alignment: super::Alignment::from_iced(para_style.alignment),
-                spacing_after: para_style.spacing_after.unwrap_or(0.0),
-                line_height: para_style.line_height,
-                style: para_style,
+                name: para.name,
+                alignment: super::Alignment::from_iced(para.style.alignment),
+                spacing_after: para.style.spacing_after.unwrap_or(0.0),
+                line_height: para.style.line_height,
+                style: para.style,
             },
             position: cursor::Position {
                 line: editor_cursor.position.line,
@@ -264,12 +267,12 @@ impl<R: rich_editor::Renderer> Content<R> {
     }
 
     /// Returns per-line styled content for debugging/inspection.
-    pub fn styled_line(&self, index: usize) -> Option<markright_document::StyledLine> {
+    pub fn styled_line(&self, index: usize) -> Option<markright_core::StyledLine> {
         let internal = self.0.borrow();
         let line = internal.editor.line(index)?;
         let len = line.text.len();
-        let mut styled = markright_document::read_styled_line(&internal.editor, index, 0..len);
-        styled.paragraph_style = internal.paragraph_style(index).clone();
+        let mut styled = markright_core::read_styled_line(&internal.editor, index, 0..len);
+        styled.paragraph = internal.paragraph(index).clone();
         Some(styled)
     }
 
@@ -325,7 +328,7 @@ impl<R: rich_editor::Renderer> Content<R> {
     /// document. Also clears the attribute from paragraph character defaults.
     ///
     /// Recorded as one undo group so the user can restore everything with Cmd+Z.
-    pub fn strip_attr(&self, attr: markright_document::SpanAttr) {
+    pub fn strip_attr(&self, attr: markright_core::SpanAttr) {
         self.0.borrow_mut().strip_attr(attr);
     }
 
@@ -334,28 +337,28 @@ impl<R: rich_editor::Renderer> Content<R> {
     pub fn set_color(&self, color: crate::core::Color) {
         let mut internal = self.0.borrow_mut();
         internal.default_style.color = Some(color);
-        internal.strip_attr(markright_document::SpanAttr::Color(None));
+        internal.strip_attr(markright_core::SpanAttr::Color(None));
     }
 
     /// Set the document's default font and strip all per-span font overrides.
     pub fn set_font(&self, font: crate::core::Font) {
         let mut internal = self.0.borrow_mut();
         internal.default_style.font = Some(font);
-        internal.strip_attr(markright_document::SpanAttr::Font(None));
+        internal.strip_attr(markright_core::SpanAttr::Font(None));
     }
 
     /// Set the document's default font size and strip all per-span size overrides.
     pub fn set_font_size(&self, size: f32) {
         let mut internal = self.0.borrow_mut();
         internal.default_style.size = Some(size);
-        internal.strip_attr(markright_document::SpanAttr::Size(None));
+        internal.strip_attr(markright_core::SpanAttr::Size(None));
     }
 
     /// Set the document's default letter spacing and strip all per-span overrides.
     pub fn set_letter_spacing(&self, spacing: f32) {
         let mut internal = self.0.borrow_mut();
         internal.default_style.letter_spacing = Some(spacing);
-        internal.strip_attr(markright_document::SpanAttr::LetterSpacing(None));
+        internal.strip_attr(markright_core::SpanAttr::LetterSpacing(None));
     }
 
     /// Set alignment on every paragraph. Recorded as one undo group.
@@ -477,7 +480,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
             Edit::Insert(c) => {
                 let style = self.resolve_style();
                 let mut ops = self.delete_selection_if_any();
-                self.sync_paragraph_styles_for_ops(&ops);
+                self.sync_paragraphs_for_ops(&ops);
                 let op = operation::insert(&mut self.editor, c, style);
                 ops.push(op);
                 self.record_group(ops);
@@ -485,40 +488,42 @@ impl<R: rich_editor::Renderer> Internal<R> {
             Edit::Paste(ref text) => {
                 let style = self.resolve_style();
                 let mut ops = self.delete_selection_if_any();
-                self.sync_paragraph_styles_for_ops(&ops);
+                self.sync_paragraphs_for_ops(&ops);
                 let paste_ops = operation::paste(&mut self.editor, text.clone(), style);
-                self.sync_paragraph_styles_for_ops(&paste_ops);
+                self.sync_paragraphs_for_ops(&paste_ops);
                 ops.extend(paste_ops);
                 self.record_group(ops);
                 self.pending_style = None;
             }
-            Edit::Enter => {
+            Edit::Enter { inherit } => {
                 // Capture the style at the cursor so the new line inherits it.
                 let style = self.resolve_style();
                 let mut ops = self.delete_selection_if_any();
-                self.sync_paragraph_styles_for_ops(&ops);
+                self.sync_paragraphs_for_ops(&ops);
                 let op = operation::enter(&mut self.editor);
-                self.sync_paragraph_styles_for_ops(std::slice::from_ref(&op));
+                if let Op::SplitLine { line, .. } = &op {
+                    self.sync_paragraph_split(*line, inherit);
+                }
                 ops.push(op);
                 self.record_group(ops);
                 self.pending_style = Some(style);
             }
             Edit::Backspace => {
                 let ops = self.backspace_with_list_aware();
-                self.sync_paragraph_styles_for_ops(&ops);
+                self.sync_paragraphs_for_ops(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
             }
             Edit::Delete => {
                 let ops = operation::delete(&mut self.editor);
-                self.sync_paragraph_styles_for_ops(&ops);
+                self.sync_paragraphs_for_ops(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
             }
             Edit::Format(ref fmt) => {
-                let ops = operation::format(&mut self.editor, fmt, &self.paragraph_styles);
+                let ops = operation::format(&mut self.editor, fmt, &self.paragraphs, &self.theme);
                 if !ops.is_empty() {
-                    self.sync_paragraph_styles_for_ops(&ops);
+                    self.sync_paragraphs_for_ops(&ops);
                     self.record_group(ops);
                 } else {
                     self.update_pending_style(fmt);
@@ -622,14 +627,17 @@ impl<R: rich_editor::Renderer> Internal<R> {
             | Format::IndentList
             | Format::DedentList
             | Format::SetLineHeight(_)
-            | Format::SetLineSpacing(_) => {}
+            | Format::SetLineSpacing(_)
+            | Format::SetName(_)
+            | Format::SetSpaceBefore(_)
+            | Format::SetSpaceAfter(_) => {}
         }
     }
 
     /// Strip all per-span overrides of `attr` and clear it from paragraph
     /// character defaults. Recorded as one undo group.
-    fn strip_attr(&mut self, attr: markright_document::SpanAttr) {
-        use markright_document::SpanAttr;
+    fn strip_attr(&mut self, attr: markright_core::SpanAttr) {
+        use markright_core::SpanAttr;
 
         // First: clear paragraph character defaults and rebuild ALL line
         // defaults. This must happen BEFORE reading/stripping spans, because
@@ -637,14 +645,13 @@ impl<R: rich_editor::Renderer> Internal<R> {
         // defaults — spans inherit from those defaults, so we need them
         // clean before we read and clear span overrides.
         let count = self.editor.line_count();
-        // Ensure paragraph_styles covers all lines.
-        if self.paragraph_styles.len() < count {
-            self.paragraph_styles
-                .resize(count, paragraph::Style::default());
+        // Ensure paragraphs covers all lines.
+        if self.paragraphs.len() < count {
+            self.paragraphs.resize(count, Paragraph::default());
         }
         for line in 0..count {
-            attr.clear_in(&mut self.paragraph_styles[line].style);
-            let ps = self.paragraph_styles[line].clone();
+            attr.clear_in(&mut self.paragraphs[line].style.style);
+            let ps = self.paragraphs[line].style.clone();
             self.editor.set_paragraph_style(line, &ps);
         }
 
@@ -658,7 +665,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 continue;
             }
             let range = 0..len;
-            let runs = markright_document::read_style_runs(&self.editor, line, range.clone());
+            let runs = markright_core::read_style_runs(&self.editor, line, range.clone());
             let old_values: Vec<(std::ops::Range<usize>, SpanAttr)> = runs
                 .iter()
                 .filter(|r| attr.is_set_in(&r.style))
@@ -675,7 +682,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 attr: attr.clone(),
                 old_values,
             };
-            operation::apply_op(&mut self.editor, &op, &self.paragraph_styles);
+            operation::apply_op(&mut self.editor, &op, &self.paragraphs);
             ops.push(op);
         }
 
@@ -688,30 +695,34 @@ impl<R: rich_editor::Renderer> Internal<R> {
         let count = self.editor.line_count();
 
         for line in 0..count {
-            let current = markright_document::Alignment::from_iced(
-                self.paragraph_styles.get(line).and_then(|ps| ps.alignment),
+            let current = markright_core::Alignment::from_iced(
+                self.paragraphs.get(line).and_then(|p| p.style.alignment),
             );
             if current == alignment {
                 continue;
             }
-            let op = Op::SetAlignment {
+            let old = self.paragraphs.get(line).cloned().unwrap_or_default();
+            let mut new = old.clone();
+            new.style.alignment = Some(alignment.to_iced());
+            new.set_override(markright_core::OverrideSet::ALIGNMENT);
+            let op = Op::SetParagraph {
                 line,
-                alignment,
-                old_alignment: current,
+                paragraph: Box::new(new),
+                old_paragraph: Box::new(old),
             };
-            operation::apply_op(&mut self.editor, &op, &self.paragraph_styles);
-            self.sync_paragraph_styles_for_ops(std::slice::from_ref(&op));
+            operation::apply_op(&mut self.editor, &op, &self.paragraphs);
+            self.sync_paragraphs_for_ops(std::slice::from_ref(&op));
             ops.push(op);
         }
 
         self.record_group(ops);
     }
 
-    /// Sync paragraph_styles for a batch of ops that were just applied to the editor.
-    fn sync_paragraph_styles_for_ops(&mut self, ops: &[Op]) {
+    /// Sync paragraphs for a batch of ops that were just applied to the editor.
+    fn sync_paragraphs_for_ops(&mut self, ops: &[Op]) {
         for op in ops {
             match op {
-                Op::SplitLine { line, .. } => self.sync_paragraph_split(*line),
+                Op::SplitLine { line, .. } => self.sync_paragraph_split(*line, true),
                 Op::MergeLine { line, .. } => self.sync_paragraph_merge(*line),
                 Op::DeleteRange {
                     start_line,
@@ -721,113 +732,108 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 Op::InsertRange {
                     start_line, lines, ..
                 } => self.sync_paragraph_insert_range(*start_line, lines.len()),
-                Op::SetParagraphStyle { line, style, .. } => {
-                    self.set_paragraph_style(*line, *style.clone());
-                }
-                Op::SetAlignment {
-                    line, alignment, ..
+                Op::SetParagraph {
+                    line, paragraph, ..
                 } => {
-                    self.sync_paragraph_alignment(*line, Some(alignment.to_iced()));
-                }
-                Op::SetLineHeight {
-                    line, line_height, ..
-                } => {
-                    self.sync_paragraph_line_height(*line, *line_height);
+                    self.set_paragraph(*line, *paragraph.clone());
                 }
                 _ => {}
             }
         }
     }
 
-    /// Set the paragraph style for a given line, growing the vec if needed.
+    /// Set the paragraph for a given line, growing the vec if needed.
     ///
-    /// Also syncs the editor's `margin_left` for the line based on the style.
-    fn set_paragraph_style(&mut self, line: usize, style: paragraph::Style) {
-        if line >= self.paragraph_styles.len() {
-            self.paragraph_styles
-                .resize(line + 1, paragraph::Style::default());
+    /// Also syncs the editor's `margin_left` and `paragraph_style` for the line.
+    fn set_paragraph(&mut self, line: usize, paragraph: Paragraph) {
+        if line >= self.paragraphs.len() {
+            self.paragraphs.resize(line + 1, Paragraph::default());
         }
-        let margin = list::compute_margin(&style, self.list_indent);
-        self.paragraph_styles[line] = style;
+        let margin = list::compute_margin(&paragraph.style, self.list_indent);
+        self.editor.set_paragraph_style(line, &paragraph.style);
+        self.editor.set_paragraph_spacing(
+            line,
+            paragraph.style.space_before.unwrap_or(0.0),
+            paragraph.style.spacing_after.unwrap_or(0.0),
+        );
+        self.paragraphs[line] = paragraph;
         self.editor.set_margin_left(line, margin);
     }
 
-    /// Get the paragraph style for a given line, defaulting if out of bounds.
-    pub(crate) fn paragraph_style(&self, line: usize) -> &paragraph::Style {
-        static DEFAULT: std::sync::LazyLock<paragraph::Style> =
-            std::sync::LazyLock::new(paragraph::Style::default);
-        self.paragraph_styles.get(line).unwrap_or(&DEFAULT)
+    /// Get the paragraph for a given line, defaulting if out of bounds.
+    pub(crate) fn paragraph(&self, line: usize) -> &Paragraph {
+        static DEFAULT: std::sync::LazyLock<Paragraph> =
+            std::sync::LazyLock::new(Paragraph::default);
+        self.paragraphs.get(line).unwrap_or(&DEFAULT)
     }
 
-    /// Sync paragraph_styles after a SplitLine: clone the style at `line` and
-    /// insert it after, then sync margins and paragraph style for the new line.
-    fn sync_paragraph_split(&mut self, line: usize) {
-        let style = self.paragraph_style(line).clone();
-        if line + 1 > self.paragraph_styles.len() {
-            self.paragraph_styles
-                .resize(line + 1, paragraph::Style::default());
+    /// Sync paragraphs after a SplitLine: clone the paragraph at `line` and
+    /// insert it after, then optionally demote headings to BODY.
+    fn sync_paragraph_split(&mut self, line: usize, inherit: bool) {
+        let parent = self.paragraph(line).clone();
+        let mut new_para = parent.clone();
+
+        // Demote to BODY if:
+        // 1. Not inheriting (no Shift held)
+        // 2. Paragraph is a heading
+        // 3. Cursor was at end of line (the new line has empty text)
+        if !inherit && new_para.name.heading_level().is_some() {
+            let new_line_empty = self
+                .editor
+                .line(line + 1)
+                .map(|l| l.text.is_empty())
+                .unwrap_or(true);
+            if new_line_empty {
+                self.theme.apply(&mut new_para, markright_core::Name::BODY);
+                new_para.clear_overrides();
+            }
         }
-        let margin = list::compute_margin(&style, self.list_indent);
-        self.paragraph_styles.insert(line + 1, style.clone());
+
+        if line + 1 > self.paragraphs.len() {
+            self.paragraphs.resize(line + 1, Paragraph::default());
+        }
+        let margin = list::compute_margin(&new_para.style, self.list_indent);
+        self.paragraphs.insert(line + 1, new_para.clone());
         self.editor.set_margin_left(line + 1, margin);
-        self.editor.set_paragraph_style(line + 1, &style);
+        self.editor.set_paragraph_style(line + 1, &new_para.style);
+        self.editor.set_paragraph_spacing(
+            line + 1,
+            new_para.style.space_before.unwrap_or(0.0),
+            new_para.style.spacing_after.unwrap_or(0.0),
+        );
     }
 
-    /// Sync paragraph_styles after a MergeLine: remove the style at `line + 1`
+    /// Sync paragraphs after a MergeLine: remove the paragraph at `line + 1`
     /// and sync the surviving line's margin.
     fn sync_paragraph_merge(&mut self, line: usize) {
-        if line + 1 < self.paragraph_styles.len() {
-            self.paragraph_styles.remove(line + 1);
+        if line + 1 < self.paragraphs.len() {
+            self.paragraphs.remove(line + 1);
         }
-        let margin = list::compute_margin(self.paragraph_style(line), self.list_indent);
+        let sb = self.paragraph(line).style.space_before.unwrap_or(0.0);
+        let sa = self.paragraph(line).style.spacing_after.unwrap_or(0.0);
+        let margin = list::compute_margin(&self.paragraph(line).style, self.list_indent);
+        self.editor.set_paragraph_spacing(line, sb, sa);
         self.editor.set_margin_left(line, margin);
     }
 
-    /// Sync paragraph_styles after a DeleteRange: remove styles for deleted lines.
+    /// Sync paragraphs after a DeleteRange: remove paragraphs for deleted lines.
     fn sync_paragraph_delete_range(&mut self, start_line: usize, end_line: usize) {
         if start_line < end_line {
-            let remove_start = (start_line + 1).min(self.paragraph_styles.len());
-            let remove_end = (end_line + 1).min(self.paragraph_styles.len());
+            let remove_start = (start_line + 1).min(self.paragraphs.len());
+            let remove_end = (end_line + 1).min(self.paragraphs.len());
             if remove_start < remove_end {
-                self.paragraph_styles.drain(remove_start..remove_end);
+                self.paragraphs.drain(remove_start..remove_end);
             }
         }
     }
 
-    /// Sync paragraph_styles after an InsertRange: insert default styles for new lines.
+    /// Sync paragraphs after an InsertRange: insert default paragraphs for new lines.
     fn sync_paragraph_insert_range(&mut self, start_line: usize, line_count: usize) {
         if line_count > 1 {
-            let insert_at = (start_line + 1).min(self.paragraph_styles.len());
-            let new_styles = vec![paragraph::Style::default(); line_count - 1];
-            self.paragraph_styles
-                .splice(insert_at..insert_at, new_styles);
+            let insert_at = (start_line + 1).min(self.paragraphs.len());
+            let new_paras = vec![Paragraph::default(); line_count - 1];
+            self.paragraphs.splice(insert_at..insert_at, new_paras);
         }
-    }
-
-    /// Update alignment in paragraph_styles for a given line.
-    fn sync_paragraph_alignment(
-        &mut self,
-        line: usize,
-        alignment: Option<iced_core::text::Alignment>,
-    ) {
-        if line >= self.paragraph_styles.len() {
-            self.paragraph_styles
-                .resize(line + 1, paragraph::Style::default());
-        }
-        self.paragraph_styles[line].alignment = alignment;
-    }
-
-    /// Update line_height in paragraph_styles for a given line.
-    fn sync_paragraph_line_height(
-        &mut self,
-        line: usize,
-        line_height: Option<iced_core::text::LineHeight>,
-    ) {
-        if line >= self.paragraph_styles.len() {
-            self.paragraph_styles
-                .resize(line + 1, paragraph::Style::default());
-        }
-        self.paragraph_styles[line].line_height = line_height;
     }
 
     /// Backspace that is list-aware: at column 0 with no selection, if the
@@ -837,36 +843,36 @@ impl<R: rich_editor::Renderer> Internal<R> {
         let cursor = self.editor.cursor();
         if cursor.selection.is_none() && cursor.position.column == 0 {
             let line = cursor.position.line;
-            let style = self.paragraph_style(line).clone();
-            if style.list.is_some() || style.level > 0 {
-                let old_style = style.clone();
-                let mut new_style = style;
-                if new_style.list.is_some() {
-                    if new_style.level > 1 {
+            let para = self.paragraph(line).clone();
+            if para.style.list.is_some() || para.style.level > 0 {
+                let old = para.clone();
+                let mut new = para;
+                if new.style.list.is_some() {
+                    if new.style.level > 1 {
                         // Nested list — promote one level.
-                        new_style.level -= 1;
-                        match &mut new_style.list {
+                        new.style.level -= 1;
+                        match &mut new.style.list {
                             Some(paragraph::List::Bullet(b)) => {
-                                *b = list::bullet_for_level(new_style.level.saturating_sub(1));
+                                *b = list::bullet_for_level(new.style.level.saturating_sub(1));
                             }
                             Some(paragraph::List::Ordered(n)) => {
-                                *n = list::number_for_level(new_style.level.saturating_sub(1));
+                                *n = list::number_for_level(new.style.level.saturating_sub(1));
                             }
                             _ => {}
                         }
                     } else {
                         // Base list level — remove list entirely.
-                        new_style.list = None;
-                        new_style.level = 0;
+                        new.style.list = None;
+                        new.style.level = 0;
                     }
                 } else {
                     // Plain indented text — dedent.
-                    new_style.level -= 1;
+                    new.style.level -= 1;
                 }
-                return vec![Op::SetParagraphStyle {
+                return vec![Op::SetParagraph {
                     line,
-                    style: Box::new(new_style),
-                    old_style: Box::new(old_style),
+                    paragraph: Box::new(new),
+                    old_paragraph: Box::new(old),
                 }];
             }
         }
@@ -882,8 +888,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
         for op in group.into_iter().rev() {
             for inv_op in op.inverse() {
                 let captured = operation::capture_op_state(&self.editor, &inv_op);
-                operation::apply_op(&mut self.editor, &captured, &self.paragraph_styles);
-                self.sync_paragraph_styles_for_ops(std::slice::from_ref(&captured));
+                operation::apply_op(&mut self.editor, &captured, &self.paragraphs);
+                self.sync_paragraphs_for_ops(std::slice::from_ref(&captured));
                 redo_ops.push(captured);
             }
         }
@@ -901,8 +907,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
         for op in group.into_iter().rev() {
             for inv_op in op.inverse() {
                 let captured = operation::capture_op_state(&self.editor, &inv_op);
-                operation::apply_op(&mut self.editor, &captured, &self.paragraph_styles);
-                self.sync_paragraph_styles_for_ops(std::slice::from_ref(&captured));
+                operation::apply_op(&mut self.editor, &captured, &self.paragraphs);
+                self.sync_paragraphs_for_ops(std::slice::from_ref(&captured));
                 undo_ops.push(captured);
             }
         }
