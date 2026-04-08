@@ -177,6 +177,16 @@ impl<R: rich_editor::Renderer> Content<R> {
         self.0.borrow().editor.cursor()
     }
 
+    /// Moves the cursor to the given line and column.
+    pub fn move_to(&self, line: usize, column: usize) {
+        use crate::core::text::rich_editor::Editor as _;
+        let cursor = Cursor {
+            position: Position { line, column },
+            selection: None,
+        };
+        self.0.borrow_mut().editor.move_to(cursor);
+    }
+
     /// Returns the selected text, if any.
     pub fn selection(&self) -> Option<String> {
         self.0.borrow().editor.copy()

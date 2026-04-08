@@ -47,6 +47,18 @@ pub use binding::{Binding, KeyPress};
 pub use content::{Content, StyleRun, StyledLine};
 pub use style::{Catalog, Style, StyleFn};
 
+/// A visual highlight drawn behind a character range.
+pub struct Highlight {
+    /// Line index in the document.
+    pub line: usize,
+    /// Column range within the line (same units as `Position::column`).
+    pub range: std::ops::Range<usize>,
+    /// Background fill. `None` = no fill (border-only highlight is valid).
+    pub background: Option<crate::core::Background>,
+    /// Border drawn around the highlight rectangle.
+    pub border: crate::core::Border,
+}
+
 /// Creates a new [`RichEditor`] with the given [`Content`].
 pub fn rich_editor<'a, Message, Theme, Renderer>(
     content: &'a Content<Renderer>,
@@ -89,6 +101,7 @@ where
     #[allow(clippy::type_complexity)]
     key_binding: Option<Box<dyn Fn(KeyPress) -> Option<Binding<Message>> + 'a>>,
     last_status: Option<Status>,
+    highlights: &'a [Highlight],
 }
 
 impl<'a, Message, Theme, Renderer> RichEditor<'a, Message, Theme, Renderer>
@@ -123,6 +136,7 @@ where
             interaction: None,
             key_binding: None,
             last_status: None,
+            highlights: &[],
         }
     }
 
@@ -199,6 +213,12 @@ where
     /// By default, a read-only editor (no `on_action`) shows [`NotAllowed`](mouse::Interaction::NotAllowed).
     pub fn interaction(mut self, interaction: mouse::Interaction) -> Self {
         self.interaction = Some(interaction);
+        self
+    }
+
+    /// Sets visual highlights drawn behind character ranges.
+    pub fn highlights(mut self, highlights: &'a [Highlight]) -> Self {
+        self.highlights = highlights;
         self
     }
 
@@ -916,6 +936,38 @@ where
                             b.color,
                         );
                     }
+                }
+            }
+
+            // ── Span highlights ──
+            if !self.highlights.is_empty() {
+                for h in self.highlights {
+                    internal.editor.highlight_rect(
+                        h.line,
+                        h.range.start,
+                        h.range.end,
+                        &mut |rect| {
+                            let screen_rect = Rectangle {
+                                x: rect.x + text_bounds.x,
+                                y: rect.y + text_bounds.y,
+                                ..rect
+                            };
+                            if let Some(clipped) = text_bounds.intersection(&screen_rect)
+                                && (h.background.is_some() || h.border.width > 0.0)
+                            {
+                                renderer.fill_quad(
+                                    renderer::Quad {
+                                        bounds: clipped,
+                                        border: h.border,
+                                        ..renderer::Quad::default()
+                                    },
+                                    h.background.unwrap_or(crate::core::Background::Color(
+                                        crate::core::Color::TRANSPARENT,
+                                    )),
+                                );
+                            }
+                        },
+                    );
                 }
             }
 
