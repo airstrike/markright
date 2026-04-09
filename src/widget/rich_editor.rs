@@ -19,6 +19,7 @@ use crate::core::input_method;
 use crate::core::keyboard;
 use crate::core::layout::{self, Layout};
 use crate::core::mouse;
+use crate::core::overlay;
 use crate::core::renderer;
 use crate::core::text::rich_editor::{self, Editor as _};
 use crate::core::text::{self, LineHeight, Text, Wrapping};
@@ -102,6 +103,7 @@ where
     key_binding: Option<Box<dyn Fn(KeyPress) -> Option<Binding<Message>> + 'a>>,
     last_status: Option<Status>,
     highlights: &'a [Highlight],
+    popup: Option<Element<'a, Message, Theme, Renderer>>,
 }
 
 impl<'a, Message, Theme, Renderer> RichEditor<'a, Message, Theme, Renderer>
@@ -137,6 +139,7 @@ where
             key_binding: None,
             last_status: None,
             highlights: &[],
+            popup: None,
         }
     }
 
@@ -219,6 +222,12 @@ where
     /// Sets visual highlights drawn behind character ranges.
     pub fn highlights(mut self, highlights: &'a [Highlight]) -> Self {
         self.highlights = highlights;
+        self
+    }
+
+    /// Sets a popup element displayed below the cursor as an overlay.
+    pub fn popup(mut self, element: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
+        self.popup = Some(element.into());
         self
     }
 
@@ -449,6 +458,24 @@ where
             drag_click: None,
             partial_scroll: 0.0,
         })
+    }
+
+    fn children(&self) -> Vec<widget::Tree> {
+        if let Some(ref popup) = self.popup {
+            vec![widget::Tree::new(popup)]
+        } else {
+            vec![widget::Tree::empty()]
+        }
+    }
+
+    fn diff(&self, tree: &mut widget::Tree) {
+        if tree.children.is_empty() {
+            tree.children.push(widget::Tree::empty());
+        }
+        match &self.popup {
+            Some(popup) => tree.children[0].diff(popup),
+            None => tree.children[0] = widget::Tree::empty(),
+        }
     }
 
     fn size(&self) -> Size<Length> {
@@ -1106,6 +1133,121 @@ where
     ) {
         let state = tree.state.downcast_mut::<State>();
         operation.focusable(self.id.as_ref(), layout.bounds(), state);
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut widget::Tree,
+        layout: Layout<'b>,
+        _renderer: &Renderer,
+        _viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        let caret = self.content.caret_rect()?;
+        let popup = self.popup.as_mut()?;
+        let text_bounds = layout.children().next()?.bounds();
+
+        let position = Point::new(
+            caret.x + text_bounds.x + translation.x,
+            caret.y + caret.height + text_bounds.y + translation.y + 4.0,
+        );
+
+        Some(overlay::Element::new(Box::new(PopupOverlay {
+            content: popup,
+            tree: &mut tree.children[0],
+            position,
+            max_width: text_bounds.width,
+        })))
+    }
+}
+
+/// Overlay for the popup element, positioned below the editor's caret.
+struct PopupOverlay<'a, 'b, Message, Theme, Renderer>
+where
+    Renderer: crate::core::Renderer,
+{
+    content: &'b mut Element<'a, Message, Theme, Renderer>,
+    tree: &'b mut widget::Tree,
+    position: Point,
+    max_width: f32,
+}
+
+impl<'a, 'b, Message, Theme, Renderer> overlay::Overlay<Message, Theme, Renderer>
+    for PopupOverlay<'a, 'b, Message, Theme, Renderer>
+where
+    Renderer: crate::core::Renderer,
+{
+    fn layout(&mut self, renderer: &Renderer, _bounds: Size) -> layout::Node {
+        let limits = layout::Limits::new(Size::ZERO, Size::new(self.max_width, f32::INFINITY));
+        let node = self
+            .content
+            .as_widget_mut()
+            .layout(self.tree, renderer, &limits);
+        node.move_to(self.position)
+    }
+
+    fn draw(
+        &self,
+        renderer: &mut Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+    ) {
+        self.content.as_widget().draw(
+            self.tree,
+            renderer,
+            theme,
+            style,
+            layout,
+            cursor,
+            &layout.bounds(),
+        );
+    }
+
+    fn update(
+        &mut self,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &Renderer,
+        shell: &mut Shell<'_, Message>,
+    ) {
+        self.content.as_widget_mut().update(
+            self.tree,
+            event,
+            layout,
+            cursor,
+            renderer,
+            shell,
+            &layout.bounds(),
+        );
+    }
+
+    fn mouse_interaction(
+        &self,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &Renderer,
+    ) -> mouse::Interaction {
+        self.content.as_widget().mouse_interaction(
+            self.tree,
+            layout,
+            cursor,
+            &layout.bounds(),
+            renderer,
+        )
+    }
+
+    fn operate(
+        &mut self,
+        layout: Layout<'_>,
+        renderer: &Renderer,
+        operation: &mut dyn widget::Operation,
+    ) {
+        self.content
+            .as_widget_mut()
+            .operate(self.tree, layout, renderer, operation);
     }
 }
 
