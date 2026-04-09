@@ -1,0 +1,17 @@
+[package]
+name = "formula"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "formula"
+
+[features]
+default = ["wgpu"]
+wgpu = ["iced/wgpu"]
+
+[dependencies]
+markright = { path = "../.." }
+markright_core.workspace = true
+iced.workspace = true
