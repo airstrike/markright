@@ -11,7 +11,7 @@ mod token;
 
 use token::{FormulaId, Token, TokenMap};
 
-const FORMULA_COLOR: iced::Color = color!(0x6366F1); // indigo-500
+const FORMULA_COLOR: iced::Color = color!(0x8C8C7A); // warm gray for formula text
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
@@ -55,6 +55,7 @@ enum Message {
     TabToOverlay,
     OverlayChanged(String),
     OverlayCommit,
+    OverlayCommitAndAdvance,
     OverlayCancel,
 }
 
@@ -109,6 +110,14 @@ impl App {
                     self.set_formula_expr(fid, &expr);
                 }
                 self.close_overlay()
+            }
+
+            Message::OverlayCommitAndAdvance => {
+                if let Some(fid) = self.active_formula {
+                    let expr = commit_expr(&self.overlay_draft, &self.overlay_original);
+                    self.set_formula_expr(fid, &expr);
+                }
+                self.advance_to_next_formula()
             }
 
             Message::OverlayCancel => self.revert_and_close(),
@@ -250,6 +259,42 @@ impl App {
         Task::none()
     }
 
+    fn advance_to_next_formula(&mut self) -> Task<Message> {
+        self.overlay_visible = false;
+        self.overlay_draft.clear();
+        self.focus = Focus::Editor;
+
+        // Find the current formula's position in the token list, then the next formula
+        let current_idx = self.active_formula.and_then(|fid| {
+            self.tokens
+                .iter()
+                .position(|t| matches!(t, Token::Formula { id, .. } if *id == fid))
+        });
+
+        let next_formula = current_idx.and_then(|idx| {
+            self.tokens[idx + 1..].iter().find_map(|t| match t {
+                Token::Formula { id, .. } => Some(*id),
+                _ => None,
+            })
+        });
+
+        if let Some(next_fid) = next_formula {
+            // Move cursor to the end of the next formula's display range
+            if let Some(region) = self.token_map.regions.iter().find(|r| {
+                r.is_formula
+                    && self
+                        .token_map
+                        .adjacent_formula(r.display_range.end, &self.tokens)
+                        == Some(next_fid)
+            }) {
+                self.content.move_to(0, region.display_range.end);
+                self.open_overlay_for(next_fid);
+            }
+        }
+
+        Task::none()
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     fn cursor_inside_formula(&self, dcol: usize) -> bool {
@@ -307,16 +352,16 @@ impl App {
 impl App {
     fn subscription(&self) -> Subscription<Message> {
         if self.focus == Focus::Overlay {
-            keyboard::listen().map(|event| match event {
+            keyboard::listen().filter_map(|event| match event {
                 keyboard::Event::KeyPressed {
                     key: keyboard::Key::Named(keyboard::key::Named::Escape),
                     ..
-                } => Message::OverlayCancel,
+                } => Some(Message::OverlayCancel),
                 keyboard::Event::KeyPressed {
                     key: keyboard::Key::Named(keyboard::key::Named::Tab),
                     ..
-                } => Message::OverlayCommit,
-                _ => Message::Editor(Action::Deselect), // no-op
+                } => Some(Message::OverlayCommitAndAdvance),
+                _ => None,
             })
         } else {
             Subscription::none()
@@ -408,9 +453,9 @@ fn build_highlights(token_map: &TokenMap) -> Vec<Highlight> {
         .map(|r| Highlight {
             line: 0,
             range: r.display_range.clone(),
-            background: Some(iced::Background::Color(color!(0xEEF2FF))),
+            background: Some(iced::Background::Color(color!(0xFAF9F5))),
             border: iced::Border {
-                color: color!(0xC7D2FE),
+                color: color!(0xE5E4DC),
                 width: 1.0,
                 radius: 3.0.into(),
             },
