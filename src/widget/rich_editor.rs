@@ -104,6 +104,9 @@ where
     last_status: Option<Status>,
     highlights: &'a [Highlight],
     popup: Option<Element<'a, Message, Theme, Renderer>>,
+    #[allow(clippy::type_complexity)]
+    popup_key_binding:
+        Option<Box<dyn Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message> + 'a>>,
 }
 
 impl<'a, Message, Theme, Renderer> RichEditor<'a, Message, Theme, Renderer>
@@ -140,6 +143,7 @@ where
             last_status: None,
             highlights: &[],
             popup: None,
+            popup_key_binding: None,
         }
     }
 
@@ -228,6 +232,20 @@ where
     /// Sets a popup element displayed below the cursor as an overlay.
     pub fn popup(mut self, element: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
         self.popup = Some(element.into());
+        self
+    }
+
+    /// Sets a key binding handler for the popup overlay.
+    ///
+    /// When the popup is visible and receives a key press, this closure is
+    /// called first. If it returns `Some(message)`, the message is emitted
+    /// and the key event is consumed. Return `None` to let the popup content
+    /// handle the key normally.
+    pub fn popup_key_binding(
+        mut self,
+        f: impl Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message> + 'a,
+    ) -> Self {
+        self.popup_key_binding = Some(Box::new(f));
         self
     }
 
@@ -1157,6 +1175,7 @@ where
             tree: &mut tree.children[0],
             position,
             max_width: text_bounds.width,
+            key_binding: self.popup_key_binding.as_deref(),
         })))
     }
 }
@@ -1170,6 +1189,8 @@ where
     tree: &'b mut widget::Tree,
     position: Point,
     max_width: f32,
+    #[allow(clippy::type_complexity)]
+    key_binding: Option<&'b dyn Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message>>,
 }
 
 impl<'a, 'b, Message, Theme, Renderer> overlay::Overlay<Message, Theme, Renderer>
@@ -1213,6 +1234,15 @@ where
         renderer: &Renderer,
         shell: &mut Shell<'_, Message>,
     ) {
+        if let Some(key_binding) = self.key_binding
+            && let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event
+            && let Some(message) = key_binding(key, *modifiers)
+        {
+            shell.publish(message);
+            shell.capture_event();
+            return;
+        }
+
         self.content.as_widget_mut().update(
             self.tree,
             event,

@@ -1,7 +1,7 @@
 use iced::keyboard;
 use iced::widget::operation::focus;
 use iced::widget::{column, container, row, text, text_input};
-use iced::{Element, Length, Subscription, Task, color};
+use iced::{Element, Length, Task, color};
 
 use iced::advanced::text::rich_editor::span;
 use markright::widget::rich_editor::{self, Action, Binding, Content, Edit, Highlight, KeyPress};
@@ -15,7 +15,6 @@ const FORMULA_COLOR: iced::Color = color!(0x8C8C7A); // warm gray for formula te
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
-        .subscription(App::subscription)
         .title("Formula Editor")
         .run()
 }
@@ -41,6 +40,7 @@ struct App {
     focus: Focus,
 }
 
+const EDITOR_ID: &str = "formula-editor";
 const OVERLAY_INPUT_ID: &str = "formula-overlay-input";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,8 +108,24 @@ impl App {
                 if let Some(fid) = self.active_formula {
                     let expr = commit_expr(&self.overlay_draft, &self.overlay_original);
                     self.set_formula_expr(fid, &expr);
+                    // Move cursor to end of the formula span
+                    let token_idx = self
+                        .tokens
+                        .iter()
+                        .position(|t| matches!(t, Token::Formula { id, .. } if *id == fid));
+                    if let Some(idx) = token_idx {
+                        if let Some(region) =
+                            self.token_map.regions.iter().find(|r| r.token_index == idx)
+                        {
+                            self.content.move_to(0, region.display_range.end);
+                        }
+                    }
                 }
-                self.close_overlay()
+                self.overlay_visible = false;
+                self.overlay_draft.clear();
+                self.active_formula = None;
+                self.focus = Focus::Editor;
+                focus(EDITOR_ID)
             }
 
             Message::OverlayCommitAndAdvance => {
@@ -252,13 +268,6 @@ impl App {
         Task::none()
     }
 
-    fn close_overlay(&mut self) -> Task<Message> {
-        self.overlay_visible = false;
-        self.overlay_draft.clear();
-        self.focus = Focus::Editor;
-        Task::none()
-    }
-
     fn advance_to_next_formula(&mut self) -> Task<Message> {
         self.overlay_visible = false;
         self.overlay_draft.clear();
@@ -347,28 +356,6 @@ impl App {
     }
 }
 
-// ── subscription (overlay key handling) ────────────────────────────────
-
-impl App {
-    fn subscription(&self) -> Subscription<Message> {
-        if self.focus == Focus::Overlay {
-            keyboard::listen().filter_map(|event| match event {
-                keyboard::Event::KeyPressed {
-                    key: keyboard::Key::Named(keyboard::key::Named::Escape),
-                    ..
-                } => Some(Message::OverlayCancel),
-                keyboard::Event::KeyPressed {
-                    key: keyboard::Key::Named(keyboard::key::Named::Tab),
-                    ..
-                } => Some(Message::OverlayCommitAndAdvance),
-                _ => None,
-            })
-        } else {
-            Subscription::none()
-        }
-    }
-}
-
 // ── view ───────────────────────────────────────────────────────────────
 
 impl App {
@@ -376,6 +363,7 @@ impl App {
         let has_active = self.overlay_visible && self.focus == Focus::Editor;
 
         let mut editor = rich_editor::rich_editor(&self.content)
+            .id(EDITOR_ID)
             .on_action(Message::Editor)
             .height(Length::Shrink)
             .padding(12)
@@ -426,7 +414,23 @@ impl App {
                 ..Default::default()
             });
 
-            editor = editor.popup(popup_content);
+            let overlay_focused = self.focus == Focus::Overlay;
+            editor = editor
+                .popup(popup_content)
+                .popup_key_binding(move |key, _modifiers| {
+                    if !overlay_focused {
+                        return None;
+                    }
+                    match key {
+                        keyboard::Key::Named(keyboard::key::Named::Escape) => {
+                            Some(Message::OverlayCancel)
+                        }
+                        keyboard::Key::Named(keyboard::key::Named::Tab) => {
+                            Some(Message::OverlayCommitAndAdvance)
+                        }
+                        _ => None,
+                    }
+                });
         }
 
         // Debug: source
