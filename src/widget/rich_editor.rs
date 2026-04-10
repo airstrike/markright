@@ -10,6 +10,7 @@
 //! - No external highlighter -- formatting lives in AttrsList, always up-to-date
 //! - Built-in key bindings for Cmd+B/I/U formatting shortcuts
 //! - Emits our [`Action`] type instead of iced's `text_editor::Action`
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::core::Font;
@@ -37,6 +38,7 @@ mod content;
 pub mod cursor;
 pub mod list;
 pub mod operation;
+pub mod popup;
 pub mod style;
 
 use binding::Ime;
@@ -103,10 +105,9 @@ where
     key_binding: Option<Box<dyn Fn(KeyPress) -> Option<Binding<Message>> + 'a>>,
     last_status: Option<Status>,
     highlights: &'a [Highlight],
-    popup: Option<Element<'a, Message, Theme, Renderer>>,
+    popup_element: Option<Element<'a, Message, Theme, Renderer>>,
     #[allow(clippy::type_complexity)]
-    popup_key_binding:
-        Option<Box<dyn Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message> + 'a>>,
+    on_popup_action: Option<Rc<dyn Fn(popup::Action) -> Message + 'a>>,
 }
 
 impl<'a, Message, Theme, Renderer> RichEditor<'a, Message, Theme, Renderer>
@@ -142,8 +143,8 @@ where
             key_binding: None,
             last_status: None,
             highlights: &[],
-            popup: None,
-            popup_key_binding: None,
+            popup_element: None,
+            on_popup_action: None,
         }
     }
 
@@ -229,23 +230,42 @@ where
         self
     }
 
-    /// Sets a popup element displayed below the cursor as an overlay.
-    pub fn popup(mut self, element: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
-        self.popup = Some(element.into());
-        self
-    }
-
-    /// Sets a key binding handler for the popup overlay.
+    /// Builds a popup overlay with a text input, displayed below the cursor.
     ///
-    /// When the popup is visible and receives a key press, this closure is
-    /// called first. If it returns `Some(message)`, the message is emitted
-    /// and the key event is consumed. Return `None` to let the popup content
-    /// handle the key normally.
-    pub fn popup_key_binding(
+    /// The widget creates a [`iced_widget::TextInput`] pre-wired with
+    /// `on_input` -> [`popup::Action::Input`]. The `build` closure receives
+    /// this text input and returns the final popup [`Element`] -- use it to
+    /// add surrounding content (preview rows, containers, styling).
+    ///
+    /// Enter and Escape are intercepted by the overlay:
+    /// - **Enter** -> emits [`popup::Action::Confirm`]
+    /// - **Escape** -> emits [`popup::Action::Dismiss`]
+    ///
+    /// Use [`popup::INPUT_ID`] with `iced::widget::operation::focus` to
+    /// programmatically focus the text input (e.g., on Tab).
+    pub fn popup<F>(
         mut self,
-        f: impl Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message> + 'a,
-    ) -> Self {
-        self.popup_key_binding = Some(Box::new(f));
+        placeholder: &'a str,
+        value: &'a str,
+        on_action: impl Fn(popup::Action) -> Message + 'a,
+        build: F,
+    ) -> Self
+    where
+        Message: Clone,
+        Theme: iced_widget::text_input::Catalog,
+        F: FnOnce(
+            iced_widget::TextInput<'a, Message, Theme, Renderer>,
+        ) -> Element<'a, Message, Theme, Renderer>,
+    {
+        let on_action = Rc::new(on_action);
+
+        let on_action_input = on_action.clone();
+        let input = iced_widget::TextInput::new(placeholder, value)
+            .on_input(move |t| on_action_input(popup::Action::Input(t)))
+            .id(popup::INPUT_ID);
+
+        self.popup_element = Some(build(input));
+        self.on_popup_action = Some(on_action);
         self
     }
 
@@ -479,7 +499,7 @@ where
     }
 
     fn children(&self) -> Vec<widget::Tree> {
-        if let Some(ref popup) = self.popup {
+        if let Some(ref popup) = self.popup_element {
             vec![widget::Tree::new(popup)]
         } else {
             vec![widget::Tree::empty()]
@@ -490,7 +510,7 @@ where
         if tree.children.is_empty() {
             tree.children.push(widget::Tree::empty());
         }
-        match &self.popup {
+        match &self.popup_element {
             Some(popup) => tree.children[0].diff(popup),
             None => tree.children[0] = widget::Tree::empty(),
         }
@@ -1162,7 +1182,8 @@ where
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         let caret = self.content.caret_rect()?;
-        let popup = self.popup.as_mut()?;
+        let popup = self.popup_element.as_mut()?;
+        let on_action = self.on_popup_action.as_ref()?.clone();
         let text_bounds = layout.children().next()?.bounds();
 
         let position = Point::new(
@@ -1175,7 +1196,7 @@ where
             tree: &mut tree.children[0],
             position,
             max_width: text_bounds.width,
-            key_binding: self.popup_key_binding.as_deref(),
+            on_action,
         })))
     }
 }
@@ -1189,8 +1210,7 @@ where
     tree: &'b mut widget::Tree,
     position: Point,
     max_width: f32,
-    #[allow(clippy::type_complexity)]
-    key_binding: Option<&'b dyn Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message>>,
+    on_action: Rc<dyn Fn(popup::Action) -> Message + 'a>,
 }
 
 impl<'a, 'b, Message, Theme, Renderer> overlay::Overlay<Message, Theme, Renderer>
@@ -1234,13 +1254,20 @@ where
         renderer: &Renderer,
         shell: &mut Shell<'_, Message>,
     ) {
-        if let Some(key_binding) = self.key_binding
-            && let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event
-            && let Some(message) = key_binding(key, *modifiers)
-        {
-            shell.publish(message);
-            shell.capture_event();
-            return;
+        if let Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) = event {
+            match key {
+                keyboard::Key::Named(keyboard::key::Named::Enter) => {
+                    shell.publish((self.on_action)(popup::Action::Confirm));
+                    shell.capture_event();
+                    return;
+                }
+                keyboard::Key::Named(keyboard::key::Named::Escape) => {
+                    shell.publish((self.on_action)(popup::Action::Dismiss));
+                    shell.capture_event();
+                    return;
+                }
+                _ => {}
+            }
         }
 
         self.content.as_widget_mut().update(

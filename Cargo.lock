@@ -2074,6 +2074,7 @@ dependencies = [
  "iced",
  "iced_core",
  "iced_graphics",
+ "iced_widget",
  "markright_core",
  "markright_document",
  "reqwest",

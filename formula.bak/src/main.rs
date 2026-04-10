@@ -1,22 +1,23 @@
 use iced::keyboard;
 use iced::widget::operation::focus;
-use iced::widget::{column, container, row, text};
-use iced::{Element, Length, Task, color};
+use iced::widget::{column, container, row, text, text_input};
+use iced::{color, Element, Length, Subscription, Task};
 
 use iced::advanced::text::rich_editor::span;
-use markright::widget::rich_editor::popup;
-use markright::widget::rich_editor::{self, Action, Binding, Content, Edit, Highlight, KeyPress};
+use markright::widget::rich_editor::{self, Action, Binding, Content, Edit, KeyPress};
 
 mod eval;
 mod token;
+mod widget;
 
 use token::{FormulaId, Token, TokenMap};
+use widget::FormulaHost;
 
-const FORMULA_COLOR: iced::Color = color!(0x8C8C7A); // warm gray for formula text
-const EDITOR_ID: &str = "formula-editor";
+const FORMULA_COLOR: iced::Color = color!(0x6366F1); // indigo-500
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
+        .subscription(App::subscription)
         .title("Formula Editor")
         .run()
 }
@@ -28,7 +29,6 @@ struct App {
     tokens: Vec<Token>,
     token_map: TokenMap,
     content: Content<iced::Renderer>,
-    highlights: Vec<Highlight>,
 
     /// Which formula the cursor is adjacent to, if any.
     active_formula: Option<FormulaId>,
@@ -38,24 +38,36 @@ struct App {
     overlay_draft: String,
     /// The original expression when the overlay opened (for revert on Esc/dismiss).
     overlay_original: String,
+
+    focus: Focus,
+}
+
+const OVERLAY_INPUT_ID: &str = "formula-overlay-input";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Focus {
+    Editor,
+    Overlay,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     Editor(Action),
-    FocusPopup,
-    Popup(popup::Action),
+    TabToOverlay,
+    OverlayChanged(String),
+    OverlayCommit,
+    OverlayCancel,
 }
 
 // ── update ─────────────────────────────────────────────────────────────
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let source = "Tim had {=1+3} apples, then picked up {=2*6} more at the store.".to_string();
+        let source =
+            "Tim had {=1+3} apples, then picked up {=2*6} more at the store.".to_string();
         let tokens = token::parse(&source);
         let token_map = TokenMap::build(&tokens);
         let content = build_content(&tokens);
-        let highlights = build_highlights(&token_map);
 
         (
             Self {
@@ -63,11 +75,11 @@ impl App {
                 tokens,
                 token_map,
                 content,
-                highlights,
                 active_formula: None,
                 overlay_visible: false,
                 overlay_draft: String::new(),
                 overlay_original: String::new(),
+                focus: Focus::Editor,
             },
             Task::none(),
         )
@@ -77,46 +89,41 @@ impl App {
         match message {
             Message::Editor(action) => self.handle_editor_action(action),
 
-            Message::FocusPopup => focus(popup::INPUT_ID),
+            Message::TabToOverlay => {
+                if self.overlay_visible {
+                    self.focus = Focus::Overlay;
+                    return focus(OVERLAY_INPUT_ID);
+                }
+                Task::none()
+            }
 
-            Message::Popup(popup::Action::Input(draft)) => {
+            Message::OverlayChanged(draft) => {
                 self.overlay_draft = draft;
                 self.live_patch_formula();
                 Task::none()
             }
 
-            Message::Popup(popup::Action::Confirm) => {
+            Message::OverlayCommit => {
                 if let Some(fid) = self.active_formula {
                     let expr = commit_expr(&self.overlay_draft, &self.overlay_original);
                     self.set_formula_expr(fid, &expr);
-                    // Move cursor to end of the formula span
-                    let token_idx = self
-                        .tokens
-                        .iter()
-                        .position(|t| matches!(t, Token::Formula { id, .. } if *id == fid));
-                    if let Some(idx) = token_idx {
-                        if let Some(region) =
-                            self.token_map.regions.iter().find(|r| r.token_index == idx)
-                        {
-                            self.content.move_to(0, region.display_range.end);
-                        }
-                    }
                 }
-                self.overlay_visible = false;
-                self.overlay_draft.clear();
-                self.active_formula = None;
-                focus(EDITOR_ID)
+                self.close_overlay()
             }
 
-            Message::Popup(popup::Action::Dismiss) => {
-                self.revert_overlay();
-                self.active_formula = None;
-                focus(EDITOR_ID)
+            Message::OverlayCancel => {
+                self.revert_and_close()
             }
         }
     }
 
     fn handle_editor_action(&mut self, action: Action) -> Task<Message> {
+        // Any editor action while overlay is focused → revert & dismiss
+        if self.focus == Focus::Overlay {
+            self.revert_overlay();
+            self.focus = Focus::Editor;
+        }
+
         if action.is_edit() {
             self.handle_edit(action)
         } else {
@@ -218,6 +225,7 @@ impl App {
             self.overlay_original = expr.clone();
             self.overlay_visible = true;
             self.active_formula = Some(fid);
+            // Focus stays in editor — Tab moves to overlay
         }
     }
 
@@ -228,6 +236,20 @@ impl App {
         }
         self.overlay_visible = false;
         self.overlay_draft.clear();
+    }
+
+    fn revert_and_close(&mut self) -> Task<Message> {
+        self.revert_overlay();
+        self.active_formula = None;
+        self.focus = Focus::Editor;
+        Task::none()
+    }
+
+    fn close_overlay(&mut self) -> Task<Message> {
+        self.overlay_visible = false;
+        self.overlay_draft.clear();
+        self.focus = Focus::Editor;
+        Task::none()
     }
 
     // ── helpers ─────────────────────────────────────────────────────────
@@ -248,7 +270,6 @@ impl App {
         self.tokens = token::parse(&self.source);
         self.token_map = TokenMap::build(&self.tokens);
         self.content = build_content(&self.tokens);
-        self.highlights = build_highlights(&self.token_map);
         let dcol = self.token_map.source_to_display(source_offset);
         self.content.move_to(0, dcol);
         self.update_adjacency();
@@ -275,10 +296,31 @@ impl App {
         }
         self.source = token::serialize(&self.tokens);
         self.token_map = TokenMap::build(&self.tokens);
-        self.highlights = build_highlights(&self.token_map);
         let dcol = self.content.cursor().position.column;
         self.content = build_content(&self.tokens);
         self.content.move_to(0, dcol);
+    }
+}
+
+// ── subscription (overlay key handling) ────────────────────────────────
+
+impl App {
+    fn subscription(&self) -> Subscription<Message> {
+        if self.focus == Focus::Overlay {
+            keyboard::listen().map(|event| match event {
+                keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(keyboard::key::Named::Escape),
+                    ..
+                } => Message::OverlayCancel,
+                keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(keyboard::key::Named::Tab),
+                    ..
+                } => Message::OverlayCommit,
+                _ => Message::Editor(Action::Deselect), // no-op
+            })
+        } else {
+            Subscription::none()
+        }
     }
 }
 
@@ -286,40 +328,44 @@ impl App {
 
 impl App {
     fn view(&self) -> Element<'_, Message> {
-        let overlay_visible = self.overlay_visible;
+        let has_active = self.overlay_visible && self.focus == Focus::Editor;
 
-        let mut editor = rich_editor::rich_editor(&self.content)
-            .id(EDITOR_ID)
+        let editor = rich_editor::rich_editor(&self.content)
             .on_action(Message::Editor)
             .height(Length::Shrink)
             .padding(12)
-            .highlights(&self.highlights)
             .key_binding(move |press: KeyPress| {
-                if overlay_visible && is_tab(&press) {
-                    Some(Binding::Custom(Message::FocusPopup))
+                if has_active && is_tab(&press) {
+                    Some(Binding::Custom(Message::TabToOverlay))
                 } else {
                     None
                 }
             });
 
-        // Attach popup when a formula is active
-        if self.overlay_visible {
+        // Overlay: appears automatically when cursor is near a formula
+        let overlay_el = if self.overlay_visible {
             let preview = overlay_preview(&self.overlay_draft, &self.overlay_original);
+
+            // Size overlay to fit the draft text, with a reasonable floor
             let draft_chars = self.overlay_draft.len().max(8) as f32;
             let input_width = (draft_chars * 8.5 + 32.0).min(400.0);
 
-            editor = editor.popup("{=expr}", &self.overlay_draft, Message::Popup, |input| {
-                container(
-                    column![
-                        input.size(14).width(input_width),
-                        row![
-                            text("= ").size(12).color(color!(0x94A3B8)),
-                            text(preview).size(12).color(color!(0x334155)),
-                        ]
-                    ]
-                    .spacing(4)
-                    .padding(8),
-                )
+            let overlay_col = column![
+                text_input("{=expr}", &self.overlay_draft)
+                    .id(OVERLAY_INPUT_ID)
+                    .on_input(Message::OverlayChanged)
+                    .on_submit(Message::OverlayCommit)
+                    .size(14)
+                    .width(input_width),
+                row![
+                    text("= ").size(12).color(color!(0x94A3B8)),
+                    text(preview).size(12).color(color!(0x334155)),
+                ]
+            ]
+            .spacing(4)
+            .padding(8);
+
+            let styled = container(overlay_col)
                 .width(Length::Shrink)
                 .style(|_theme: &iced::Theme| container::Style {
                     background: Some(iced::Background::Color(color!(0xFFFFFF))),
@@ -334,10 +380,15 @@ impl App {
                         blur_radius: 12.0,
                     },
                     ..Default::default()
-                })
-                .into()
-            });
-        }
+                });
+
+            Some(styled.into())
+        } else {
+            None
+        };
+
+        let host: Element<'_, Message> =
+            FormulaHost::new(editor).overlay_maybe(overlay_el).into();
 
         // Debug: source
         let source_debug = column![
@@ -346,7 +397,7 @@ impl App {
         ]
         .spacing(2);
 
-        container(column![editor, source_debug].spacing(16))
+        container(column![host, source_debug].spacing(16))
             .padding(32)
             .max_width(640)
             .into()
@@ -354,24 +405,6 @@ impl App {
 }
 
 // ── content builder ────────────────────────────────────────────────────
-
-fn build_highlights(token_map: &TokenMap) -> Vec<Highlight> {
-    token_map
-        .regions
-        .iter()
-        .filter(|r| r.is_formula)
-        .map(|r| Highlight {
-            line: 0,
-            range: r.display_range.clone(),
-            background: Some(iced::Background::Color(color!(0xFAF9F5))),
-            border: iced::Border {
-                color: color!(0xE5E4DC),
-                width: 1.0,
-                radius: 3.0.into(),
-            },
-        })
-        .collect()
-}
 
 fn build_content(tokens: &[Token]) -> Content<iced::Renderer> {
     use markright_core::StyledLine;
@@ -408,11 +441,15 @@ fn build_content(tokens: &[Token]) -> Content<iced::Renderer> {
 // ── utilities ──────────────────────────────────────────────────────────
 
 fn strip_formula_markers(draft: &str) -> Option<&str> {
-    draft.strip_prefix("{=").and_then(|s| s.strip_suffix('}'))
+    draft
+        .strip_prefix("{=")
+        .and_then(|s| s.strip_suffix('}'))
 }
 
 fn commit_expr(draft: &str, original: &str) -> String {
-    strip_formula_markers(draft).unwrap_or(original).to_string()
+    strip_formula_markers(draft)
+        .unwrap_or(original)
+        .to_string()
 }
 
 fn overlay_preview(draft: &str, original: &str) -> String {

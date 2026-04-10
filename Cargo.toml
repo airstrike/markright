@@ -18,6 +18,7 @@ edition = "2024"
 
 [dependencies]
 iced_core.workspace = true
+iced_widget.workspace = true
 markright_core.workspace = true
 
 [dev-dependencies]
