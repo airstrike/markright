@@ -1,18 +1,17 @@
-use iced::keyboard;
+use iced::advanced::text::rich_editor::span;
 use iced::widget::operation::focus;
 use iced::widget::{column, container, row, text};
 use iced::{Element, Length, Task, color};
 
-use iced::advanced::text::rich_editor::span;
 use markright::widget::rich_editor::popup;
-use markright::widget::rich_editor::{self, Action, Binding, Content, Edit, Highlight, KeyPress};
+use markright::widget::rich_editor::{self, Action, Content, Edit, Instruction};
 
 mod eval;
 mod token;
 
 use token::{FormulaId, Token, TokenMap};
 
-const FORMULA_COLOR: iced::Color = color!(0x8C8C7A); // warm gray for formula text
+const FORMULA_COLOR: iced::Color = color!(0x8C8C7A);
 const EDITOR_ID: &str = "formula-editor";
 
 fn main() -> iced::Result {
@@ -21,33 +20,20 @@ fn main() -> iced::Result {
         .run()
 }
 
-// ── app state ──────────────────────────────────────────────────────────
-
 struct App {
     source: String,
     tokens: Vec<Token>,
     token_map: TokenMap,
     content: Content<iced::Renderer>,
-    highlights: Vec<Highlight>,
-
-    /// Which formula the cursor is adjacent to, if any.
-    active_formula: Option<FormulaId>,
-    /// Whether the overlay is visible.
-    overlay_visible: bool,
-    /// The text being edited in the overlay input.
-    overlay_draft: String,
-    /// The original expression when the overlay opened (for revert on Esc/dismiss).
-    overlay_original: String,
+    spans: Vec<popup::Span>,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     Editor(Action),
-    FocusPopup,
     Popup(popup::Action),
+    Instruction(Instruction),
 }
-
-// ── update ─────────────────────────────────────────────────────────────
 
 impl App {
     fn new() -> (Self, Task<Message>) {
@@ -55,7 +41,7 @@ impl App {
         let tokens = token::parse(&source);
         let token_map = TokenMap::build(&tokens);
         let content = build_content(&tokens);
-        let highlights = build_highlights(&token_map);
+        let spans = parse(&tokens, &token_map);
 
         (
             Self {
@@ -63,11 +49,7 @@ impl App {
                 tokens,
                 token_map,
                 content,
-                highlights,
-                active_formula: None,
-                overlay_visible: false,
-                overlay_draft: String::new(),
-                overlay_original: String::new(),
+                spans,
             },
             Task::none(),
         )
@@ -77,42 +59,27 @@ impl App {
         match message {
             Message::Editor(action) => self.handle_editor_action(action),
 
-            Message::FocusPopup => focus(popup::INPUT_ID),
-
-            Message::Popup(popup::Action::Input(draft)) => {
-                self.overlay_draft = draft;
-                self.live_patch_formula();
+            Message::Popup(popup::Action::Input { span, value }) => {
+                if let Some(expr) = strip_formula_markers(&value)
+                    && let Some(fid) = self.formula_id_for_span(&span)
+                {
+                    self.set_formula_expr(fid, expr);
+                }
                 Task::none()
             }
 
-            Message::Popup(popup::Action::Confirm) => {
-                if let Some(fid) = self.active_formula {
-                    let expr = commit_expr(&self.overlay_draft, &self.overlay_original);
-                    self.set_formula_expr(fid, &expr);
-                    // Move cursor to end of the formula span
-                    let token_idx = self
-                        .tokens
-                        .iter()
-                        .position(|t| matches!(t, Token::Formula { id, .. } if *id == fid));
-                    if let Some(idx) = token_idx {
-                        if let Some(region) =
-                            self.token_map.regions.iter().find(|r| r.token_index == idx)
-                        {
-                            self.content.move_to(0, region.display_range.end);
-                        }
-                    }
+            Message::Popup(popup::Action::Confirm { .. }) => Task::none(),
+
+            Message::Popup(popup::Action::Dismiss { span, original }) => {
+                if let Some(expr) = strip_formula_markers(&original)
+                    && let Some(fid) = self.formula_id_for_span(&span)
+                {
+                    self.set_formula_expr(fid, expr);
                 }
-                self.overlay_visible = false;
-                self.overlay_draft.clear();
-                self.active_formula = None;
-                focus(EDITOR_ID)
+                Task::none()
             }
 
-            Message::Popup(popup::Action::Dismiss) => {
-                self.revert_overlay();
-                self.active_formula = None;
-                focus(EDITOR_ID)
-            }
+            Message::Instruction(Instruction::Focus(id)) => focus(id),
         }
     }
 
@@ -121,7 +88,6 @@ impl App {
             self.handle_edit(action)
         } else {
             self.content.perform(action);
-            self.update_adjacency();
             Task::none()
         }
     }
@@ -133,7 +99,6 @@ impl App {
 
         match &action {
             Action::Edit(Edit::Insert(ch)) => {
-                // Block insertion inside a formula's display range
                 if self.cursor_inside_formula(dcol) {
                     return Task::none();
                 }
@@ -181,59 +146,7 @@ impl App {
         Task::none()
     }
 
-    // ── adjacency & overlay lifecycle ──────────────────────────────────
-
-    fn update_adjacency(&mut self) {
-        let col = self.content.cursor().position.column;
-        let new_active = self.token_map.adjacent_formula(col, &self.tokens);
-
-        if new_active == self.active_formula {
-            return;
-        }
-
-        // Cursor moved to a different (or no) formula.
-        // Revert any uncommitted overlay edits for the old formula.
-        if self.overlay_visible {
-            self.revert_overlay();
-        }
-
-        if let Some(fid) = new_active {
-            // Open overlay for the new formula
-            self.open_overlay_for(fid);
-        } else {
-            // Left all formulas — close overlay
-            self.active_formula = None;
-            self.overlay_visible = false;
-        }
-    }
-
-    fn open_overlay_for(&mut self, fid: FormulaId) {
-        #[allow(clippy::collapsible_if)]
-        if let Some(Token::Formula { expr, .. }) = self
-            .tokens
-            .iter()
-            .find(|t| matches!(t, Token::Formula { id, .. } if *id == fid))
-        {
-            self.overlay_draft = format!("{{={expr}}}");
-            self.overlay_original = expr.clone();
-            self.overlay_visible = true;
-            self.active_formula = Some(fid);
-        }
-    }
-
-    fn revert_overlay(&mut self) {
-        if let Some(fid) = self.active_formula {
-            let original = self.overlay_original.clone();
-            self.set_formula_expr(fid, &original);
-        }
-        self.overlay_visible = false;
-        self.overlay_draft.clear();
-    }
-
-    // ── helpers ─────────────────────────────────────────────────────────
-
     fn cursor_inside_formula(&self, dcol: usize) -> bool {
-        // True if dcol is strictly inside (not at edge of) a formula range
         self.token_map
             .adjacent_formula(dcol, &self.tokens)
             .is_some()
@@ -248,20 +161,9 @@ impl App {
         self.tokens = token::parse(&self.source);
         self.token_map = TokenMap::build(&self.tokens);
         self.content = build_content(&self.tokens);
-        self.highlights = build_highlights(&self.token_map);
+        self.spans = parse(&self.tokens, &self.token_map);
         let dcol = self.token_map.source_to_display(source_offset);
         self.content.move_to(0, dcol);
-        self.update_adjacency();
-    }
-
-    #[allow(clippy::collapsible_if)]
-    fn live_patch_formula(&mut self) {
-        let draft = self.overlay_draft.clone();
-        if let Some(expr) = strip_formula_markers(&draft) {
-            if let Some(fid) = self.active_formula {
-                self.set_formula_expr(fid, expr);
-            }
-        }
     }
 
     fn set_formula_expr(&mut self, fid: FormulaId, expr: &str) {
@@ -275,40 +177,37 @@ impl App {
         }
         self.source = token::serialize(&self.tokens);
         self.token_map = TokenMap::build(&self.tokens);
-        self.highlights = build_highlights(&self.token_map);
+        self.spans = parse(&self.tokens, &self.token_map);
         let dcol = self.content.cursor().position.column;
         self.content = build_content(&self.tokens);
         self.content.move_to(0, dcol);
     }
-}
 
-// ── view ───────────────────────────────────────────────────────────────
+    fn formula_id_for_span(&self, span: &popup::SpanRef) -> Option<FormulaId> {
+        self.token_map
+            .regions
+            .iter()
+            .find(|r| r.is_formula && r.display_range == span.range)
+            .and_then(|r| match &self.tokens[r.token_index] {
+                Token::Formula { id, .. } => Some(*id),
+                _ => None,
+            })
+    }
+}
 
 impl App {
     fn view(&self) -> Element<'_, Message> {
-        let overlay_visible = self.overlay_visible;
-
-        let mut editor = rich_editor::rich_editor(&self.content)
+        let editor = rich_editor::rich_editor(&self.content)
             .id(EDITOR_ID)
             .on_action(Message::Editor)
+            .on_instruction(Message::Instruction)
             .height(Length::Shrink)
             .padding(12)
-            .highlights(&self.highlights)
-            .key_binding(move |press: KeyPress| {
-                if overlay_visible && is_tab(&press) {
-                    Some(Binding::Custom(Message::FocusPopup))
-                } else {
-                    None
-                }
-            });
+            .popup_spans(&self.spans, Message::Popup, |input, span| {
+                let preview = eval_preview(&span.value);
+                let chars = span.value.len().max(8) as f32;
+                let input_width = (chars * 8.5 + 32.0).min(400.0);
 
-        // Attach popup when a formula is active
-        if self.overlay_visible {
-            let preview = overlay_preview(&self.overlay_draft, &self.overlay_original);
-            let draft_chars = self.overlay_draft.len().max(8) as f32;
-            let input_width = (draft_chars * 8.5 + 32.0).min(400.0);
-
-            editor = editor.popup("{=expr}", &self.overlay_draft, Message::Popup, |input| {
                 container(
                     column![
                         input.size(14).width(input_width),
@@ -337,9 +236,7 @@ impl App {
                 })
                 .into()
             });
-        }
 
-        // Debug: source
         let source_debug = column![
             text("source").size(10).color(color!(0x94A3B8)),
             text(&self.source).size(12).color(color!(0x64748B)),
@@ -353,22 +250,27 @@ impl App {
     }
 }
 
-// ── content builder ────────────────────────────────────────────────────
-
-fn build_highlights(token_map: &TokenMap) -> Vec<Highlight> {
+fn parse(tokens: &[Token], token_map: &TokenMap) -> Vec<popup::Span> {
     token_map
         .regions
         .iter()
         .filter(|r| r.is_formula)
-        .map(|r| Highlight {
-            line: 0,
-            range: r.display_range.clone(),
-            background: Some(iced::Background::Color(color!(0xFAF9F5))),
-            border: iced::Border {
-                color: color!(0xE5E4DC),
-                width: 1.0,
-                radius: 3.0.into(),
-            },
+        .filter_map(|r| {
+            let Token::Formula { expr, .. } = &tokens[r.token_index] else {
+                return None;
+            };
+            Some(popup::Span {
+                line: 0,
+                range: r.display_range.clone(),
+                value: format!("{{={expr}}}"),
+                placeholder: "{=expr}".to_string(),
+                background: Some(iced::Background::Color(color!(0xFAF9F5))),
+                border: iced::Border {
+                    color: color!(0xE5E4DC),
+                    width: 1.0,
+                    radius: 3.0.into(),
+                },
+            })
         })
         .collect()
 }
@@ -405,24 +307,11 @@ fn build_content(tokens: &[Token]) -> Content<iced::Renderer> {
     Content::from_styled_lines(&[styled_line])
 }
 
-// ── utilities ──────────────────────────────────────────────────────────
-
 fn strip_formula_markers(draft: &str) -> Option<&str> {
     draft.strip_prefix("{=").and_then(|s| s.strip_suffix('}'))
 }
 
-fn commit_expr(draft: &str, original: &str) -> String {
-    strip_formula_markers(draft).unwrap_or(original).to_string()
-}
-
-fn overlay_preview(draft: &str, original: &str) -> String {
-    if let Some(expr) = strip_formula_markers(draft) {
-        eval::eval_display(expr)
-    } else {
-        eval::eval_display(original)
-    }
-}
-
-fn is_tab(press: &KeyPress) -> bool {
-    press.key == keyboard::Key::Named(keyboard::key::Named::Tab) && !press.modifiers.shift()
+fn eval_preview(value: &str) -> String {
+    let expr = strip_formula_markers(value).unwrap_or("");
+    eval::eval_display(expr)
 }

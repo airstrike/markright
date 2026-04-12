@@ -23,8 +23,6 @@ pub fn eval_display(input: &str) -> String {
     }
 }
 
-// ── lexer ──────────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone)]
 enum Tok {
     Num(f64),
@@ -86,8 +84,6 @@ fn lex(input: &str) -> Result<Vec<Tok>, String> {
     }
     Ok(tokens)
 }
-
-// ── parser (recursive descent) ─────────────────────────────────────────
 
 struct Parser<'a> {
     tokens: &'a [Tok],

@@ -62,6 +62,21 @@ pub struct Highlight {
     pub border: crate::core::Border,
 }
 
+/// A side-effect task the widget needs the application to run.
+///
+/// The widget cannot return [`Task`]s from its update method, so it
+/// emits `Instruction`s through the [`on_instruction`] callback. The
+/// application converts each instruction into a [`Task`] and returns
+/// it from its update handler.
+///
+/// [`Task`]: iced_core::task::Task
+/// [`on_instruction`]: RichEditor::on_instruction
+#[derive(Debug, Clone)]
+pub enum Instruction {
+    /// Focus the widget with the given ID.
+    Focus(widget::Id),
+}
+
 /// Creates a new [`RichEditor`] with the given [`Content`].
 pub fn rich_editor<'a, Message, Theme, Renderer>(
     content: &'a Content<Renderer>,
@@ -105,9 +120,12 @@ where
     key_binding: Option<Box<dyn Fn(KeyPress) -> Option<Binding<Message>> + 'a>>,
     last_status: Option<Status>,
     highlights: &'a [Highlight],
+    popup_spans: &'a [popup::Span],
     popup_element: Option<Element<'a, Message, Theme, Renderer>>,
     #[allow(clippy::type_complexity)]
     on_popup_action: Option<Rc<dyn Fn(popup::Action) -> Message + 'a>>,
+    #[allow(clippy::type_complexity)]
+    on_instruction: Option<Box<dyn Fn(Instruction) -> Message + 'a>>,
 }
 
 impl<'a, Message, Theme, Renderer> RichEditor<'a, Message, Theme, Renderer>
@@ -143,8 +161,10 @@ where
             key_binding: None,
             last_status: None,
             highlights: &[],
+            popup_spans: &[],
             popup_element: None,
             on_popup_action: None,
+            on_instruction: None,
         }
     }
 
@@ -230,23 +250,30 @@ where
         self
     }
 
-    /// Builds a popup overlay with a text input, displayed below the cursor.
+    /// Sets the interactive popup spans.
     ///
-    /// The widget creates a [`iced_widget::TextInput`] pre-wired with
-    /// `on_input` -> [`popup::Action::Input`]. The `build` closure receives
-    /// this text input and returns the final popup [`Element`] -- use it to
-    /// add surrounding content (preview rows, containers, styling).
+    /// Each span is rendered as a highlight (background + border). When
+    /// the editor's cursor is positioned within a span's range, a popup
+    /// appears below the cursor with a text input pre-wired with the
+    /// span's `value`.
     ///
-    /// Enter and Escape are intercepted by the overlay:
-    /// - **Enter** -> emits [`popup::Action::Confirm`]
-    /// - **Escape** -> emits [`popup::Action::Dismiss`]
+    /// The `build` closure receives the pre-wired text input and the
+    /// active span; return the final popup [`Element`] (e.g., wrapped in
+    /// a styled container with additional content).
     ///
-    /// Use [`popup::INPUT_ID`] with `iced::widget::operation::focus` to
-    /// programmatically focus the text input (e.g., on Tab).
-    pub fn popup<F>(
+    /// The widget intercepts:
+    /// - **Enter** in the popup -> emits [`popup::Action::Confirm`]
+    /// - **Escape** in the popup -> emits [`popup::Action::Dismiss`]
+    /// - **Tab** in the editor (when popup visible) -> emits an
+    ///   [`Instruction::Focus`] for [`popup::INPUT_ID`]
+    ///
+    /// On any popup action, the widget also emits an
+    /// [`Instruction::Focus`] for the editor's own ID, allowing the
+    /// application to return focus to the editor on confirm/dismiss.
+    /// (Requires the editor to have an `id` set via [`RichEditor::id`].)
+    pub fn popup_spans<F>(
         mut self,
-        placeholder: &'a str,
-        value: &'a str,
+        spans: &'a [popup::Span],
         on_action: impl Fn(popup::Action) -> Message + 'a,
         build: F,
     ) -> Self
@@ -255,17 +282,52 @@ where
         Theme: iced_widget::text_input::Catalog,
         F: FnOnce(
             iced_widget::TextInput<'a, Message, Theme, Renderer>,
+            &'a popup::Span,
         ) -> Element<'a, Message, Theme, Renderer>,
     {
-        let on_action = Rc::new(on_action);
+        self.popup_spans = spans;
 
-        let on_action_input = on_action.clone();
-        let input = iced_widget::TextInput::new(placeholder, value)
-            .on_input(move |t| on_action_input(popup::Action::Input(t)))
-            .id(popup::INPUT_ID);
+        // Compute the active span based on the current cursor.
+        let cursor = self.content.cursor();
+        let active = spans.iter().find(|s| {
+            s.line == cursor.position.line
+                && cursor.position.column >= s.range.start
+                && cursor.position.column <= s.range.end
+        });
 
-        self.popup_element = Some(build(input));
-        self.on_popup_action = Some(on_action);
+        if let Some(active_span) = active {
+            let on_action = Rc::new(on_action);
+            let on_action_input = on_action.clone();
+            let span_ref: popup::SpanRef = active_span.into();
+            let span_ref_clone = span_ref.clone();
+
+            let input = iced_widget::TextInput::new(&active_span.placeholder, &active_span.value)
+                .on_input(move |t| {
+                    on_action_input(popup::Action::Input {
+                        span: span_ref_clone.clone(),
+                        value: t,
+                    })
+                })
+                .id(popup::INPUT_ID);
+
+            self.popup_element = Some(build(input, active_span));
+            self.on_popup_action = Some(on_action);
+        }
+
+        self
+    }
+
+    /// Sets the message handler for [`Instruction`]s emitted by the widget.
+    ///
+    /// Instructions are side-effect tasks (like focus operations) the
+    /// widget needs the application to run. The application receives
+    /// each instruction through this callback and is responsible for
+    /// converting it into a [`Task`] and returning it from its update
+    /// handler.
+    ///
+    /// [`Task`]: iced_core::task::Task
+    pub fn on_instruction(mut self, f: impl Fn(Instruction) -> Message + 'a) -> Self {
+        self.on_instruction = Some(Box::new(f));
         self
     }
 
@@ -428,6 +490,9 @@ pub struct State {
     last_click: Option<mouse::Click>,
     drag_click: Option<mouse::click::Kind>,
     partial_scroll: f32,
+    popup_active_span: Option<popup::SpanRef>,
+    popup_original: String,
+    popup_dismissed_at: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Clone)]
@@ -495,25 +560,30 @@ where
             last_click: None,
             drag_click: None,
             partial_scroll: 0.0,
+            popup_active_span: None,
+            popup_original: String::new(),
+            popup_dismissed_at: None,
         })
     }
 
     fn children(&self) -> Vec<widget::Tree> {
-        if let Some(ref popup) = self.popup_element {
-            vec![widget::Tree::new(popup)]
-        } else {
-            vec![widget::Tree::empty()]
-        }
+        vec![
+            self.popup_element
+                .as_ref()
+                .map(widget::Tree::new)
+                .unwrap_or_else(widget::Tree::empty),
+        ]
     }
 
     fn diff(&self, tree: &mut widget::Tree) {
         if tree.children.is_empty() {
             tree.children.push(widget::Tree::empty());
         }
-        match &self.popup_element {
-            Some(popup) => tree.children[0].diff(popup),
-            None => tree.children[0] = widget::Tree::empty(),
+        if let Some(popup) = &self.popup_element {
+            tree.children[0].diff(popup);
         }
+        // When popup_element is None, leave tree.children[0] in place
+        // so any text_input state survives temporary popup disappearance.
     }
 
     fn size(&self) -> Size<Length> {
@@ -599,6 +669,22 @@ where
 
         let state = tree.state.downcast_mut::<State>();
         let is_redraw = matches!(event, Event::Window(window::Event::RedrawRequested(_)));
+
+        // Intercept Tab when a popup is active: redirect focus to the popup input.
+        if let Event::Keyboard(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(keyboard::key::Named::Tab),
+            modifiers,
+            ..
+        }) = event
+            && !modifiers.shift()
+            && state.popup_active_span.is_some()
+            && let Some(on_instruction) = &self.on_instruction
+        {
+            let id: widget::Id = popup::INPUT_ID.into();
+            shell.publish(on_instruction(Instruction::Focus(id)));
+            shell.capture_event();
+            return;
+        }
 
         match event {
             Event::Window(window::Event::Unfocused) => {
@@ -1181,9 +1267,56 @@ where
         _viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
-        let caret = self.content.caret_rect()?;
+        // Split the tree borrow so we can mutate parent state and access
+        // children separately.
+        let widget::Tree {
+            state: tree_state,
+            children,
+            ..
+        } = tree;
+        let parent_state = tree_state.downcast_mut::<State>();
+
+        // Read cursor position once.
+        let cursor = self.content.cursor();
+        let cursor_pos = (cursor.position.line, cursor.position.column);
+
+        // Clear the dismissed flag if the cursor has moved away from
+        // the dismissed position.
+        if let Some(dismissed) = parent_state.popup_dismissed_at
+            && dismissed != cursor_pos
+        {
+            parent_state.popup_dismissed_at = None;
+        }
+
+        // Find the active span (recompute here so it's authoritative).
+        let active = self.popup_spans.iter().find(|s| {
+            s.line == cursor.position.line
+                && cursor.position.column >= s.range.start
+                && cursor.position.column <= s.range.end
+        });
+        let active_ref: Option<popup::SpanRef> = active.map(|s| s.into());
+
+        // Detect transitions: capture original on entering a new span,
+        // clear when leaving.
+        if parent_state.popup_active_span != active_ref {
+            if let Some(span) = active {
+                parent_state.popup_original = span.value.to_string();
+            } else {
+                parent_state.popup_original.clear();
+            }
+            parent_state.popup_active_span = active_ref.clone();
+        }
+
+        // Suppress the popup if the user just dismissed it at this position.
+        if parent_state.popup_dismissed_at.is_some() {
+            return None;
+        }
+
         let popup = self.popup_element.as_mut()?;
         let on_action = self.on_popup_action.as_ref()?.clone();
+        let active_span_ref = active_ref?;
+
+        let caret = self.content.caret_rect()?;
         let text_bounds = layout.children().next()?.bounds();
 
         let position = Point::new(
@@ -1193,10 +1326,16 @@ where
 
         Some(overlay::Element::new(Box::new(PopupOverlay {
             content: popup,
-            tree: &mut tree.children[0],
+            tree: &mut children[0],
             position,
             max_width: text_bounds.width,
             on_action,
+            on_instruction: self.on_instruction.as_deref(),
+            editor_id: self.id.clone(),
+            editor_content: self.content,
+            active_span: active_span_ref,
+            original: parent_state.popup_original.clone(),
+            parent_state,
         })))
     }
 }
@@ -1204,19 +1343,26 @@ where
 /// Overlay for the popup element, positioned below the editor's caret.
 struct PopupOverlay<'a, 'b, Message, Theme, Renderer>
 where
-    Renderer: crate::core::Renderer,
+    Renderer: crate::core::Renderer + rich_editor::Renderer,
 {
     content: &'b mut Element<'a, Message, Theme, Renderer>,
     tree: &'b mut widget::Tree,
     position: Point,
     max_width: f32,
     on_action: Rc<dyn Fn(popup::Action) -> Message + 'a>,
+    #[allow(clippy::type_complexity)]
+    on_instruction: Option<&'b dyn Fn(Instruction) -> Message>,
+    editor_id: Option<widget::Id>,
+    editor_content: &'b Content<Renderer>,
+    active_span: popup::SpanRef,
+    original: String,
+    parent_state: &'b mut State,
 }
 
 impl<'a, 'b, Message, Theme, Renderer> overlay::Overlay<Message, Theme, Renderer>
     for PopupOverlay<'a, 'b, Message, Theme, Renderer>
 where
-    Renderer: crate::core::Renderer,
+    Renderer: crate::core::Renderer + rich_editor::Renderer,
 {
     fn layout(&mut self, renderer: &Renderer, _bounds: Size) -> layout::Node {
         let limits = layout::Limits::new(Size::ZERO, Size::new(self.max_width, f32::INFINITY));
@@ -1257,12 +1403,49 @@ where
         if let Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) = event {
             match key {
                 keyboard::Key::Named(keyboard::key::Named::Enter) => {
-                    shell.publish((self.on_action)(popup::Action::Confirm));
+                    // Move cursor past the span so the popup closes.
+                    self.editor_content
+                        .move_to(self.active_span.line, self.active_span.range.end);
+
+                    // Emit Confirm.
+                    shell.publish((self.on_action)(popup::Action::Confirm {
+                        span: self.active_span.clone(),
+                    }));
+
+                    // Mark dismissed-at to prevent immediate reopen.
+                    let cursor_after = self.editor_content.cursor();
+                    self.parent_state.popup_dismissed_at =
+                        Some((cursor_after.position.line, cursor_after.position.column));
+
+                    // Refocus the editor.
+                    if let (Some(on_instruction), Some(editor_id)) =
+                        (self.on_instruction, &self.editor_id)
+                    {
+                        shell.publish(on_instruction(Instruction::Focus(editor_id.clone())));
+                    }
+
                     shell.capture_event();
                     return;
                 }
                 keyboard::Key::Named(keyboard::key::Named::Escape) => {
-                    shell.publish((self.on_action)(popup::Action::Dismiss));
+                    // Emit Dismiss with the captured original.
+                    shell.publish((self.on_action)(popup::Action::Dismiss {
+                        span: self.active_span.clone(),
+                        original: self.original.clone(),
+                    }));
+
+                    // Mark dismissed-at at current cursor position.
+                    let cursor = self.editor_content.cursor();
+                    self.parent_state.popup_dismissed_at =
+                        Some((cursor.position.line, cursor.position.column));
+
+                    // Refocus the editor.
+                    if let (Some(on_instruction), Some(editor_id)) =
+                        (self.on_instruction, &self.editor_id)
+                    {
+                        shell.publish(on_instruction(Instruction::Focus(editor_id.clone())));
+                    }
+
                     shell.capture_event();
                     return;
                 }

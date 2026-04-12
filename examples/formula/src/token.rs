@@ -2,8 +2,6 @@ use std::ops::Range;
 
 use crate::eval;
 
-// ── token model ────────────────────────────────────────────────────────
-
 pub type FormulaId = usize;
 
 static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
@@ -33,8 +31,6 @@ impl Token {
         }
     }
 }
-
-// ── parse / serialize ──────────────────────────────────────────────────
 
 pub fn parse(source: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
