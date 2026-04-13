@@ -881,14 +881,48 @@ where
                         shell.capture_event();
                     }
 
-                    apply_binding(
-                        binding,
-                        self.content,
-                        state,
-                        on_action,
-                        &self.on_blur,
-                        shell,
-                    );
+                    // Intercept edits inside atomic popup spans.
+                    let intercepted = self.on_popup_action.as_ref().is_some_and(|on_popup| {
+                        let cursor = self.content.cursor();
+                        let col = cursor.position.column;
+                        let line = cursor.position.line;
+
+                        let Some(span) = self.popup_spans.iter().find(|s| {
+                            s.atomic && s.line == line && col >= s.range.start && col <= s.range.end
+                        }) else {
+                            return false;
+                        };
+
+                        let span_ref = popup::SpanRef::from(span);
+                        match &binding {
+                            Binding::Insert(_) if col > span.range.start => true,
+                            Binding::Enter { .. }
+                                if col > span.range.start && col < span.range.end =>
+                            {
+                                true
+                            }
+                            Binding::Backspace if col > span.range.start => {
+                                shell.publish(on_popup(popup::Action::Delete { span: span_ref }));
+                                true
+                            }
+                            Binding::Delete if col < span.range.end => {
+                                shell.publish(on_popup(popup::Action::Delete { span: span_ref }));
+                                true
+                            }
+                            _ => false,
+                        }
+                    });
+
+                    if !intercepted {
+                        apply_binding(
+                            binding,
+                            self.content,
+                            state,
+                            on_action,
+                            &self.on_blur,
+                            shell,
+                        );
+                    }
 
                     if let Some(focus) = &mut state.focus {
                         focus.updated_at = Instant::now();

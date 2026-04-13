@@ -17,6 +17,10 @@ pub struct Span {
     pub placeholder: String,
     pub background: Option<Background>,
     pub border: Border,
+    /// When `true`, the editor blocks character insertion inside this
+    /// span and treats Backspace/Delete at the span boundary as
+    /// whole-span deletion (emitting [`Action::Delete`]).
+    pub atomic: bool,
 }
 
 /// Identifies a popup span by line and range.
@@ -45,6 +49,8 @@ pub enum Action {
     /// User pressed Escape to dismiss; `original` is the value when the
     /// popup first opened, for revert.
     Dismiss { span: SpanRef, original: String },
+    /// The user deleted an atomic span (Backspace/Delete at boundary).
+    Delete { span: SpanRef },
 }
 
 /// Widget ID for the popup's text input.

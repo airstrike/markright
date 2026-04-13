@@ -70,6 +70,19 @@ impl App {
 
             Message::Popup(popup::Action::Confirm { .. }) => Task::none(),
 
+            Message::Popup(popup::Action::Delete { span }) => {
+                if let Some(region) = self
+                    .token_map
+                    .regions
+                    .iter()
+                    .find(|r| r.is_formula && r.display_range == span.range)
+                {
+                    self.source.replace_range(region.source_range.clone(), "");
+                    self.rebuild_and_restore(region.source_range.start);
+                }
+                Task::none()
+            }
+
             Message::Popup(popup::Action::Dismiss { span, original }) => {
                 if let Some(expr) = strip_formula_markers(&original)
                     && let Some(fid) = self.formula_id_for_span(&span)
@@ -99,38 +112,24 @@ impl App {
 
         match &action {
             Action::Edit(Edit::Insert(ch)) => {
-                if self.cursor_inside_formula(dcol) {
-                    return Task::none();
-                }
                 self.source.insert(scol, *ch);
                 self.rebuild_and_restore(scol + ch.len_utf8());
             }
 
             Action::Edit(Edit::Backspace) => {
-                if dcol == 0 {
+                if scol == 0 {
                     return Task::none();
                 }
-                let target = scol - 1;
-                if let Some(range) = self.token_map.source_offset_in_formula(target) {
-                    self.source.replace_range(range.clone(), "");
-                    self.rebuild_and_restore(range.start);
-                } else {
-                    self.source.remove(target);
-                    self.rebuild_and_restore(target);
-                }
+                self.source.remove(scol - 1);
+                self.rebuild_and_restore(scol - 1);
             }
 
             Action::Edit(Edit::Delete) => {
                 if scol >= self.source.len() {
                     return Task::none();
                 }
-                if let Some(range) = self.token_map.source_offset_in_formula(scol) {
-                    self.source.replace_range(range.clone(), "");
-                    self.rebuild_and_restore(range.start);
-                } else {
-                    self.source.remove(scol);
-                    self.rebuild_and_restore(scol);
-                }
+                self.source.remove(scol);
+                self.rebuild_and_restore(scol);
             }
 
             Action::Edit(Edit::Paste(s)) => {
@@ -144,17 +143,6 @@ impl App {
         }
 
         Task::none()
-    }
-
-    fn cursor_inside_formula(&self, dcol: usize) -> bool {
-        self.token_map
-            .adjacent_formula(dcol, &self.tokens)
-            .is_some()
-            && dcol > 0
-            && self
-                .token_map
-                .adjacent_formula(dcol - 1, &self.tokens)
-                .is_some()
     }
 
     fn rebuild_and_restore(&mut self, source_offset: usize) {
@@ -270,6 +258,7 @@ fn parse(tokens: &[Token], token_map: &TokenMap) -> Vec<popup::Span> {
                     width: 1.0,
                     radius: 3.0.into(),
                 },
+                atomic: true,
             })
         })
         .collect()
