@@ -1612,7 +1612,7 @@ where
         renderer: &Renderer,
         shell: &mut Shell<'_, Message>,
     ) {
-        if let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
+        if let Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) = event {
             match key {
                 keyboard::Key::Named(keyboard::key::Named::Enter) => {
                     // Move cursor past the span so the popup closes.
@@ -1661,17 +1661,9 @@ where
                     shell.capture_event();
                     return;
                 }
-                keyboard::Key::Named(keyboard::key::Named::Tab) if !modifiers.shift() => {
-                    // Tab in the popup switches focus back to the editor.
-                    if let (Some(on_instruction), Some(editor_id)) =
-                        (self.on_instruction, &self.editor_id)
-                    {
-                        shell.publish(on_instruction(Instruction::Focus(editor_id.clone())));
-                    }
-
-                    shell.capture_event();
-                    return;
-                }
+                // Tab is NOT intercepted here — it passes through so the
+                // editor's Tab handler can focus the popup, or so the
+                // text_input can handle it normally when focused.
                 _ => {}
             }
         }
