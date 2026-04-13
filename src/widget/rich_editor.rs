@@ -41,6 +41,9 @@ pub mod operation;
 pub mod popup;
 pub mod style;
 
+#[cfg(feature = "computed_spans")]
+pub mod computed_spans;
+
 use binding::Ime;
 
 pub use action::{
@@ -60,6 +63,27 @@ pub struct Highlight {
     pub background: Option<crate::core::Background>,
     /// Border drawn around the highlight rectangle.
     pub border: crate::core::Border,
+}
+
+#[allow(dead_code)] // `Owned` is used only with the `computed_spans` feature
+enum PopupSpans<'a> {
+    Borrowed(&'a [popup::Span]),
+    Owned(Vec<popup::Span>),
+}
+
+impl Default for PopupSpans<'_> {
+    fn default() -> Self {
+        Self::Borrowed(&[])
+    }
+}
+
+impl<'a> PopupSpans<'a> {
+    fn as_slice(&self) -> &[popup::Span] {
+        match self {
+            Self::Borrowed(s) => s,
+            Self::Owned(v) => v,
+        }
+    }
 }
 
 /// A side-effect task the widget needs the application to run.
@@ -120,7 +144,7 @@ where
     key_binding: Option<Box<dyn Fn(KeyPress) -> Option<Binding<Message>> + 'a>>,
     last_status: Option<Status>,
     highlights: &'a [Highlight],
-    popup_spans: &'a [popup::Span],
+    popup_spans: PopupSpans<'a>,
     popup_element: Option<Element<'a, Message, Theme, Renderer>>,
     #[allow(clippy::type_complexity)]
     on_popup_action: Option<Rc<dyn Fn(popup::Action) -> Message + 'a>>,
@@ -161,7 +185,7 @@ where
             key_binding: None,
             last_status: None,
             highlights: &[],
-            popup_spans: &[],
+            popup_spans: PopupSpans::default(),
             popup_element: None,
             on_popup_action: None,
             on_instruction: None,
@@ -285,7 +309,7 @@ where
             &'a popup::Span,
         ) -> Element<'a, Message, Theme, Renderer>,
     {
-        self.popup_spans = spans;
+        self.popup_spans = PopupSpans::Borrowed(spans);
 
         // Compute the active span based on the current cursor.
         let cursor = self.content.cursor();
@@ -312,6 +336,104 @@ where
 
             self.popup_element = Some(build(input, active_span));
             self.on_popup_action = Some(on_action);
+        }
+
+        self
+    }
+
+    /// Sets computed spans — regions where displayed text differs from an
+    /// underlying source value, with popup-based editing.
+    ///
+    /// This is a higher-level alternative to [`popup_spans`] that
+    /// provides identity-based actions (`computed_spans::Action` uses
+    /// `id: u64` instead of range-based `SpanRef`).
+    ///
+    /// Requires the `computed_spans` cargo feature.
+    ///
+    /// [`popup_spans`]: Self::popup_spans
+    #[cfg(feature = "computed_spans")]
+    pub fn computed_spans<F>(
+        mut self,
+        spans: &'a [computed_spans::ComputedSpan],
+        on_action: impl Fn(computed_spans::Action) -> Message + 'a,
+        build: F,
+    ) -> Self
+    where
+        Message: Clone,
+        Theme: iced_widget::text_input::Catalog,
+        F: FnOnce(
+            iced_widget::TextInput<'a, Message, Theme, Renderer>,
+            &'a computed_spans::ComputedSpan,
+        ) -> Element<'a, Message, Theme, Renderer>,
+    {
+        // Convert ComputedSpan → popup::Span
+        let popup_spans: Vec<popup::Span> = spans
+            .iter()
+            .map(|cs| popup::Span {
+                line: cs.line,
+                range: cs.display_range.clone(),
+                value: cs.source_value.clone(),
+                placeholder: cs.placeholder.clone(),
+                background: cs.background,
+                border: cs.border,
+                atomic: cs.atomic,
+            })
+            .collect();
+        self.popup_spans = PopupSpans::Owned(popup_spans);
+
+        // Compute the active span based on the current cursor.
+        let cursor = self.content.cursor();
+        let active = spans.iter().find(|s| {
+            s.line == cursor.position.line
+                && cursor.position.column >= s.display_range.start
+                && cursor.position.column <= s.display_range.end
+        });
+
+        if let Some(active_span) = active {
+            let active_id = active_span.id;
+
+            // Build the action translation callback.
+            let on_action = Rc::new(on_action);
+            let on_action_input = on_action.clone();
+
+            let input =
+                iced_widget::TextInput::new(&active_span.placeholder, &active_span.source_value)
+                    .on_input(move |t| {
+                        on_action_input(computed_spans::Action::Input {
+                            id: active_id,
+                            value: t,
+                        })
+                    })
+                    .id(popup::INPUT_ID);
+
+            self.popup_element = Some(build(input, active_span));
+
+            // Wrap on_action to translate popup::Action → computed_spans::Action
+            let on_action_confirm = on_action.clone();
+            let on_action_dismiss = on_action.clone();
+            let on_action_delete = on_action.clone();
+            self.on_popup_action = Some(Rc::new(move |popup_action: popup::Action| -> Message {
+                match popup_action {
+                    popup::Action::Input { value, .. } => {
+                        on_action(computed_spans::Action::Input {
+                            id: active_id,
+                            value,
+                        })
+                    }
+                    popup::Action::Confirm { .. } => {
+                        on_action_confirm(computed_spans::Action::Confirm { id: active_id })
+                    }
+                    popup::Action::Dismiss { original, .. } => {
+                        on_action_dismiss(computed_spans::Action::Dismiss {
+                            id: active_id,
+                            original,
+                        })
+                    }
+                    popup::Action::Delete { .. } => {
+                        on_action_delete(computed_spans::Action::Delete { id: active_id })
+                    }
+                }
+            }));
         }
 
         self
@@ -887,7 +1009,7 @@ where
                         let col = cursor.position.column;
                         let line = cursor.position.line;
 
-                        let Some(span) = self.popup_spans.iter().find(|s| {
+                        let Some(span) = self.popup_spans.as_slice().iter().find(|s| {
                             s.atomic && s.line == line && col >= s.range.start && col <= s.range.end
                         }) else {
                             return false;
@@ -1156,6 +1278,34 @@ where
                 }
             }
 
+            // ── Popup span highlights ──
+            for h in self.popup_spans.as_slice() {
+                if h.background.is_none() && h.border.width <= 0.0 {
+                    continue;
+                }
+                internal
+                    .editor
+                    .highlight_rect(h.line, h.range.start, h.range.end, &mut |rect| {
+                        let screen_rect = Rectangle {
+                            x: rect.x + text_bounds.x,
+                            y: rect.y + text_bounds.y,
+                            ..rect
+                        };
+                        if let Some(clipped) = text_bounds.intersection(&screen_rect) {
+                            renderer.fill_quad(
+                                renderer::Quad {
+                                    bounds: clipped,
+                                    border: h.border,
+                                    ..renderer::Quad::default()
+                                },
+                                h.background.unwrap_or(crate::core::Background::Color(
+                                    crate::core::Color::TRANSPARENT,
+                                )),
+                            );
+                        }
+                    });
+            }
+
             renderer.fill_rich_editor(
                 &internal.editor,
                 text_bounds.position(),
@@ -1323,7 +1473,7 @@ where
         }
 
         // Find the active span (recompute here so it's authoritative).
-        let active = self.popup_spans.iter().find(|s| {
+        let active = self.popup_spans.as_slice().iter().find(|s| {
             s.line == cursor.position.line
                 && cursor.position.column >= s.range.start
                 && cursor.position.column <= s.range.end
