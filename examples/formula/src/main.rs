@@ -1,4 +1,3 @@
-use iced::advanced::text::rich_editor::span;
 use iced::widget::operation::focus;
 use iced::widget::{column, container, row, text};
 use iced::{Element, Length, Task, color};
@@ -7,6 +6,7 @@ use markright::widget::rich_editor::popup;
 use markright::widget::rich_editor::{self, Action, Content, Edit, Instruction};
 
 mod eval;
+mod format;
 mod token;
 
 use token::{FormulaId, Token, TokenMap};
@@ -40,7 +40,7 @@ impl App {
         let source = "Tim had {=1+3} apples, then picked up {=2*6} more at the store.".to_string();
         let tokens = token::parse(&source);
         let token_map = TokenMap::build(&tokens);
-        let content = build_content(&tokens);
+        let content = Content::from_styled_lines(&[format::styled_line_from_tokens(&tokens)]);
         let spans = parse(&tokens, &token_map);
 
         (
@@ -160,7 +160,7 @@ impl App {
     fn rebuild_and_restore(&mut self, source_offset: usize) {
         self.tokens = token::parse(&self.source);
         self.token_map = TokenMap::build(&self.tokens);
-        self.content = build_content(&self.tokens);
+        self.content = Content::from_styled_lines(&[format::styled_line_from_tokens(&self.tokens)]);
         self.spans = parse(&self.tokens, &self.token_map);
         let dcol = self.token_map.source_to_display(source_offset);
         self.content.move_to(0, dcol);
@@ -179,7 +179,7 @@ impl App {
         self.token_map = TokenMap::build(&self.tokens);
         self.spans = parse(&self.tokens, &self.token_map);
         let dcol = self.content.cursor().position.column;
-        self.content = build_content(&self.tokens);
+        self.content = Content::from_styled_lines(&[format::styled_line_from_tokens(&self.tokens)]);
         self.content.move_to(0, dcol);
     }
 
@@ -273,38 +273,6 @@ fn parse(tokens: &[Token], token_map: &TokenMap) -> Vec<popup::Span> {
             })
         })
         .collect()
-}
-
-fn build_content(tokens: &[Token]) -> Content<iced::Renderer> {
-    use markright_core::StyledLine;
-
-    let mut line_text = String::new();
-    let mut runs = Vec::new();
-
-    for token in tokens {
-        let display = token.display_value();
-        let start = line_text.len();
-        line_text.push_str(&display);
-        let end = line_text.len();
-
-        if matches!(token, Token::Formula { .. }) && start < end {
-            runs.push(markright_core::StyleRun {
-                range: start..end,
-                style: span::Style {
-                    color: Some(FORMULA_COLOR),
-                    ..Default::default()
-                },
-            });
-        }
-    }
-
-    let styled_line = StyledLine {
-        text: line_text,
-        runs,
-        paragraph: markright_core::Paragraph::default(),
-    };
-
-    Content::from_styled_lines(&[styled_line])
 }
 
 fn strip_formula_markers(draft: &str) -> Option<&str> {
