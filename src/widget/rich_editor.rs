@@ -1003,37 +1003,63 @@ where
                         shell.capture_event();
                     }
 
-                    // Intercept edits inside atomic popup spans.
-                    let intercepted = self.on_popup_action.as_ref().is_some_and(|on_popup| {
+                    // Intercept edits and cursor movement inside atomic popup spans.
+                    let intercepted = {
                         let cursor = self.content.cursor();
                         let col = cursor.position.column;
                         let line = cursor.position.line;
 
-                        let Some(span) = self.popup_spans.as_slice().iter().find(|s| {
+                        let atomic_span = self.popup_spans.as_slice().iter().find(|s| {
                             s.atomic && s.line == line && col >= s.range.start && col <= s.range.end
-                        }) else {
-                            return false;
-                        };
+                        });
 
-                        let span_ref = popup::SpanRef::from(span);
-                        match &binding {
-                            Binding::Insert(_) if col > span.range.start => true,
-                            Binding::Enter { .. }
-                                if col > span.range.start && col < span.range.end =>
-                            {
-                                true
+                        if let Some(span) = atomic_span {
+                            let on_popup = self.on_popup_action.as_ref();
+                            let span_ref = popup::SpanRef::from(span);
+                            match &binding {
+                                // Cursor movement: skip over the atomic span.
+                                Binding::Move(Motion::Right)
+                                    if col >= span.range.start && col < span.range.end =>
+                                {
+                                    self.content.move_to(line, span.range.end);
+                                    true
+                                }
+                                Binding::Move(Motion::Left)
+                                    if col > span.range.start && col <= span.range.end =>
+                                {
+                                    self.content.move_to(line, span.range.start);
+                                    true
+                                }
+                                // Block insertion strictly inside.
+                                Binding::Insert(_) if col > span.range.start => true,
+                                Binding::Enter { .. }
+                                    if col > span.range.start && col < span.range.end =>
+                                {
+                                    true
+                                }
+                                // Backspace/Delete: emit Delete action.
+                                Binding::Backspace if col > span.range.start => {
+                                    if let Some(on_popup) = on_popup {
+                                        shell.publish(on_popup(popup::Action::Delete {
+                                            span: span_ref,
+                                        }));
+                                    }
+                                    true
+                                }
+                                Binding::Delete if col < span.range.end => {
+                                    if let Some(on_popup) = on_popup {
+                                        shell.publish(on_popup(popup::Action::Delete {
+                                            span: span_ref,
+                                        }));
+                                    }
+                                    true
+                                }
+                                _ => false,
                             }
-                            Binding::Backspace if col > span.range.start => {
-                                shell.publish(on_popup(popup::Action::Delete { span: span_ref }));
-                                true
-                            }
-                            Binding::Delete if col < span.range.end => {
-                                shell.publish(on_popup(popup::Action::Delete { span: span_ref }));
-                                true
-                            }
-                            _ => false,
+                        } else {
+                            false
                         }
-                    });
+                    };
 
                     if !intercepted {
                         apply_binding(
@@ -1584,7 +1610,7 @@ where
         renderer: &Renderer,
         shell: &mut Shell<'_, Message>,
     ) {
-        if let Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) = event {
+        if let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
             match key {
                 keyboard::Key::Named(keyboard::key::Named::Enter) => {
                     // Move cursor past the span so the popup closes.
@@ -1624,6 +1650,17 @@ where
                         Some((cursor.position.line, cursor.position.column));
 
                     // Refocus the editor.
+                    if let (Some(on_instruction), Some(editor_id)) =
+                        (self.on_instruction, &self.editor_id)
+                    {
+                        shell.publish(on_instruction(Instruction::Focus(editor_id.clone())));
+                    }
+
+                    shell.capture_event();
+                    return;
+                }
+                keyboard::Key::Named(keyboard::key::Named::Tab) if !modifiers.shift() => {
+                    // Tab in the popup switches focus back to the editor.
                     if let (Some(on_instruction), Some(editor_id)) =
                         (self.on_instruction, &self.editor_id)
                     {
