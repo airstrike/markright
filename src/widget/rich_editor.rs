@@ -1022,12 +1022,14 @@ where
                                     if col >= span.range.start && col < span.range.end =>
                                 {
                                     self.content.move_to(line, span.range.end);
+                                    shell.request_redraw();
                                     true
                                 }
                                 Binding::Move(Motion::Left)
                                     if col > span.range.start && col <= span.range.end =>
                                 {
                                     self.content.move_to(line, span.range.start);
+                                    shell.request_redraw();
                                     true
                                 }
                                 // Block insertion strictly inside.
