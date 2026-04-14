@@ -7,13 +7,19 @@
 /// to the widget.
 use iced::widget::operation::focus;
 use iced::widget::{column, container, row, text};
-use iced::{Element, Length, Task, color};
+use iced::{Element, Shrink, Task};
 
 use markright::widget::rich_editor::computed_spans;
 use markright::widget::rich_editor::{self, Content, Instruction};
 
 mod adapter;
 mod parser;
+
+fn main() -> iced::Result {
+    iced::application(App::new, App::update, App::view)
+        .title("Popup Example")
+        .run()
+}
 
 struct App {
     content: Content<iced::Renderer>,
@@ -60,32 +66,21 @@ impl App {
                         .and_then(|s| s.strip_suffix('}'))
                         .unwrap_or(""),
                 );
+                let chars = span.source_value.len().max(8) as f32;
+                let input_width = (chars * 8.5 + 32.0).min(400.0);
                 container(
                     column![
-                        input.size(14),
+                        input.size(14).width(input_width),
                         row![
-                            text("= ").size(12).color(color!(0x94A3B8)),
-                            text(preview).size(12).color(color!(0x334155)),
+                            text("= ").size(12).style(theme::equation),
+                            text(preview).size(12).style(theme::preview),
                         ]
                     ]
                     .spacing(4)
                     .padding(8),
                 )
-                .width(Length::Shrink)
-                .style(|_theme: &iced::Theme| container::Style {
-                    background: Some(iced::Background::Color(color!(0xFFFFFF))),
-                    border: iced::Border {
-                        color: color!(0xCBD5E1),
-                        width: 1.0,
-                        radius: 6.0.into(),
-                    },
-                    shadow: iced::Shadow {
-                        color: color!(0x000000, 0.1),
-                        offset: iced::Vector::new(0.0, 4.0),
-                        blur_radius: 12.0,
-                    },
-                    ..Default::default()
-                })
+                .width(Shrink)
+                .style(theme::popup)
                 .into()
             });
 
@@ -93,8 +88,36 @@ impl App {
     }
 }
 
-fn main() -> iced::Result {
-    iced::application(App::new, App::update, App::view)
-        .title("Popup Example")
-        .run()
+mod theme {
+    use iced::widget::{container, text};
+
+    pub fn popup(theme: &iced::Theme) -> container::Style {
+        let p = theme.palette();
+        container::Style {
+            background: Some(p.background.strongest.color.into()),
+            border: iced::Border {
+                color: p.background.weak.color,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            shadow: iced::Shadow {
+                color: iced::Color::BLACK.scale_alpha(0.1),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 12.0,
+            },
+            ..Default::default()
+        }
+    }
+
+    pub fn preview(theme: &iced::Theme) -> text::Style {
+        text::Style {
+            color: Some(theme.palette().background.strong.text),
+        }
+    }
+
+    pub fn equation(theme: &iced::Theme) -> text::Style {
+        text::Style {
+            color: Some(theme.palette().background.weak.text),
+        }
+    }
 }
