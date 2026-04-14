@@ -439,6 +439,96 @@ where
         self
     }
 
+    /// Builds popup overlays from the computed spans in [`Content`].
+    ///
+    /// Reads spans from [`Content::computed_spans`], renders them as
+    /// highlights, and shows a popup for the active span. The `build`
+    /// closure receives a pre-wired text input and the active span.
+    ///
+    /// Requires [`Content::from_computed`].
+    ///
+    /// [`Content::computed_spans`]: Content::computed_spans
+    /// [`Content::from_computed`]: Content::from_computed
+    #[cfg(feature = "computed_spans")]
+    pub fn computed_popup<F>(
+        mut self,
+        on_action: impl Fn(computed_spans::Action) -> Message + 'a,
+        build: F,
+    ) -> Self
+    where
+        Message: Clone,
+        Theme: iced_widget::text_input::Catalog,
+        F: FnOnce(
+            iced_widget::TextInput<'a, Message, Theme, Renderer>,
+            &computed_spans::Span,
+        ) -> Element<'a, Message, Theme, Renderer>,
+    {
+        let spans = self.content.computed_spans();
+
+        let popup_spans: Vec<popup::Span> = spans
+            .iter()
+            .map(|cs| popup::Span {
+                line: cs.line,
+                range: cs.display_range.clone(),
+                value: cs.source_value.clone(),
+                placeholder: cs.placeholder.clone(),
+                background: cs.background,
+                border: cs.border,
+                atomic: cs.atomic,
+            })
+            .collect();
+        self.popup_spans = PopupSpans::Owned(popup_spans);
+
+        let cursor = self.content.cursor();
+        let active = spans.iter().find(|s| {
+            s.line == cursor.position.line
+                && cursor.position.column >= s.display_range.start
+                && cursor.position.column <= s.display_range.end
+        });
+
+        if let Some(active_span) = active {
+            let active_id = active_span.id;
+            let on_action = Rc::new(on_action);
+
+            let on_input = on_action.clone();
+            let input =
+                iced_widget::TextInput::new(&active_span.placeholder, &active_span.source_value)
+                    .on_input(move |t| {
+                        on_input(computed_spans::Action::Input {
+                            id: active_id,
+                            value: t,
+                        })
+                    })
+                    .id(popup::INPUT_ID);
+
+            self.popup_element = Some(build(input, active_span));
+
+            let on_confirm = on_action.clone();
+            let on_dismiss = on_action.clone();
+            let on_delete = on_action.clone();
+            self.on_popup_action = Some(Rc::new(move |pa| match pa {
+                popup::Action::Input { value, .. } => on_action(computed_spans::Action::Input {
+                    id: active_id,
+                    value,
+                }),
+                popup::Action::Confirm { .. } => {
+                    on_confirm(computed_spans::Action::Confirm { id: active_id })
+                }
+                popup::Action::Dismiss { original, .. } => {
+                    on_dismiss(computed_spans::Action::Dismiss {
+                        id: active_id,
+                        original,
+                    })
+                }
+                popup::Action::Delete { .. } => {
+                    on_delete(computed_spans::Action::Delete { id: active_id })
+                }
+            }));
+        }
+
+        self
+    }
+
     /// Sets the message handler for [`Instruction`]s emitted by the widget.
     ///
     /// Instructions are side-effect tasks (like focus operations) the

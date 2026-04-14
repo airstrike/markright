@@ -53,8 +53,7 @@ impl App {
             .id("popup-editor")
             .on_action(Message::Editor)
             .on_instruction(Message::Instruction)
-            .on_computed_action(Message::Span)
-            .computed_popup(|input, span| {
+            .computed_popup(Message::Span, |input, span| {
                 let preview = parser::eval(
                     span.source_value
                         .strip_prefix("{=")

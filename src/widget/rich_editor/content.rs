@@ -64,6 +64,9 @@ pub(crate) struct Internal<R: rich_editor::Renderer> {
     pub(crate) list_indent: f32,
     /// Theme mapping paragraph names to default styles.
     pub(crate) theme: Theme,
+    /// Optional computed-source state (formula chips, mentions, etc.).
+    #[cfg(feature = "computed_spans")]
+    pub(crate) computed: Option<Computed>,
 }
 
 impl<R: rich_editor::Renderer> Content<R> {
@@ -82,6 +85,8 @@ impl<R: rich_editor::Renderer> Content<R> {
             paragraphs: vec![Paragraph::default()],
             list_indent: list::DEFAULT_LIST_INDENT,
             theme: Theme::default(),
+            #[cfg(feature = "computed_spans")]
+            computed: None,
         }))
     }
 
@@ -149,6 +154,158 @@ impl<R: rich_editor::Renderer> Content<R> {
             }
         }
         content
+    }
+
+    /// Create a [`Content`] managed by a computed-source adapter.
+    ///
+    /// The adapter parses the source string into display content and
+    /// computed spans. The Content rebuilds automatically when the
+    /// source changes via [`apply_span_action`] or plain-text edits.
+    ///
+    /// [`apply_span_action`]: Self::apply_span_action
+    #[cfg(feature = "computed_spans")]
+    pub fn from_computed(source: &str, adapter: impl super::computed_spans::Source) -> Self {
+        let result = adapter.parse(source);
+        let content = Self::from_styled_lines(&result.lines);
+        {
+            let mut internal = content.0.borrow_mut();
+            internal.computed = Some(Computed {
+                source: source.to_string(),
+                adapter: Box::new(adapter),
+                spans: result.spans,
+            });
+        }
+        content
+    }
+
+    /// Returns the computed spans, if this content was created via
+    /// [`from_computed`].
+    ///
+    /// [`from_computed`]: Self::from_computed
+    #[cfg(feature = "computed_spans")]
+    pub fn computed_spans(&self) -> Vec<super::computed_spans::Span> {
+        self.0
+            .borrow()
+            .computed
+            .as_ref()
+            .map(|c| c.spans.clone())
+            .unwrap_or_default()
+    }
+
+    /// Apply a computed-span action (from popup interaction).
+    ///
+    /// - `Input`: updates the span's source_value and re-evaluates via
+    ///   the adapter, rebuilding the display content.
+    /// - `Confirm`: no-op (the value was already applied via Input).
+    /// - `Dismiss`: reverts the span to its original value.
+    /// - `Delete`: removes the span from the source.
+    #[cfg(feature = "computed_spans")]
+    pub fn apply_span_action(&self, action: super::computed_spans::Action) {
+        use super::computed_spans::Action;
+
+        let mut internal = self.0.borrow_mut();
+        let Some(computed) = &mut internal.computed else {
+            return;
+        };
+
+        match action {
+            Action::Input { id, value } => {
+                if let Some(span) = computed.spans.iter_mut().find(|s| s.id == id) {
+                    span.source_value = value;
+                }
+                Self::rebuild_from_computed(&mut internal);
+            }
+            Action::Confirm { .. } => {
+                // Already applied via Input; nothing to do.
+            }
+            Action::Dismiss { id, original } => {
+                if let Some(span) = computed.spans.iter_mut().find(|s| s.id == id) {
+                    span.source_value = original;
+                }
+                Self::rebuild_from_computed(&mut internal);
+            }
+            Action::Delete { id } => {
+                let computed = internal.computed.as_mut().expect("checked above");
+                if let Some(span) = computed.spans.iter().find(|s| s.id == id) {
+                    let range = span.source_range.clone();
+                    computed.source.replace_range(range, "");
+                }
+                Self::rebuild_from_computed(&mut internal);
+            }
+        }
+    }
+
+    /// Rebuild the editor content from the current computed source.
+    #[cfg(feature = "computed_spans")]
+    fn rebuild_from_computed(internal: &mut Internal<R>) {
+        let computed = internal
+            .computed
+            .as_mut()
+            .expect("called only when computed is Some");
+
+        // Reconstruct the source from spans.
+        let mut new_source = String::new();
+        let mut last_source_end = 0;
+        for span in &computed.spans {
+            // Append text between spans
+            if span.source_range.start > last_source_end {
+                new_source.push_str(&computed.source[last_source_end..span.source_range.start]);
+            }
+            new_source.push_str(&span.source_value);
+            last_source_end = span.source_range.end;
+        }
+        // Append trailing text
+        if last_source_end < computed.source.len() {
+            new_source.push_str(&computed.source[last_source_end..]);
+        }
+        computed.source = new_source;
+
+        // Re-parse with the adapter.
+        let result = computed.adapter.parse(&computed.source);
+
+        // Rebuild the editor with new display content.
+        let plain: String =
+            result
+                .lines
+                .iter()
+                .enumerate()
+                .fold(String::new(), |mut acc, (i, line)| {
+                    if i > 0 {
+                        acc.push('\n');
+                    }
+                    acc.push_str(&line.text);
+                    acc
+                });
+        internal.editor = R::RichEditor::with_text(&plain);
+
+        // Apply span styles from the new lines.
+        let default_style = span::Style::default();
+        for (i, line) in result.lines.iter().enumerate() {
+            if line.paragraph.style != paragraph::Style::default() {
+                internal
+                    .editor
+                    .set_paragraph_style(i, &line.paragraph.style);
+            }
+            for run in &line.runs {
+                if run.style != default_style {
+                    internal
+                        .editor
+                        .set_span_style(i, run.range.clone(), &run.style);
+                }
+            }
+        }
+
+        // Update paragraphs.
+        internal.paragraphs = result.lines.iter().map(|l| l.paragraph.clone()).collect();
+
+        // Update spans.
+        computed.spans = result.spans;
+    }
+
+    /// Returns the current source text, if this is a computed-source content.
+    #[cfg(feature = "computed_spans")]
+    pub fn source(&self) -> Option<String> {
+        self.0.borrow().computed.as_ref().map(|c| c.source.clone())
     }
 
     /// Export all lines as styled lines for serialization.
@@ -461,6 +618,13 @@ where
             .field("editor", &internal.editor)
             .finish()
     }
+}
+
+#[cfg(feature = "computed_spans")]
+pub(crate) struct Computed {
+    source: String,
+    adapter: Box<dyn super::computed_spans::Source>,
+    spans: Vec<super::computed_spans::Span>,
 }
 
 impl<R: rich_editor::Renderer> Internal<R> {
