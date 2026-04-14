@@ -1666,12 +1666,21 @@ impl<'a, 'b, Message, Theme, Renderer> overlay::Overlay<Message, Theme, Renderer
 where
     Renderer: crate::core::Renderer + rich_editor::Renderer,
 {
-    fn layout(&mut self, renderer: &Renderer, _bounds: Size) -> layout::Node {
-        let min_width = 200.0_f32.min(self.max_width);
-        let limits = layout::Limits::new(
-            Size::new(min_width, 0.0),
-            Size::new(self.max_width, f32::INFINITY),
-        );
+    fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
+        // First pass: unconstrained width to find intrinsic size.
+        let probe = layout::Limits::new(Size::ZERO, bounds);
+        let intrinsic = self
+            .content
+            .as_widget_mut()
+            .layout(self.tree, renderer, &probe);
+
+        // Use the intrinsic width but enforce a floor so text_input
+        // is usable, and cap at the editor's text area width.
+        let width = intrinsic.size().width.max(200.0).min(self.max_width);
+
+        // Second pass: fixed width so Fill children (text_input) expand.
+        let limits = layout::Limits::new(Size::ZERO, Size::new(width, f32::INFINITY))
+            .width(Length::Fixed(width));
         let node = self
             .content
             .as_widget_mut()
