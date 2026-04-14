@@ -1,0 +1,9 @@
+[package]
+name = "popup"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+markright = { path = "../..", features = ["computed_spans"] }
+markright_core.workspace = true
+iced.workspace = true
