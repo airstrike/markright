@@ -354,7 +354,7 @@ where
     #[cfg(feature = "computed_spans")]
     pub fn computed_spans<F>(
         mut self,
-        spans: &'a [computed_spans::ComputedSpan],
+        spans: &'a [computed_spans::Span],
         on_action: impl Fn(computed_spans::Action) -> Message + 'a,
         build: F,
     ) -> Self
@@ -363,10 +363,10 @@ where
         Theme: iced_widget::text_input::Catalog,
         F: FnOnce(
             iced_widget::TextInput<'a, Message, Theme, Renderer>,
-            &'a computed_spans::ComputedSpan,
+            &'a computed_spans::Span,
         ) -> Element<'a, Message, Theme, Renderer>,
     {
-        // Convert ComputedSpan → popup::Span
+        // Convert computed span → popup span
         let popup_spans: Vec<popup::Span> = spans
             .iter()
             .map(|cs| popup::Span {
