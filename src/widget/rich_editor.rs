@@ -332,7 +332,8 @@ where
                         value: t,
                     })
                 })
-                .id(popup::INPUT_ID);
+                .id(popup::INPUT_ID)
+                .width(popup_input_width(&active_span.value));
 
             self.popup_element = Some(build(input, active_span));
             self.on_popup_action = Some(on_action);
@@ -404,7 +405,8 @@ where
                             value: t,
                         })
                     })
-                    .id(popup::INPUT_ID);
+                    .id(popup::INPUT_ID)
+                    .width(popup_input_width(&active_span.source_value));
 
             self.popup_element = Some(build(input, active_span));
 
@@ -499,7 +501,8 @@ where
                             value: t,
                         })
                     })
-                    .id(popup::INPUT_ID);
+                    .id(popup::INPUT_ID)
+                    .width(popup_input_width(&active_span.source_value));
 
             self.popup_element = Some(build(input, active_span));
 
@@ -1666,21 +1669,8 @@ impl<'a, 'b, Message, Theme, Renderer> overlay::Overlay<Message, Theme, Renderer
 where
     Renderer: crate::core::Renderer + rich_editor::Renderer,
 {
-    fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
-        // First pass: unconstrained width to find intrinsic size.
-        let probe = layout::Limits::new(Size::ZERO, bounds);
-        let intrinsic = self
-            .content
-            .as_widget_mut()
-            .layout(self.tree, renderer, &probe);
-
-        // Use the intrinsic width but enforce a floor so text_input
-        // is usable, and cap at the editor's text area width.
-        let width = intrinsic.size().width.max(200.0).min(self.max_width);
-
-        // Second pass: fixed width so Fill children (text_input) expand.
-        let limits = layout::Limits::new(Size::ZERO, Size::new(width, f32::INFINITY))
-            .width(Length::Fixed(width));
+    fn layout(&mut self, renderer: &Renderer, _bounds: Size) -> layout::Node {
+        let limits = layout::Limits::new(Size::ZERO, Size::new(self.max_width, f32::INFINITY));
         let node = self
             .content
             .as_widget_mut()
@@ -1944,4 +1934,12 @@ pub enum Status {
     },
     /// The editor cannot be interacted with.
     Disabled,
+}
+
+/// Compute a reasonable fixed width for the popup text input based on
+/// the current value's character count. This avoids the Fill-inside-Shrink
+/// zero-width problem while keeping the input usable.
+fn popup_input_width(value: &str) -> Length {
+    let chars = value.len().max(10) as f32;
+    Length::Fixed((chars * 8.0 + 32.0).min(400.0))
 }
