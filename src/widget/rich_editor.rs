@@ -1618,8 +1618,6 @@ where
         let on_action = self.on_popup_action.as_ref()?.clone();
         let active_span_ref = active_ref?;
 
-        let source_value = active.map(|s| s.value.clone()).unwrap_or_default();
-
         let caret = self.content.caret_rect()?;
         let text_bounds = layout.children().next()?.bounds();
 
@@ -1638,7 +1636,6 @@ where
             editor_id: self.id.clone(),
             editor_content: self.content,
             active_span: active_span_ref,
-            source_value,
             original: parent_state.popup_original.clone(),
             parent_state,
         })))
@@ -1660,7 +1657,6 @@ where
     editor_id: Option<widget::Id>,
     editor_content: &'b Content<Renderer>,
     active_span: popup::SpanRef,
-    source_value: String,
     original: String,
     parent_state: &'b mut State,
 }
@@ -1670,34 +1666,10 @@ impl<'a, 'b, Message, Theme, Renderer> overlay::Overlay<Message, Theme, Renderer
 where
     Renderer: crate::core::Renderer + rich_editor::Renderer,
 {
-    fn layout(&mut self, renderer: &Renderer, _bounds: Size) -> layout::Node {
-        // Measure the source value text to determine the popup's minimum width.
-        let measured = <Renderer as text::Renderer>::Paragraph::with_text(Text {
-            content: &self.source_value,
-            bounds: Size::new(f32::INFINITY, f32::INFINITY),
-            size: renderer.default_size(),
-            line_height: LineHeight::default(),
-            font: renderer.default_font(),
-            align_x: text::Alignment::Default,
-            align_y: crate::core::alignment::Vertical::Top,
-            shaping: text::Shaping::Advanced,
-            wrapping: Wrapping::default(),
-            ellipsis: text::Ellipsis::None,
-            letter_spacing: crate::core::Em::default(),
-            font_features: vec![],
-            font_variations: vec![],
-            weight: None,
-            hint_factor: renderer.scale_factor(),
-        });
-        use crate::core::text::Paragraph as _;
-        let text_width = measured.min_bounds().width;
-
-        // Add padding for the text_input chrome, then clamp to editor width.
-        let min_width = (text_width + 32.0).min(self.max_width);
-        let limits = layout::Limits::new(
-            Size::new(min_width, 0.0),
-            Size::new(self.max_width, f32::INFINITY),
-        );
+    fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
+        let available_height = bounds.height - self.position.y;
+        let limits = layout::Limits::new(Size::ZERO, Size::new(self.max_width, available_height))
+            .width(self.max_width);
         let node = self
             .content
             .as_widget_mut()
