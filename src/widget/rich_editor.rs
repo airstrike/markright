@@ -332,8 +332,7 @@ where
                         value: t,
                     })
                 })
-                .id(popup::INPUT_ID)
-                .width(popup_input_width(&active_span.value));
+                .id(popup::INPUT_ID);
 
             self.popup_element = Some(build(input, active_span));
             self.on_popup_action = Some(on_action);
@@ -405,8 +404,7 @@ where
                             value: t,
                         })
                     })
-                    .id(popup::INPUT_ID)
-                    .width(popup_input_width(&active_span.source_value));
+                    .id(popup::INPUT_ID);
 
             self.popup_element = Some(build(input, active_span));
 
@@ -501,8 +499,7 @@ where
                             value: t,
                         })
                     })
-                    .id(popup::INPUT_ID)
-                    .width(popup_input_width(&active_span.source_value));
+                    .id(popup::INPUT_ID);
 
             self.popup_element = Some(build(input, active_span));
 
@@ -1621,6 +1618,8 @@ where
         let on_action = self.on_popup_action.as_ref()?.clone();
         let active_span_ref = active_ref?;
 
+        let source_value = active.map(|s| s.value.clone()).unwrap_or_default();
+
         let caret = self.content.caret_rect()?;
         let text_bounds = layout.children().next()?.bounds();
 
@@ -1639,6 +1638,7 @@ where
             editor_id: self.id.clone(),
             editor_content: self.content,
             active_span: active_span_ref,
+            source_value,
             original: parent_state.popup_original.clone(),
             parent_state,
         })))
@@ -1660,6 +1660,7 @@ where
     editor_id: Option<widget::Id>,
     editor_content: &'b Content<Renderer>,
     active_span: popup::SpanRef,
+    source_value: String,
     original: String,
     parent_state: &'b mut State,
 }
@@ -1670,7 +1671,33 @@ where
     Renderer: crate::core::Renderer + rich_editor::Renderer,
 {
     fn layout(&mut self, renderer: &Renderer, _bounds: Size) -> layout::Node {
-        let limits = layout::Limits::new(Size::ZERO, Size::new(self.max_width, f32::INFINITY));
+        // Measure the source value text to determine the popup's minimum width.
+        let measured = <Renderer as text::Renderer>::Paragraph::with_text(Text {
+            content: &self.source_value,
+            bounds: Size::new(f32::INFINITY, f32::INFINITY),
+            size: renderer.default_size(),
+            line_height: LineHeight::default(),
+            font: renderer.default_font(),
+            align_x: text::Alignment::Default,
+            align_y: crate::core::alignment::Vertical::Top,
+            shaping: text::Shaping::Advanced,
+            wrapping: Wrapping::default(),
+            ellipsis: text::Ellipsis::None,
+            letter_spacing: crate::core::Em::default(),
+            font_features: vec![],
+            font_variations: vec![],
+            weight: None,
+            hint_factor: renderer.scale_factor(),
+        });
+        use crate::core::text::Paragraph as _;
+        let text_width = measured.min_bounds().width;
+
+        // Add padding for the text_input chrome, then clamp to editor width.
+        let min_width = (text_width + 32.0).min(self.max_width);
+        let limits = layout::Limits::new(
+            Size::new(min_width, 0.0),
+            Size::new(self.max_width, f32::INFINITY),
+        );
         let node = self
             .content
             .as_widget_mut()
@@ -1934,12 +1961,4 @@ pub enum Status {
     },
     /// The editor cannot be interacted with.
     Disabled,
-}
-
-/// Compute a reasonable fixed width for the popup text input based on
-/// the current value's character count. This avoids the Fill-inside-Shrink
-/// zero-width problem while keeping the input usable.
-fn popup_input_width(value: &str) -> Length {
-    let chars = value.len().max(10) as f32;
-    Length::Fixed((chars * 8.0 + 32.0).min(400.0))
 }
