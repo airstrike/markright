@@ -404,8 +404,7 @@ where
                             value: t,
                         })
                     })
-                    .id(popup::INPUT_ID)
-                    .width(Length::Shrink);
+                    .id(popup::INPUT_ID);
 
             self.popup_element = Some(build(input, active_span));
 
@@ -500,8 +499,7 @@ where
                             value: t,
                         })
                     })
-                    .id(popup::INPUT_ID)
-                    .width(Length::Shrink);
+                    .id(popup::INPUT_ID);
 
             self.popup_element = Some(build(input, active_span));
 
