@@ -332,8 +332,7 @@ where
                         value: t,
                     })
                 })
-                .id(popup::INPUT_ID)
-                .width(Length::Shrink);
+                .id(popup::INPUT_ID);
 
             self.popup_element = Some(build(input, active_span));
             self.on_popup_action = Some(on_action);
@@ -1621,6 +1620,8 @@ where
         let on_action = self.on_popup_action.as_ref()?.clone();
         let active_span_ref = active_ref?;
 
+        let source_value = active.map(|s| s.value.clone()).unwrap_or_default();
+
         let caret = self.content.caret_rect()?;
         let text_bounds = layout.children().next()?.bounds();
 
@@ -1639,6 +1640,7 @@ where
             editor_id: self.id.clone(),
             editor_content: self.content,
             active_span: active_span_ref,
+            source_value,
             original: parent_state.popup_original.clone(),
             parent_state,
         })))
@@ -1660,6 +1662,7 @@ where
     editor_id: Option<widget::Id>,
     editor_content: &'b Content<Renderer>,
     active_span: popup::SpanRef,
+    source_value: String,
     original: String,
     parent_state: &'b mut State,
 }
@@ -1670,9 +1673,36 @@ where
     Renderer: crate::core::Renderer + rich_editor::Renderer,
 {
     fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
+        // text_input reports zero intrinsic width, so we measure the source
+        // value ourselves and use it as a minimum for the Shrink container
+        // to wrap around.
+        use crate::core::text::Paragraph as _;
+        let measured = <Renderer as text::Renderer>::Paragraph::with_text(Text {
+            content: self.source_value.as_str(),
+            bounds: Size::new(f32::INFINITY, f32::INFINITY),
+            size: renderer.default_size(),
+            line_height: LineHeight::default(),
+            font: renderer.default_font(),
+            align_x: text::Alignment::Default,
+            align_y: crate::core::alignment::Vertical::Top,
+            shaping: text::Shaping::Advanced,
+            wrapping: Wrapping::default(),
+            ellipsis: text::Ellipsis::None,
+            letter_spacing: crate::core::Em::default(),
+            font_features: vec![],
+            font_variations: vec![],
+            weight: None,
+            hint_factor: renderer.scale_factor(),
+        });
+        // text_input's default padding is 5px each side; add a bit for the
+        // cursor glyph and border.
+        let min_width = (measured.min_bounds().width + 24.0).min(self.max_width);
+
         let available_height = bounds.height - self.position.y;
-        let limits = layout::Limits::new(Size::ZERO, Size::new(self.max_width, available_height))
-            .width(Length::Shrink);
+        let limits = layout::Limits::new(
+            Size::new(min_width, 0.0),
+            Size::new(self.max_width, available_height),
+        );
         let node = self
             .content
             .as_widget_mut()
