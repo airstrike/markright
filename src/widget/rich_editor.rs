@@ -332,7 +332,8 @@ where
                         value: t,
                     })
                 })
-                .id(popup::INPUT_ID);
+                .id(popup::INPUT_ID)
+                .width(Length::Shrink);
 
             self.popup_element = Some(build(input, active_span));
             self.on_popup_action = Some(on_action);
@@ -404,7 +405,8 @@ where
                             value: t,
                         })
                     })
-                    .id(popup::INPUT_ID);
+                    .id(popup::INPUT_ID)
+                    .width(Length::Shrink);
 
             self.popup_element = Some(build(input, active_span));
 
@@ -499,7 +501,8 @@ where
                             value: t,
                         })
                     })
-                    .id(popup::INPUT_ID);
+                    .id(popup::INPUT_ID)
+                    .width(Length::Shrink);
 
             self.popup_element = Some(build(input, active_span));
 
@@ -1669,7 +1672,7 @@ where
     fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
         let available_height = bounds.height - self.position.y;
         let limits = layout::Limits::new(Size::ZERO, Size::new(self.max_width, available_height))
-            .width(self.max_width);
+            .width(Length::Shrink);
         let node = self
             .content
             .as_widget_mut()
