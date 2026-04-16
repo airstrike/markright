@@ -1694,13 +1694,16 @@ where
         });
         // text_input's default padding is 5px each side; add a bit for the
         // cursor glyph and border.
-        let min_width = (measured.min_bounds().width + 24.0).min(self.max_width);
+        let width = (measured.min_bounds().width + 24.0).min(self.max_width);
 
         let available_height = bounds.height - self.position.y;
+        // Use a fixed width so the Shrink container doesn't collapse via
+        // loose() stripping the min. This matches pick_list's pattern.
         let limits = layout::Limits::new(
-            Size::new(min_width, 0.0),
+            Size::new(width, 0.0),
             Size::new(self.max_width, available_height),
-        );
+        )
+        .width(Length::Fixed(width));
         let node = self
             .content
             .as_widget_mut()
