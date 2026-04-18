@@ -90,8 +90,22 @@ impl App {
     }
 }
 
-mod theme {
+pub mod theme {
     use iced::widget::{container, text_input};
+    use markright::rich_editor::popup;
+
+    pub fn chip(theme: &iced::Theme) -> popup::SpanStyle {
+        let palette = theme.palette();
+
+        popup::SpanStyle {
+            background: Some(palette.background.weak.color.into()),
+            border: iced::Border {
+                color: palette.background.strong.color,
+                width: 1.0,
+                radius: 3.0.into(),
+            },
+        }
+    }
 
     pub fn input(theme: &iced::Theme, status: text_input::Status) -> text_input::Style {
         let palette = theme.palette();
