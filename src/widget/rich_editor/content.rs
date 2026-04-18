@@ -19,7 +19,7 @@ pub use markright_core::{StyleRun, StyledLine};
 /// Returns the style at the first non-empty character in a selection.
 ///
 /// Skips blank lines so the reported style reflects actual content.
-fn style_at_selection_start<E: rich_editor::Editor>(
+fn style_at_selection<E: rich_editor::Editor>(
     editor: &E,
     pos: &Position,
     sel: &Position,
@@ -397,7 +397,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             pending.clone()
         } else if let Some(ref sel) = editor_cursor.selection {
             // With a selection: read from the first non-empty content character
-            style_at_selection_start(&internal.editor, &editor_cursor.position, sel)
+            style_at_selection(&internal.editor, &editor_cursor.position, sel)
         } else {
             // No selection: bias-left
             let line = editor_cursor.position.line;
@@ -653,18 +653,18 @@ impl<R: rich_editor::Renderer> Internal<R> {
         match edit {
             Edit::Insert(c) => {
                 let style = self.resolve_style();
-                let mut ops = self.delete_selection_if_any();
-                self.sync_paragraphs_for_ops(&ops);
+                let mut ops = self.drain_selection();
+                self.sync_paragraphs(&ops);
                 let op = operation::insert(&mut self.editor, c, style);
                 ops.push(op);
                 self.record_group(ops);
             }
             Edit::Paste(ref text) => {
                 let style = self.resolve_style();
-                let mut ops = self.delete_selection_if_any();
-                self.sync_paragraphs_for_ops(&ops);
+                let mut ops = self.drain_selection();
+                self.sync_paragraphs(&ops);
                 let paste_ops = operation::paste(&mut self.editor, text.clone(), style);
-                self.sync_paragraphs_for_ops(&paste_ops);
+                self.sync_paragraphs(&paste_ops);
                 ops.extend(paste_ops);
                 self.record_group(ops);
                 self.pending_style = None;
@@ -672,8 +672,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
             Edit::Enter { inherit } => {
                 // Capture the style at the cursor so the new line inherits it.
                 let style = self.resolve_style();
-                let mut ops = self.delete_selection_if_any();
-                self.sync_paragraphs_for_ops(&ops);
+                let mut ops = self.drain_selection();
+                self.sync_paragraphs(&ops);
                 let op = operation::enter(&mut self.editor);
                 if let Op::SplitLine { line, .. } = &op {
                     self.sync_paragraph_split(*line, inherit);
@@ -683,21 +683,21 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 self.pending_style = Some(style);
             }
             Edit::Backspace => {
-                let ops = self.backspace_with_list_aware();
-                self.sync_paragraphs_for_ops(&ops);
+                let ops = self.backspace_list_aware();
+                self.sync_paragraphs(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
             }
             Edit::Delete => {
                 let ops = operation::delete(&mut self.editor);
-                self.sync_paragraphs_for_ops(&ops);
+                self.sync_paragraphs(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
             }
             Edit::Format(ref fmt) => {
                 let ops = operation::format(&mut self.editor, fmt, &self.paragraphs, &self.theme);
                 if !ops.is_empty() {
-                    self.sync_paragraphs_for_ops(&ops);
+                    self.sync_paragraphs(&ops);
                     self.record_group(ops);
                 } else {
                     self.update_pending_style(fmt);
@@ -718,7 +718,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
     ///
     /// After this call the cursor is at the start of where the selection was,
     /// with no selection — ready for an insert or enter.
-    fn delete_selection_if_any(&mut self) -> Vec<Op> {
+    fn drain_selection(&mut self) -> Vec<Op> {
         if self.editor.cursor().selection.is_some() {
             operation::backspace(&mut self.editor)
         } else {
@@ -885,7 +885,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 old_paragraph: Box::new(old),
             };
             operation::apply_op(&mut self.editor, &op, &self.paragraphs);
-            self.sync_paragraphs_for_ops(std::slice::from_ref(&op));
+            self.sync_paragraphs(std::slice::from_ref(&op));
             ops.push(op);
         }
 
@@ -893,7 +893,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     /// Sync paragraphs for a batch of ops that were just applied to the editor.
-    fn sync_paragraphs_for_ops(&mut self, ops: &[Op]) {
+    fn sync_paragraphs(&mut self, ops: &[Op]) {
         for op in ops {
             match op {
                 Op::SplitLine { line, .. } => self.sync_paragraph_split(*line, true),
@@ -902,10 +902,10 @@ impl<R: rich_editor::Renderer> Internal<R> {
                     start_line,
                     end_line,
                     ..
-                } => self.sync_paragraph_delete_range(*start_line, *end_line),
+                } => self.sync_paragraph_delete(*start_line, *end_line),
                 Op::InsertRange {
                     start_line, lines, ..
-                } => self.sync_paragraph_insert_range(*start_line, lines.len()),
+                } => self.sync_paragraph_insert(*start_line, lines.len()),
                 Op::SetParagraph {
                     line, paragraph, ..
                 } => {
@@ -991,7 +991,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     /// Sync paragraphs after a DeleteRange: remove paragraphs for deleted lines.
-    fn sync_paragraph_delete_range(&mut self, start_line: usize, end_line: usize) {
+    fn sync_paragraph_delete(&mut self, start_line: usize, end_line: usize) {
         if start_line < end_line {
             let remove_start = (start_line + 1).min(self.paragraphs.len());
             let remove_end = (end_line + 1).min(self.paragraphs.len());
@@ -1002,7 +1002,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     /// Sync paragraphs after an InsertRange: insert default paragraphs for new lines.
-    fn sync_paragraph_insert_range(&mut self, start_line: usize, line_count: usize) {
+    fn sync_paragraph_insert(&mut self, start_line: usize, line_count: usize) {
         if line_count > 1 {
             let insert_at = (start_line + 1).min(self.paragraphs.len());
             let new_paras = vec![Paragraph::default(); line_count - 1];
@@ -1013,7 +1013,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
     /// Backspace that is list-aware: at column 0 with no selection, if the
     /// current line has a list style or indent level, dedent/remove list
     /// first instead of merging with the previous line.
-    fn backspace_with_list_aware(&mut self) -> Vec<Op> {
+    fn backspace_list_aware(&mut self) -> Vec<Op> {
         let cursor = self.editor.cursor();
         if cursor.selection.is_none() && cursor.position.column == 0 {
             let line = cursor.position.line;
@@ -1063,7 +1063,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
             for inv_op in op.inverse() {
                 let captured = operation::capture_op_state(&self.editor, &inv_op);
                 operation::apply_op(&mut self.editor, &captured, &self.paragraphs);
-                self.sync_paragraphs_for_ops(std::slice::from_ref(&captured));
+                self.sync_paragraphs(std::slice::from_ref(&captured));
                 redo_ops.push(captured);
             }
         }
@@ -1082,7 +1082,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
             for inv_op in op.inverse() {
                 let captured = operation::capture_op_state(&self.editor, &inv_op);
                 operation::apply_op(&mut self.editor, &captured, &self.paragraphs);
-                self.sync_paragraphs_for_ops(std::slice::from_ref(&captured));
+                self.sync_paragraphs(std::slice::from_ref(&captured));
                 undo_ops.push(captured);
             }
         }

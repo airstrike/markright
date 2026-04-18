@@ -34,25 +34,21 @@ pub fn format<E: Editor>(
             if !has_selection {
                 return vec![];
             }
-            let is_bold = style_at_selection_start(editor, &cursor)
-                .bold
-                .unwrap_or(false);
+            let is_bold = style_at_selection(editor, &cursor).bold.unwrap_or(false);
             set_attr_in_selection(editor, SpanAttr::Bold(Some(!is_bold)))
         }
         Format::ToggleItalic => {
             if !has_selection {
                 return vec![];
             }
-            let is_italic = style_at_selection_start(editor, &cursor)
-                .italic
-                .unwrap_or(false);
+            let is_italic = style_at_selection(editor, &cursor).italic.unwrap_or(false);
             set_attr_in_selection(editor, SpanAttr::Italic(Some(!is_italic)))
         }
         Format::ToggleUnderline => {
             if !has_selection {
                 return vec![];
             }
-            let is_underline = style_at_selection_start(editor, &cursor)
+            let is_underline = style_at_selection(editor, &cursor)
                 .underline
                 .unwrap_or(false);
             set_attr_in_selection(editor, SpanAttr::Underline(Some(!is_underline)))
@@ -386,7 +382,7 @@ fn set_name<E: Editor>(
 ///
 /// Skips blank lines at the start so that the toggle state reflects actual
 /// content, not unformatted newlines.
-fn style_at_selection_start<E: Editor>(editor: &E, cursor: &Cursor) -> span::Style {
+fn style_at_selection<E: Editor>(editor: &E, cursor: &Cursor) -> span::Style {
     let (start, end) = match &cursor.selection {
         Some(sel) => ordered_positions(&cursor.position, sel),
         None => {
