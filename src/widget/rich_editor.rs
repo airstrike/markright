@@ -676,48 +676,71 @@ where
                 && cursor.position.column <= s.display_range.end
         });
 
+        let on_action = Rc::new(on_action);
+
+        // Route popup::Action → computed_spans::Action for ANY chip, not
+        // just the active one. The widget's atomic-backspace path (in
+        // update()) fires popup::Action::Delete for the chip under the
+        // cursor regardless of whether a popup is currently open, so the
+        // callback must resolve the chip id from the span_ref by
+        // looking it up against the current snapshot of chips.
+        if !spans.is_empty() {
+            let id_by_span_ref: Vec<(popup::SpanRef, u64)> = spans
+                .iter()
+                .map(|cs| {
+                    (
+                        popup::SpanRef {
+                            line: cs.line,
+                            range: cs.display_range.clone(),
+                        },
+                        cs.id,
+                    )
+                })
+                .collect();
+
+            let on_action_any = on_action.clone();
+            self.on_popup_action = Some(Rc::new(move |pa| {
+                let find_id = |r: &popup::SpanRef| -> u64 {
+                    id_by_span_ref
+                        .iter()
+                        .find(|(sr, _)| sr == r)
+                        .map(|(_, id)| *id)
+                        .unwrap_or(0)
+                };
+                match pa {
+                    popup::Action::Input { span, value } => {
+                        on_action_any(computed_spans::Action::Input {
+                            id: find_id(&span),
+                            value,
+                        })
+                    }
+                    popup::Action::Confirm { span } => {
+                        on_action_any(computed_spans::Action::Confirm { id: find_id(&span) })
+                    }
+                    popup::Action::Dismiss { span, original } => {
+                        on_action_any(computed_spans::Action::Dismiss {
+                            id: find_id(&span),
+                            original,
+                        })
+                    }
+                    popup::Action::Delete { span } => {
+                        on_action_any(computed_spans::Action::Delete { id: find_id(&span) })
+                    }
+                }
+            }));
+        }
+
         if let Some(active_span) = active {
             let active_id = active_span.id;
-            let on_action = Rc::new(on_action);
-
-            // Pre-wired on_input callback for the build closure.
-            let on_input_cb: popup::OnInput<'a, Message> = {
-                let on_action = on_action.clone();
+            let on_action_input = on_action.clone();
+            let on_input_cb: popup::OnInput<'a, Message> =
                 popup::OnInput::new(move |value: String| {
-                    on_action(computed_spans::Action::Input {
+                    on_action_input(computed_spans::Action::Input {
                         id: active_id,
                         value,
                     })
-                })
-            };
-
+                });
             self.popup_element = Some(build(active_span, on_input_cb));
-
-            // Keep translating popup::Action → computed_spans::Action
-            // for Confirm/Dismiss/Delete, which are produced by the
-            // overlay's keyboard handling (Enter/Escape) and still need
-            // to be routed through `on_action`.
-            let on_confirm = on_action.clone();
-            let on_dismiss = on_action.clone();
-            let on_delete = on_action.clone();
-            self.on_popup_action = Some(Rc::new(move |pa| match pa {
-                popup::Action::Input { value, .. } => on_action(computed_spans::Action::Input {
-                    id: active_id,
-                    value,
-                }),
-                popup::Action::Confirm { .. } => {
-                    on_confirm(computed_spans::Action::Confirm { id: active_id })
-                }
-                popup::Action::Dismiss { original, .. } => {
-                    on_dismiss(computed_spans::Action::Dismiss {
-                        id: active_id,
-                        original,
-                    })
-                }
-                popup::Action::Delete { .. } => {
-                    on_delete(computed_spans::Action::Delete { id: active_id })
-                }
-            }));
         }
 
         self
@@ -732,22 +755,61 @@ pub struct State {
     last_click: Option<mouse::Click>,
     drag_click: Option<mouse::click::Kind>,
     partial_scroll: f32,
-    popup_active_span: Option<popup::SpanRef>,
-    popup_original: String,
-    popup_dismissed_at: Option<(usize, usize)>,
     /// One-shot flag that makes the next `Focusable::unfocus` a no-op.
     /// Set when intercepting Tab to transfer focus into the popup input:
     /// iced's focus operation is exclusive and would otherwise clear our
     /// focus, ending the editor session and hiding the popup we just
     /// asked the app to focus.
     retain_focus_once: bool,
-    /// One-shot flag set by explicit popup dismissal (Escape, Enter).
-    /// Consumed on the next popup `None → Some` transition to reset the
-    /// popup tree state — see overlay() opening logic. Without this,
-    /// transient `None → Some` transitions caused by adapter rebuilds
-    /// (display_range jitter while typing) would also reset the tree
-    /// and steal focus from the popup mid-edit.
-    popup_session_ended: bool,
+    /// Popup lifecycle state. See [`PopupState`].
+    popup: PopupState,
+    /// Cursor position from the previous render. Used to distinguish
+    /// real cursor movement from adapter-driven display_range jitter:
+    /// transitions fire only when the cursor actually moved, so typing
+    /// into the popup doesn't flap between Idle and Open (which would
+    /// lose the `original` value and reset the popup tree).
+    last_cursor_pos: Option<(usize, usize)>,
+}
+
+/// Popup lifecycle, collapsed from the previous bool+Option soup.
+///
+/// Transitions happen in `overlay()` and are driven by cursor movement
+/// plus explicit Enter/Escape dismissal. Same-position renders (adapter
+/// rebuild jitter while typing) do NOT transition — `last_cursor_pos`
+/// gates that.
+#[derive(Debug, Clone)]
+enum PopupState {
+    /// Cursor is not in any span. No popup.
+    Idle,
+    /// Cursor is in `span`; popup is visible. `original` captures the
+    /// span's source value at open for Escape-to-revert.
+    Open {
+        span: popup::SpanRef,
+        original: String,
+    },
+    /// User explicitly dismissed the popup (Enter/Escape) while the
+    /// cursor was in `span`. Popup hidden. Stays Dismissed while the
+    /// cursor remains anywhere within `span`'s range; transitions to
+    /// Idle when the cursor leaves the chip entirely, or to Open at a
+    /// different chip. Tracking by chip (not cursor position) means
+    /// arrow-keys that move within the just-dismissed chip's range —
+    /// including atomic-skip from chip.end → chip.start — don't
+    /// re-open the popup.
+    Dismissed { span: popup::SpanRef },
+}
+
+impl PopupState {
+    fn is_open(&self) -> bool {
+        matches!(self, Self::Open { .. })
+    }
+}
+
+/// True iff two [`popup::SpanRef`]s refer to logically the same chip:
+/// same line, and ranges that overlap. Range-equality fails after
+/// popup edits change the display length — the chip is "the same
+/// chip" as long as the ranges still overlap on the same line.
+fn same_chip(a: &popup::SpanRef, b: &popup::SpanRef) -> bool {
+    a.line == b.line && a.range.start.max(b.range.start) < a.range.end.min(b.range.end)
 }
 
 #[derive(Debug, Clone)]
@@ -819,11 +881,9 @@ where
             last_click: None,
             drag_click: None,
             partial_scroll: 0.0,
-            popup_active_span: None,
-            popup_original: String::new(),
-            popup_dismissed_at: None,
             retain_focus_once: false,
-            popup_session_ended: false,
+            popup: PopupState::Idle,
+            last_cursor_pos: None,
         })
     }
 
@@ -938,7 +998,7 @@ where
             ..
         }) = event
             && !modifiers.shift()
-            && state.popup_active_span.is_some()
+            && state.popup.is_open()
             && let Some(on_instruction) = &self.on_instruction
         {
             // The focus operation we're about to publish is exclusive:
@@ -1576,12 +1636,12 @@ where
             }
             Selection::Caret(caret) => {
                 // Only draw cursor caret when focused and visible, and
-                // not while the popup is open — when the popup is showing,
-                // the popup's text input owns the active caret and the
-                // editor's blinking caret would compete visually.
+                // not while the popup is actually showing — when the
+                // popup is up, its text input owns the active caret and
+                // the editor's blinking caret would compete visually.
                 if let Some(focus) = state.focus.as_ref()
                     && focus.is_cursor_visible()
-                    && state.popup_active_span.is_none()
+                    && !state.popup.is_open()
                 {
                     let cursor = Rectangle::new(
                         caret.position() + translation,
@@ -1662,15 +1722,7 @@ where
         let cursor = self.content.cursor();
         let cursor_pos = (cursor.position.line, cursor.position.column);
 
-        // Clear the dismissed flag if the cursor has moved away from
-        // the dismissed position.
-        if let Some(dismissed) = parent_state.popup_dismissed_at
-            && dismissed != cursor_pos
-        {
-            parent_state.popup_dismissed_at = None;
-        }
-
-        // Find the active span (recompute here so it's authoritative).
+        // Find the active span for the current cursor.
         let active = self.popup_spans.as_slice().iter().find(|s| {
             s.line == cursor.position.line
                 && cursor.position.column >= s.range.start
@@ -1678,52 +1730,87 @@ where
         });
         let active_ref: Option<popup::SpanRef> = active.map(|s| s.into());
 
-        // Detect transitions: capture original on entering a new span,
-        // clear when leaving.
-        if parent_state.popup_active_span != active_ref {
-            // Only reset the popup tree when a *new* user session starts:
-            // i.e. the previous session was explicitly ended (Escape /
-            // Enter) and the popup is now reopening. This clears any
-            // stale `is_focused=Some` left on the popup text_input from
-            // the prior session — without this, the user's first
-            // arrow-key after re-engaging would be hijacked by the popup.
-            //
-            // Notably we do NOT reset on every `None → Some` transition.
-            // Adapter rebuilds (triggered by typing in the popup) can
-            // briefly shift display_range so the cursor falls outside it
-            // for one frame; resetting on those transitions would steal
-            // focus from the popup mid-edit.
-            let opening = parent_state.popup_active_span.is_none() && active_ref.is_some();
-            if opening
-                && parent_state.popup_session_ended
-                && let Some(popup) = &self.popup_element
-            {
+        // Advance the popup state machine, but only when the cursor
+        // actually moved. Same-position renders (adapter rebuild jitter
+        // while typing in the popup) must not transition — if they did,
+        // they'd lose `original` and reset the popup tree mid-edit.
+        let cursor_moved = parent_state.last_cursor_pos != Some(cursor_pos);
+        if cursor_moved {
+            parent_state.last_cursor_pos = Some(cursor_pos);
+
+            let previous = std::mem::replace(&mut parent_state.popup, PopupState::Idle);
+            let (next, reset_tree) = match (previous, active_ref.as_ref(), active) {
+                // Dismissed, cursor still in the same chip → stay.
+                (PopupState::Dismissed { span }, Some(new_ref), _) if same_chip(&span, new_ref) => {
+                    (PopupState::Dismissed { span }, false)
+                }
+                // Dismissed, cursor left the chip → Idle.
+                (PopupState::Dismissed { .. }, None, _) => (PopupState::Idle, false),
+                // Dismissed, cursor entered a *different* chip → Open with reset.
+                (PopupState::Dismissed { .. }, Some(new_ref), Some(new_span)) => (
+                    PopupState::Open {
+                        span: new_ref.clone(),
+                        original: new_span.value.to_string(),
+                    },
+                    true,
+                ),
+                // Open at same chip (ranges overlap) → preserve `original`.
+                // The range may have shifted because popup edits changed
+                // the display length; that's the same chip logically.
+                (PopupState::Open { span, original }, Some(new_ref), _)
+                    if same_chip(&span, new_ref) =>
+                {
+                    (
+                        PopupState::Open {
+                            span: new_ref.clone(),
+                            original,
+                        },
+                        false,
+                    )
+                }
+                // Open but cursor moved to a *different* chip → reset and re-open.
+                (PopupState::Open { .. }, Some(new_ref), Some(new_span)) => (
+                    PopupState::Open {
+                        span: new_ref.clone(),
+                        original: new_span.value.to_string(),
+                    },
+                    true,
+                ),
+                // Idle → Open. Reset tree defensively: any prior popup
+                // session may have left stale is_focused on the popup
+                // text_input (Focus-op traversal into overlays is not
+                // guaranteed to reach it).
+                (PopupState::Idle, Some(new_ref), Some(new_span)) => (
+                    PopupState::Open {
+                        span: new_ref.clone(),
+                        original: new_span.value.to_string(),
+                    },
+                    true,
+                ),
+                // Cursor left all spans → Idle.
+                (_, None, _) => (PopupState::Idle, false),
+                // Unreachable: active_ref is Some iff active is Some.
+                _ => unreachable!(),
+            };
+
+            parent_state.popup = next;
+            if reset_tree && let Some(popup) = &self.popup_element {
                 children[0] = widget::Tree::new(popup);
             }
-            if opening {
-                parent_state.popup_session_ended = false;
-            }
-            if let Some(span) = active {
-                parent_state.popup_original = span.value.to_string();
-            } else {
-                parent_state.popup_original.clear();
-            }
-            parent_state.popup_active_span = active_ref.clone();
         }
 
-        // Suppress the popup if the user just dismissed it at this position.
-        if parent_state.popup_dismissed_at.is_some() {
-            return None;
-        }
-
-        // Suppress the popup if the editor isn't focused. Matches the chip
-        // highlight gating in draw(): chips and their popups are editing
-        // affordances, hidden while the editor is idle.
+        // Render the overlay only if:
+        //   1. the editor is focused (chip decorations + popup are editing
+        //      affordances, hidden while idle),
+        //   2. the popup state machine is Open.
         parent_state.focus.as_ref()?;
+        let (active_span_ref, original) = match &parent_state.popup {
+            PopupState::Open { span, original } => (span.clone(), original.clone()),
+            _ => return None,
+        };
 
         let popup = self.popup_element.as_mut()?;
         let on_action = self.on_popup_action.as_ref()?.clone();
-        let active_span_ref = active_ref?;
 
         let caret = self.content.caret_rect()?;
         let text_bounds = layout.children().next()?.bounds();
@@ -1743,7 +1830,7 @@ where
             editor_id: self.id.clone(),
             editor_content: self.content,
             active_span: active_span_ref,
-            original: parent_state.popup_original.clone(),
+            original,
             parent_state,
         })))
     }
@@ -1822,11 +1909,13 @@ where
                         span: self.active_span.clone(),
                     }));
 
-                    // Mark dismissed-at to prevent immediate reopen.
-                    let cursor_after = self.editor_content.cursor();
-                    self.parent_state.popup_dismissed_at =
-                        Some((cursor_after.position.line, cursor_after.position.column));
-                    self.parent_state.popup_session_ended = true;
+                    // Transition to Dismissed tracking the chip. Stays
+                    // Dismissed while the cursor remains within the chip;
+                    // cursor movement within the chip (including atomic
+                    // skip from chip.end → chip.start) does not re-open.
+                    self.parent_state.popup = PopupState::Dismissed {
+                        span: self.active_span.clone(),
+                    };
 
                     // Refocus the editor.
                     if let (Some(on_instruction), Some(editor_id)) =
@@ -1845,11 +1934,11 @@ where
                         original: self.original.clone(),
                     }));
 
-                    // Mark dismissed-at at current cursor position.
-                    let cursor = self.editor_content.cursor();
-                    self.parent_state.popup_dismissed_at =
-                        Some((cursor.position.line, cursor.position.column));
-                    self.parent_state.popup_session_ended = true;
+                    // Transition to Dismissed tracking the chip (see
+                    // Enter handler above for rationale).
+                    self.parent_state.popup = PopupState::Dismissed {
+                        span: self.active_span.clone(),
+                    };
 
                     // Refocus the editor.
                     if let (Some(on_instruction), Some(editor_id)) =
