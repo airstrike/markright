@@ -10,6 +10,7 @@ use iced::widget::{column, container, row, text};
 use iced::{Element, Length, Task, color};
 
 use markright::widget::rich_editor::computed_spans;
+use markright::widget::rich_editor::popup;
 use markright::widget::rich_editor::{self, Content, Instruction};
 
 mod adapter;
@@ -53,7 +54,7 @@ impl App {
             .id("popup-editor")
             .on_action(Message::Editor)
             .on_instruction(Message::Instruction)
-            .computed_popup(Message::Span, |input, span| {
+            .computed_popup(Message::Span, |span, on_input| {
                 let preview = parser::eval(
                     span.source_value
                         .strip_prefix("{=")
@@ -62,7 +63,9 @@ impl App {
                 );
                 container(
                     column![
-                        input.size(14),
+                        popup::input(&span.placeholder, &span.source_value)
+                            .on_input(on_input)
+                            .size(14),
                         row![
                             text("= ").size(12).color(color!(0x94A3B8)),
                             text(preview).size(12).color(color!(0x334155)),
