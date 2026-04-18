@@ -1431,34 +1431,43 @@ where
             }
 
             // ── Popup span highlights ──
-            for h in self.popup_spans.as_slice() {
-                let span_style = (h.style)(theme);
-                if span_style.background.is_none() && span_style.border.width <= 0.0 {
-                    continue;
+            // Only render chip backgrounds/borders while the editor is
+            // focused. Unfocused: the underlying text still renders with
+            // its own style runs (bold, color, etc.), but the chip
+            // decoration is hidden so the content reads as flowing text.
+            if state.focus.is_some() {
+                for h in self.popup_spans.as_slice() {
+                    let span_style = (h.style)(theme);
+                    if span_style.background.is_none() && span_style.border.width <= 0.0 {
+                        continue;
+                    }
+                    internal.editor.highlight_rect(
+                        h.line,
+                        h.range.start,
+                        h.range.end,
+                        &mut |rect| {
+                            let screen_rect = Rectangle {
+                                x: rect.x + text_bounds.x,
+                                y: rect.y + text_bounds.y,
+                                ..rect
+                            };
+                            if let Some(clipped) = text_bounds.intersection(&screen_rect) {
+                                renderer.fill_quad(
+                                    renderer::Quad {
+                                        bounds: clipped,
+                                        border: span_style.border,
+                                        ..renderer::Quad::default()
+                                    },
+                                    span_style.background.unwrap_or(
+                                        crate::core::Background::Color(
+                                            crate::core::Color::TRANSPARENT,
+                                        ),
+                                    ),
+                                );
+                            }
+                        },
+                    );
                 }
-                internal
-                    .editor
-                    .highlight_rect(h.line, h.range.start, h.range.end, &mut |rect| {
-                        let screen_rect = Rectangle {
-                            x: rect.x + text_bounds.x,
-                            y: rect.y + text_bounds.y,
-                            ..rect
-                        };
-                        if let Some(clipped) = text_bounds.intersection(&screen_rect) {
-                            renderer.fill_quad(
-                                renderer::Quad {
-                                    bounds: clipped,
-                                    border: span_style.border,
-                                    ..renderer::Quad::default()
-                                },
-                                span_style
-                                    .background
-                                    .unwrap_or(crate::core::Background::Color(
-                                        crate::core::Color::TRANSPARENT,
-                                    )),
-                            );
-                        }
-                    });
             }
 
             renderer.fill_rich_editor(
@@ -1658,6 +1667,11 @@ where
         if parent_state.popup_dismissed_at.is_some() {
             return None;
         }
+
+        // Suppress the popup if the editor isn't focused. Matches the chip
+        // highlight gating in draw(): chips and their popups are editing
+        // affordances, hidden while the editor is idle.
+        parent_state.focus.as_ref()?;
 
         let popup = self.popup_element.as_mut()?;
         let on_action = self.on_popup_action.as_ref()?.clone();
