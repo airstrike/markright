@@ -15,8 +15,9 @@
 //! - **AI rewrites**: original text displays, popup shows suggested improvement
 
 use std::ops::Range;
+use std::rc::Rc;
 
-use crate::core::{Background, Border};
+use super::popup;
 
 use markright_core::StyledLine;
 
@@ -25,14 +26,18 @@ use markright_core::StyledLine;
 /// Implement this for your format (e.g., formulas, mentions, templated text).
 /// The widget calls [`Source::parse`] whenever the source changes and uses
 /// the result to rebuild the editor content and popup overlays.
-pub trait Source: 'static {
-    fn parse(&self, source: &str) -> Result;
+///
+/// The `Theme` type parameter is the theme passed to each span's
+/// [`style`](Span::style) closure at draw time; it defaults to
+/// [`iced_core::Theme`](crate::core::Theme).
+pub trait Source<Theme = crate::core::Theme>: 'static {
+    fn parse(&self, source: &str) -> Result<Theme>;
 }
 
 /// The output of [`Source::parse`].
-pub struct Result {
+pub struct Result<Theme = crate::core::Theme> {
     pub lines: Vec<StyledLine>,
-    pub spans: Vec<Span>,
+    pub spans: Vec<Span<Theme>>,
 }
 
 /// A region where the displayed text differs from the underlying source.
@@ -40,8 +45,11 @@ pub struct Result {
 /// The editor renders `display_range` as a styled, atomic chip. The
 /// popup overlay lets the user edit `source_value`; the application
 /// re-evaluates and provides a new `display_value` on the next render.
-#[derive(Clone, Debug)]
-pub struct Span {
+///
+/// Visual styling is deferred to a theme-aware closure stored in
+/// [`style`](Self::style), evaluated at draw time.
+#[derive(Clone)]
+pub struct Span<Theme = crate::core::Theme> {
     /// Stable identifier assigned by the application.
     pub id: u64,
     /// Line in the displayed content.
@@ -57,14 +65,28 @@ pub struct Span {
     pub display_value: String,
     /// Placeholder shown when the popup input is empty.
     pub placeholder: String,
-    /// Background fill drawn behind the chip.
-    pub background: Option<Background>,
-    /// Border drawn around the chip.
-    pub border: Border,
+    /// Theme-aware styler resolved at draw time.
+    pub style: Rc<dyn Fn(&Theme) -> popup::SpanStyle>,
     /// When `true`, the editor blocks character insertion inside the
     /// chip and treats Backspace/Delete at the boundary as whole-chip
     /// deletion.
     pub atomic: bool,
+}
+
+impl<Theme> std::fmt::Debug for Span<Theme> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Span")
+            .field("id", &self.id)
+            .field("line", &self.line)
+            .field("display_range", &self.display_range)
+            .field("source_range", &self.source_range)
+            .field("source_value", &self.source_value)
+            .field("display_value", &self.display_value)
+            .field("placeholder", &self.placeholder)
+            .field("style", &"<fn>")
+            .field("atomic", &self.atomic)
+            .finish()
+    }
 }
 
 /// An action produced by computed-span interaction.

@@ -54,31 +54,43 @@ pub use content::{Content, StyleRun, StyledLine};
 pub use style::{Catalog, Style, StyleFn};
 
 /// A visual highlight drawn behind a character range.
-pub struct Highlight {
+///
+/// Visual styling is deferred to a theme-aware closure stored in
+/// [`style`](Self::style), evaluated at draw time.
+#[derive(Clone)]
+pub struct Highlight<Theme = crate::core::Theme> {
     /// Line index in the document.
     pub line: usize,
     /// Column range within the line (same units as `Position::column`).
     pub range: std::ops::Range<usize>,
-    /// Background fill. `None` = no fill (border-only highlight is valid).
-    pub background: Option<crate::core::Background>,
-    /// Border drawn around the highlight rectangle.
-    pub border: crate::core::Border,
+    /// Theme-aware styler resolved at draw time.
+    pub style: Rc<dyn Fn(&Theme) -> popup::SpanStyle>,
+}
+
+impl<Theme> std::fmt::Debug for Highlight<Theme> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Highlight")
+            .field("line", &self.line)
+            .field("range", &self.range)
+            .field("style", &"<fn>")
+            .finish()
+    }
 }
 
 #[allow(dead_code)] // `Owned` is used only with the `computed_spans` feature
-enum PopupSpans<'a> {
-    Borrowed(&'a [popup::Span]),
-    Owned(Vec<popup::Span>),
+enum PopupSpans<'a, Theme = crate::core::Theme> {
+    Borrowed(&'a [popup::Span<Theme>]),
+    Owned(Vec<popup::Span<Theme>>),
 }
 
-impl Default for PopupSpans<'_> {
+impl<Theme> Default for PopupSpans<'_, Theme> {
     fn default() -> Self {
         Self::Borrowed(&[])
     }
 }
 
-impl<'a> PopupSpans<'a> {
-    fn as_slice(&self) -> &[popup::Span] {
+impl<'a, Theme> PopupSpans<'a, Theme> {
+    fn as_slice(&self) -> &[popup::Span<Theme>] {
         match self {
             Self::Borrowed(s) => s,
             Self::Owned(v) => v,
@@ -143,8 +155,8 @@ where
     #[allow(clippy::type_complexity)]
     key_binding: Option<Box<dyn Fn(KeyPress) -> Option<Binding<Message>> + 'a>>,
     last_status: Option<Status>,
-    highlights: &'a [Highlight],
-    popup_spans: PopupSpans<'a>,
+    highlights: &'a [Highlight<Theme>],
+    popup_spans: PopupSpans<'a, Theme>,
     popup_element: Option<Element<'a, Message, Theme, Renderer>>,
     #[allow(clippy::type_complexity)]
     on_popup_action: Option<Rc<dyn Fn(popup::Action) -> Message + 'a>>,
@@ -269,7 +281,7 @@ where
     }
 
     /// Sets visual highlights drawn behind character ranges.
-    pub fn highlights(mut self, highlights: &'a [Highlight]) -> Self {
+    pub fn highlights(mut self, highlights: &'a [Highlight<Theme>]) -> Self {
         self.highlights = highlights;
         self
     }
@@ -297,7 +309,7 @@ where
     /// (Requires the editor to have an `id` set via [`RichEditor::id`].)
     pub fn popup_spans<F>(
         mut self,
-        spans: &'a [popup::Span],
+        spans: &'a [popup::Span<Theme>],
         on_action: impl Fn(popup::Action) -> Message + 'a,
         build: F,
     ) -> Self
@@ -306,7 +318,7 @@ where
         Theme: iced_widget::text_input::Catalog,
         F: FnOnce(
             iced_widget::TextInput<'a, Message, Theme, Renderer>,
-            &'a popup::Span,
+            &'a popup::Span<Theme>,
         ) -> Element<'a, Message, Theme, Renderer>,
     {
         self.popup_spans = PopupSpans::Borrowed(spans);
@@ -354,7 +366,7 @@ where
     #[cfg(feature = "computed_spans")]
     pub fn computed_spans<F>(
         mut self,
-        spans: &'a [computed_spans::Span],
+        spans: &'a [computed_spans::Span<Theme>],
         on_action: impl Fn(computed_spans::Action) -> Message + 'a,
         build: F,
     ) -> Self
@@ -363,19 +375,18 @@ where
         Theme: iced_widget::text_input::Catalog,
         F: FnOnce(
             iced_widget::TextInput<'a, Message, Theme, Renderer>,
-            &'a computed_spans::Span,
+            &'a computed_spans::Span<Theme>,
         ) -> Element<'a, Message, Theme, Renderer>,
     {
         // Convert computed span → popup span
-        let popup_spans: Vec<popup::Span> = spans
+        let popup_spans: Vec<popup::Span<Theme>> = spans
             .iter()
             .map(|cs| popup::Span {
                 line: cs.line,
                 range: cs.display_range.clone(),
                 value: cs.source_value.clone(),
                 placeholder: cs.placeholder.clone(),
-                background: cs.background,
-                border: cs.border,
+                style: cs.style.clone(),
                 atomic: cs.atomic,
             })
             .collect();
@@ -432,105 +443,6 @@ where
                     popup::Action::Delete { .. } => {
                         on_action_delete(computed_spans::Action::Delete { id: active_id })
                     }
-                }
-            }));
-        }
-
-        self
-    }
-
-    /// Builds popup overlays from the computed spans in [`Content`].
-    ///
-    /// Reads spans from [`Content::computed_spans`], renders them as
-    /// highlights, and shows a popup for the active span. The `build`
-    /// closure receives the active span and a pre-wired `on_input`
-    /// callback that emits [`computed_spans::Action::Input`]. It should
-    /// return any [`Element`] — typically built from
-    /// [`popup::input(..)`](popup::input) for auto-sized text-input
-    /// behavior, but a slider, custom widget, or any other element
-    /// works too.
-    ///
-    /// Requires [`Content::from_computed`].
-    ///
-    /// [`Content::computed_spans`]: Content::computed_spans
-    /// [`Content::from_computed`]: Content::from_computed
-    #[cfg(feature = "computed_spans")]
-    pub fn computed_popup<F>(
-        mut self,
-        on_action: impl Fn(computed_spans::Action) -> Message + 'a,
-        build: F,
-    ) -> Self
-    where
-        Message: Clone + 'a,
-        Theme: iced_widget::text_input::Catalog,
-        F: FnOnce(
-            &computed_spans::Span,
-            popup::OnInput<'a, Message>,
-        ) -> Element<'a, Message, Theme, Renderer>,
-    {
-        let spans = self.content.computed_spans();
-
-        let popup_spans: Vec<popup::Span> = spans
-            .iter()
-            .map(|cs| popup::Span {
-                line: cs.line,
-                range: cs.display_range.clone(),
-                value: cs.source_value.clone(),
-                placeholder: cs.placeholder.clone(),
-                background: cs.background,
-                border: cs.border,
-                atomic: cs.atomic,
-            })
-            .collect();
-        self.popup_spans = PopupSpans::Owned(popup_spans);
-
-        let cursor = self.content.cursor();
-        let active = spans.iter().find(|s| {
-            s.line == cursor.position.line
-                && cursor.position.column >= s.display_range.start
-                && cursor.position.column <= s.display_range.end
-        });
-
-        if let Some(active_span) = active {
-            let active_id = active_span.id;
-            let on_action = Rc::new(on_action);
-
-            // Pre-wired on_input callback for the build closure.
-            let on_input_cb: popup::OnInput<'a, Message> = {
-                let on_action = on_action.clone();
-                popup::OnInput::new(move |value: String| {
-                    on_action(computed_spans::Action::Input {
-                        id: active_id,
-                        value,
-                    })
-                })
-            };
-
-            self.popup_element = Some(build(active_span, on_input_cb));
-
-            // Keep translating popup::Action → computed_spans::Action
-            // for Confirm/Dismiss/Delete, which are produced by the
-            // overlay's keyboard handling (Enter/Escape) and still need
-            // to be routed through `on_action`.
-            let on_confirm = on_action.clone();
-            let on_dismiss = on_action.clone();
-            let on_delete = on_action.clone();
-            self.on_popup_action = Some(Rc::new(move |pa| match pa {
-                popup::Action::Input { value, .. } => on_action(computed_spans::Action::Input {
-                    id: active_id,
-                    value,
-                }),
-                popup::Action::Confirm { .. } => {
-                    on_confirm(computed_spans::Action::Confirm { id: active_id })
-                }
-                popup::Action::Dismiss { original, .. } => {
-                    on_dismiss(computed_spans::Action::Dismiss {
-                        id: active_id,
-                        original,
-                    })
-                }
-                popup::Action::Delete { .. } => {
-                    on_delete(computed_spans::Action::Delete { id: active_id })
                 }
             }));
         }
@@ -700,6 +612,115 @@ where
             purpose: input_method::Purpose::Normal,
             preedit: state.preedit.as_ref().map(input_method::Preedit::as_ref),
         }
+    }
+}
+
+// `computed_popup` is only available when `Theme = iced_core::Theme`:
+// [`Content`] is not generic over Theme, so it stores computed spans
+// using the default theme. The theme-aware closure in
+// [`computed_spans::Span::style`] therefore only matches callers that
+// use the default theme (which is the common case via iced's re-export).
+#[cfg(feature = "computed_spans")]
+impl<'a, Message, Renderer> RichEditor<'a, Message, crate::core::Theme, Renderer>
+where
+    crate::core::Theme: Catalog,
+    Renderer: rich_editor::Renderer<Font = Font>,
+{
+    /// Builds popup overlays from the computed spans in [`Content`].
+    ///
+    /// Reads spans from [`Content::computed_spans`], renders them as
+    /// highlights, and shows a popup for the active span. The `build`
+    /// closure receives the active span and a pre-wired `on_input`
+    /// callback that emits [`computed_spans::Action::Input`]. It should
+    /// return any [`Element`] — typically built from
+    /// [`popup::input(..)`](popup::input) for auto-sized text-input
+    /// behavior, but a slider, custom widget, or any other element
+    /// works too.
+    ///
+    /// Requires [`Content::from_computed`].
+    ///
+    /// [`Content::computed_spans`]: Content::computed_spans
+    /// [`Content::from_computed`]: Content::from_computed
+    pub fn computed_popup<F>(
+        mut self,
+        on_action: impl Fn(computed_spans::Action) -> Message + 'a,
+        build: F,
+    ) -> Self
+    where
+        Message: Clone + 'a,
+        crate::core::Theme: iced_widget::text_input::Catalog,
+        F: FnOnce(
+            &computed_spans::Span,
+            popup::OnInput<'a, Message>,
+        ) -> Element<'a, Message, crate::core::Theme, Renderer>,
+    {
+        let spans = self.content.computed_spans();
+
+        let popup_spans: Vec<popup::Span> = spans
+            .iter()
+            .map(|cs| popup::Span {
+                line: cs.line,
+                range: cs.display_range.clone(),
+                value: cs.source_value.clone(),
+                placeholder: cs.placeholder.clone(),
+                style: cs.style.clone(),
+                atomic: cs.atomic,
+            })
+            .collect();
+        self.popup_spans = PopupSpans::Owned(popup_spans);
+
+        let cursor = self.content.cursor();
+        let active = spans.iter().find(|s| {
+            s.line == cursor.position.line
+                && cursor.position.column >= s.display_range.start
+                && cursor.position.column <= s.display_range.end
+        });
+
+        if let Some(active_span) = active {
+            let active_id = active_span.id;
+            let on_action = Rc::new(on_action);
+
+            // Pre-wired on_input callback for the build closure.
+            let on_input_cb: popup::OnInput<'a, Message> = {
+                let on_action = on_action.clone();
+                popup::OnInput::new(move |value: String| {
+                    on_action(computed_spans::Action::Input {
+                        id: active_id,
+                        value,
+                    })
+                })
+            };
+
+            self.popup_element = Some(build(active_span, on_input_cb));
+
+            // Keep translating popup::Action → computed_spans::Action
+            // for Confirm/Dismiss/Delete, which are produced by the
+            // overlay's keyboard handling (Enter/Escape) and still need
+            // to be routed through `on_action`.
+            let on_confirm = on_action.clone();
+            let on_dismiss = on_action.clone();
+            let on_delete = on_action.clone();
+            self.on_popup_action = Some(Rc::new(move |pa| match pa {
+                popup::Action::Input { value, .. } => on_action(computed_spans::Action::Input {
+                    id: active_id,
+                    value,
+                }),
+                popup::Action::Confirm { .. } => {
+                    on_confirm(computed_spans::Action::Confirm { id: active_id })
+                }
+                popup::Action::Dismiss { original, .. } => {
+                    on_dismiss(computed_spans::Action::Dismiss {
+                        id: active_id,
+                        original,
+                    })
+                }
+                popup::Action::Delete { .. } => {
+                    on_delete(computed_spans::Action::Delete { id: active_id })
+                }
+            }));
+        }
+
+        self
     }
 }
 
@@ -1376,6 +1397,10 @@ where
             // ── Span highlights ──
             if !self.highlights.is_empty() {
                 for h in self.highlights {
+                    let span_style = (h.style)(theme);
+                    if span_style.background.is_none() && span_style.border.width <= 0.0 {
+                        continue;
+                    }
                     internal.editor.highlight_rect(
                         h.line,
                         h.range.start,
@@ -1386,18 +1411,18 @@ where
                                 y: rect.y + text_bounds.y,
                                 ..rect
                             };
-                            if let Some(clipped) = text_bounds.intersection(&screen_rect)
-                                && (h.background.is_some() || h.border.width > 0.0)
-                            {
+                            if let Some(clipped) = text_bounds.intersection(&screen_rect) {
                                 renderer.fill_quad(
                                     renderer::Quad {
                                         bounds: clipped,
-                                        border: h.border,
+                                        border: span_style.border,
                                         ..renderer::Quad::default()
                                     },
-                                    h.background.unwrap_or(crate::core::Background::Color(
-                                        crate::core::Color::TRANSPARENT,
-                                    )),
+                                    span_style.background.unwrap_or(
+                                        crate::core::Background::Color(
+                                            crate::core::Color::TRANSPARENT,
+                                        ),
+                                    ),
                                 );
                             }
                         },
@@ -1407,7 +1432,8 @@ where
 
             // ── Popup span highlights ──
             for h in self.popup_spans.as_slice() {
-                if h.background.is_none() && h.border.width <= 0.0 {
+                let span_style = (h.style)(theme);
+                if span_style.background.is_none() && span_style.border.width <= 0.0 {
                     continue;
                 }
                 internal
@@ -1422,12 +1448,14 @@ where
                             renderer.fill_quad(
                                 renderer::Quad {
                                     bounds: clipped,
-                                    border: h.border,
+                                    border: span_style.border,
                                     ..renderer::Quad::default()
                                 },
-                                h.background.unwrap_or(crate::core::Background::Color(
-                                    crate::core::Color::TRANSPARENT,
-                                )),
+                                span_style
+                                    .background
+                                    .unwrap_or(crate::core::Background::Color(
+                                        crate::core::Color::TRANSPARENT,
+                                    )),
                             );
                         }
                     });

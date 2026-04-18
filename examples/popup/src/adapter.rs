@@ -1,4 +1,5 @@
 use markright::rich_editor::computed_spans;
+use markright::rich_editor::popup;
 
 use crate::parser::{self, Segment, Segments};
 
@@ -30,12 +31,14 @@ impl computed_spans::Source for Adapter {
                         source_value: raw.to_string(),
                         display_value: value,
                         placeholder: "{=expr}".to_string(),
-                        background: Some(iced::Background::Color(iced::color!(0xFAF9F5))),
-                        border: iced::Border {
-                            color: iced::color!(0xE5E4DC),
-                            width: 1.0,
-                            radius: 3.0.into(),
-                        },
+                        style: std::rc::Rc::new(|_theme: &iced::Theme| popup::SpanStyle {
+                            background: Some(iced::Background::Color(iced::color!(0xFAF9F5))),
+                            border: iced::Border {
+                                color: iced::color!(0xE5E4DC),
+                                width: 1.0,
+                                radius: 3.0.into(),
+                            },
+                        }),
                         atomic: true,
                     });
 

@@ -252,12 +252,14 @@ fn parse(tokens: &[Token], token_map: &TokenMap) -> Vec<popup::Span> {
                 range: r.display_range.clone(),
                 value: format!("{{={expr}}}"),
                 placeholder: "{=expr}".to_string(),
-                background: Some(iced::Background::Color(color!(0xFAF9F5))),
-                border: iced::Border {
-                    color: color!(0xE5E4DC),
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
+                style: std::rc::Rc::new(|_theme: &iced::Theme| popup::SpanStyle {
+                    background: Some(iced::Background::Color(color!(0xFAF9F5))),
+                    border: iced::Border {
+                        color: color!(0xE5E4DC),
+                        width: 1.0,
+                        radius: 3.0.into(),
+                    },
+                }),
                 atomic: true,
             })
         })

@@ -1,6 +1,7 @@
 //! Popup overlay types for the rich editor.
 
 use std::ops::Range;
+use std::rc::Rc;
 
 use iced_widget::text_input;
 
@@ -15,23 +16,51 @@ use crate::core::{
     Vector, alignment,
 };
 
+/// Visual styling for a popup span / highlight: an optional background
+/// fill and a border.
+///
+/// Resolved from a theme at draw time via a
+/// [`Fn(&Theme) -> SpanStyle`](Span::style) closure, so chips pick up
+/// palette changes without re-parsing the source.
+#[derive(Clone, Debug)]
+pub struct SpanStyle {
+    pub background: Option<Background>,
+    pub border: Border,
+}
+
 /// A region of text that triggers a popup overlay when the cursor is near it.
 ///
 /// Owns its `value` and `placeholder` strings so the application can store
 /// a `Vec<Span>` on its own state without lifetime self-referencing.
-#[derive(Clone, Debug)]
-pub struct Span {
+///
+/// Visual styling is deferred to a theme-aware closure stored in
+/// [`style`](Self::style), evaluated at draw time.
+#[derive(Clone)]
+pub struct Span<Theme = crate::core::Theme> {
     pub line: usize,
     pub range: Range<usize>,
     /// The current text shown in the popup's text input.
     pub value: String,
     pub placeholder: String,
-    pub background: Option<Background>,
-    pub border: Border,
+    /// Theme-aware styler resolved at draw time.
+    pub style: Rc<dyn Fn(&Theme) -> SpanStyle>,
     /// When `true`, the editor blocks character insertion inside this
     /// span and treats Backspace/Delete at the span boundary as
     /// whole-span deletion (emitting [`Action::Delete`]).
     pub atomic: bool,
+}
+
+impl<Theme> std::fmt::Debug for Span<Theme> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Span")
+            .field("line", &self.line)
+            .field("range", &self.range)
+            .field("value", &self.value)
+            .field("placeholder", &self.placeholder)
+            .field("style", &"<fn>")
+            .field("atomic", &self.atomic)
+            .finish()
+    }
 }
 
 /// Identifies a popup span by line and range.
@@ -41,8 +70,8 @@ pub struct SpanRef {
     pub range: Range<usize>,
 }
 
-impl From<&Span> for SpanRef {
-    fn from(span: &Span) -> Self {
+impl<Theme> From<&Span<Theme>> for SpanRef {
+    fn from(span: &Span<Theme>) -> Self {
         Self {
             line: span.line,
             range: span.range.clone(),
