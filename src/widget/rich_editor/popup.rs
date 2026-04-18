@@ -335,11 +335,14 @@ where
     Renderer: text::Renderer,
 {
     fn size(&self) -> Size<Length> {
-        self.inner.as_widget().size()
+        // Must be Shrink (not inner's Fill default) so Shrink parents
+        // respect our measured layout width instead of resolving us to
+        // zero during intrinsic sizing.
+        Size::new(Length::Shrink, Length::Shrink)
     }
 
     fn size_hint(&self) -> Size<Length> {
-        self.inner.as_widget().size_hint()
+        Size::new(Length::Shrink, Length::Shrink)
     }
 
     fn tag(&self) -> widget::tree::Tag {
