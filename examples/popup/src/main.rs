@@ -7,7 +7,7 @@
 /// to the widget.
 use iced::widget::operation::focus;
 use iced::widget::{center, column, container, row, text};
-use iced::{Element, Shrink, Task, color};
+use iced::{Element, Shrink, Task};
 
 use markright::rich_editor::computed_spans;
 use markright::rich_editor::popup;
@@ -84,9 +84,10 @@ impl App {
                 .width(Shrink)
                 .style(theme::popup)
                 .into()
-            });
+            })
+            .width(300);
 
-        center(editor).padding(32).max_width(640).into()
+        center(editor).padding(32).into()
     }
 }
 
