@@ -735,6 +735,12 @@ pub struct State {
     popup_active_span: Option<popup::SpanRef>,
     popup_original: String,
     popup_dismissed_at: Option<(usize, usize)>,
+    /// One-shot flag that makes the next `Focusable::unfocus` a no-op.
+    /// Set when intercepting Tab to transfer focus into the popup input:
+    /// iced's focus operation is exclusive and would otherwise clear our
+    /// focus, ending the editor session and hiding the popup we just
+    /// asked the app to focus.
+    retain_focus_once: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -780,6 +786,10 @@ impl widget_operation::Focusable for State {
     }
 
     fn unfocus(&mut self) {
+        if self.retain_focus_once {
+            self.retain_focus_once = false;
+            return;
+        }
         self.focus = None;
     }
 }
@@ -805,6 +815,7 @@ where
             popup_active_span: None,
             popup_original: String::new(),
             popup_dismissed_at: None,
+            retain_focus_once: false,
         })
     }
 
@@ -922,6 +933,13 @@ where
             && state.popup_active_span.is_some()
             && let Some(on_instruction) = &self.on_instruction
         {
+            // The focus operation we're about to publish is exclusive:
+            // it unfocuses every focusable widget whose id doesn't match
+            // its target. That would clear our own focus and end the
+            // editor session, which would in turn hide the popup via
+            // the focus gate in overlay(). Arm the retain-once latch so
+            // our Focusable::unfocus no-ops this single transfer.
+            state.retain_focus_once = true;
             let id: widget::Id = popup::INPUT_ID.into();
             shell.publish(on_instruction(Instruction::Focus(id)));
             shell.capture_event();
