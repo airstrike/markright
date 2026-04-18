@@ -160,9 +160,9 @@ impl<R: rich_editor::Renderer> Content<R> {
     ///
     /// The adapter parses the source string into display content and
     /// computed spans. The Content rebuilds automatically when the
-    /// source changes via [`apply_span_action`] or plain-text edits.
+    /// source changes via [`span_perform`] or plain-text edits.
     ///
-    /// [`apply_span_action`]: Self::apply_span_action
+    /// [`span_perform`]: Self::span_perform
     #[cfg(feature = "computed_spans")]
     pub fn from_computed(source: &str, adapter: impl super::computed_spans::Source) -> Self {
         let result = adapter.parse(source);
@@ -200,7 +200,7 @@ impl<R: rich_editor::Renderer> Content<R> {
     /// - `Dismiss`: reverts the span to its original value.
     /// - `Delete`: removes the span from the source.
     #[cfg(feature = "computed_spans")]
-    pub fn apply_span_action(&self, action: super::computed_spans::Action) {
+    pub fn span_perform(&self, action: super::computed_spans::Action) {
         use super::computed_spans::Action;
 
         let mut internal = self.0.borrow_mut();

@@ -6,7 +6,7 @@
 /// edit interception, cursor management, popup lifecycle — is internal
 /// to the widget.
 use iced::widget::operation::focus;
-use iced::widget::{center, column, container, row, text};
+use iced::widget::{center, column, container, text};
 use iced::{Element, Shrink, Task};
 
 use markright::rich_editor::computed_spans;
@@ -48,7 +48,7 @@ impl App {
                 Task::none()
             }
             Message::Span(action) => {
-                self.content.apply_span_action(action);
+                self.content.span_perform(action);
                 Task::none()
             }
             Message::Instruction(Instruction::Focus(id)) => focus(id),
@@ -73,10 +73,7 @@ impl App {
                             .style(theme::input)
                             .on_input(on_input)
                             .size(14),
-                        row![
-                            text("= ").size(12),    // .color(color!(0x94A3B8)),
-                            text(preview).size(12), // .color(color!(0x334155)),
-                        ]
+                        text!("={preview}").size(12)
                     ]
                     .spacing(4)
                     .padding(8),
