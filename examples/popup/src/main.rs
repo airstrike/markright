@@ -6,15 +6,21 @@
 /// edit interception, cursor management, popup lifecycle — is internal
 /// to the widget.
 use iced::widget::operation::focus;
-use iced::widget::{column, container, row, text};
-use iced::{Element, Length, Task, color};
+use iced::widget::{center, column, container, row, text};
+use iced::{Element, Shrink, Task, color};
 
-use markright::widget::rich_editor::computed_spans;
-use markright::widget::rich_editor::popup;
-use markright::widget::rich_editor::{self, Content, Instruction};
+use markright::rich_editor::computed_spans;
+use markright::rich_editor::popup;
+use markright::rich_editor::{self, Content, Instruction};
 
 mod adapter;
 mod parser;
+
+fn main() -> iced::Result {
+    iced::application(App::new, App::update, App::view)
+        .title("Popup Example")
+        .run()
+}
 
 struct App {
     content: Content<iced::Renderer>,
@@ -32,7 +38,7 @@ impl App {
         let source = "Tim had {=1+3} apples, then picked up {=2*6} more at the store.";
         let content = Content::from_computed(source, adapter::Adapter);
 
-        (Self { content }, Task::none())
+        (Self { content }, focus("popup-editor"))
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -64,40 +70,70 @@ impl App {
                 container(
                     column![
                         popup::input(&span.placeholder, &span.source_value)
+                            .style(theme::input)
                             .on_input(on_input)
                             .size(14),
                         row![
-                            text("= ").size(12).color(color!(0x94A3B8)),
-                            text(preview).size(12).color(color!(0x334155)),
+                            text("= ").size(12),    // .color(color!(0x94A3B8)),
+                            text(preview).size(12), // .color(color!(0x334155)),
                         ]
                     ]
                     .spacing(4)
                     .padding(8),
                 )
-                .width(Length::Shrink)
-                .style(|_theme: &iced::Theme| container::Style {
-                    background: Some(iced::Background::Color(color!(0xFFFFFF))),
-                    border: iced::Border {
-                        color: color!(0xCBD5E1),
-                        width: 1.0,
-                        radius: 6.0.into(),
-                    },
-                    shadow: iced::Shadow {
-                        color: color!(0x000000, 0.1),
-                        offset: iced::Vector::new(0.0, 4.0),
-                        blur_radius: 12.0,
-                    },
-                    ..Default::default()
-                })
+                .width(Shrink)
+                .style(theme::popup)
                 .into()
             });
 
-        container(editor).padding(32).max_width(640).into()
+        center(editor).padding(32).max_width(640).into()
     }
 }
 
-fn main() -> iced::Result {
-    iced::application(App::new, App::update, App::view)
-        .title("Popup Example")
-        .run()
+mod theme {
+    use iced::widget::{container, text_input};
+
+    pub fn input(theme: &iced::Theme, status: text_input::Status) -> text_input::Style {
+        let palette = theme.palette();
+
+        let active = text_input::Style {
+            background: palette.background.strongest.color.into(),
+            value: palette.background.strongest.text,
+            border: iced::Border {
+                color: palette.background.strong.color,
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            icon: palette.background.weak.text,
+            placeholder: palette.secondary.base.color,
+            selection: palette.primary.weak.color,
+        };
+
+        match status {
+            text_input::Status::Active => active,
+            text_input::Status::Focused { .. } => active,
+            text_input::Status::Hovered => active,
+            text_input::Status::Disabled => active,
+        }
+    }
+
+    pub fn popup(theme: &iced::Theme) -> container::Style {
+        let palette = theme.palette();
+
+        container::Style {
+            background: Some(palette.background.weakest.color.into()),
+            border: iced::Border {
+                color: palette.background.strong.color,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            shadow: iced::Shadow {
+                color: iced::Color::BLACK.scale_alpha(0.1),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 12.0,
+            },
+            text_color: Some(palette.background.weakest.text),
+            ..Default::default()
+        }
+    }
 }

@@ -1,4 +1,4 @@
-use markright::widget::rich_editor::computed_spans;
+use markright::rich_editor::computed_spans;
 
 use crate::parser::{self, Segment, Segments};
 
@@ -45,10 +45,10 @@ impl computed_spans::Source for Adapter {
         }
 
         computed_spans::Result {
-            lines: vec![markright_core::StyledLine {
+            lines: vec![markright::StyledLine {
                 text: display,
                 runs: vec![],
-                paragraph: markright_core::Paragraph::default(),
+                paragraph: markright::Paragraph::default(),
             }],
             spans,
         }
