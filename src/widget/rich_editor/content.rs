@@ -291,7 +291,33 @@ impl<R: rich_editor::Renderer> Content<R> {
                     acc
                 });
         internal.editor = R::RichEditor::with_text(&plain);
-        internal.editor.move_to(saved_cursor);
+
+        // Clamp the saved cursor to the new buffer's bounds before
+        // restoring. The display may have shrunk (e.g. typing `}` to
+        // close `{=expr}` collapses N source chars into a shorter
+        // display value). cosmic-text uses byte offsets and asserts
+        // char-boundary on subsequent edits, so an out-of-bounds or
+        // mid-codepoint position triggers a panic on the next keystroke.
+        let line_count = internal.editor.line_count();
+        let clamped_line = saved_cursor.position.line.min(line_count.saturating_sub(1));
+        let line_len = internal
+            .editor
+            .line(clamped_line)
+            .map(|l| l.text.len())
+            .unwrap_or(0);
+        let mut clamped_col = saved_cursor.position.column.min(line_len);
+        if let Some(text) = internal.editor.line(clamped_line).map(|l| l.text) {
+            while clamped_col > 0 && !text.is_char_boundary(clamped_col) {
+                clamped_col -= 1;
+            }
+        }
+        internal.editor.move_to(Cursor {
+            position: Position {
+                line: clamped_line,
+                column: clamped_col,
+            },
+            selection: saved_cursor.selection,
+        });
 
         // Apply span styles from the new lines.
         let default_style = span::Style::default();
