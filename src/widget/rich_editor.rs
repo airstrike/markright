@@ -741,6 +741,13 @@ pub struct State {
     /// focus, ending the editor session and hiding the popup we just
     /// asked the app to focus.
     retain_focus_once: bool,
+    /// One-shot flag set by explicit popup dismissal (Escape, Enter).
+    /// Consumed on the next popup `None → Some` transition to reset the
+    /// popup tree state — see overlay() opening logic. Without this,
+    /// transient `None → Some` transitions caused by adapter rebuilds
+    /// (display_range jitter while typing) would also reset the tree
+    /// and steal focus from the popup mid-edit.
+    popup_session_ended: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -816,6 +823,7 @@ where
             popup_original: String::new(),
             popup_dismissed_at: None,
             retain_focus_once: false,
+            popup_session_ended: false,
         })
     }
 
@@ -1665,13 +1673,27 @@ where
         // Detect transitions: capture original on entering a new span,
         // clear when leaving.
         if parent_state.popup_active_span != active_ref {
-            // When the popup opens from the closed state, reset the popup
-            // tree so focus / cursor state from a prior popup session
-            // doesn't carry over (e.g. a stuck is_focused=Some on the
-            // inner text_input after the user previously clicked it).
+            // Only reset the popup tree when a *new* user session starts:
+            // i.e. the previous session was explicitly ended (Escape /
+            // Enter) and the popup is now reopening. This clears any
+            // stale `is_focused=Some` left on the popup text_input from
+            // the prior session — without this, the user's first
+            // arrow-key after re-engaging would be hijacked by the popup.
+            //
+            // Notably we do NOT reset on every `None → Some` transition.
+            // Adapter rebuilds (triggered by typing in the popup) can
+            // briefly shift display_range so the cursor falls outside it
+            // for one frame; resetting on those transitions would steal
+            // focus from the popup mid-edit.
             let opening = parent_state.popup_active_span.is_none() && active_ref.is_some();
-            if opening && let Some(popup) = &self.popup_element {
+            if opening
+                && parent_state.popup_session_ended
+                && let Some(popup) = &self.popup_element
+            {
                 children[0] = widget::Tree::new(popup);
+            }
+            if opening {
+                parent_state.popup_session_ended = false;
             }
             if let Some(span) = active {
                 parent_state.popup_original = span.value.to_string();
@@ -1796,6 +1818,7 @@ where
                     let cursor_after = self.editor_content.cursor();
                     self.parent_state.popup_dismissed_at =
                         Some((cursor_after.position.line, cursor_after.position.column));
+                    self.parent_state.popup_session_ended = true;
 
                     // Refocus the editor.
                     if let (Some(on_instruction), Some(editor_id)) =
@@ -1818,6 +1841,7 @@ where
                     let cursor = self.editor_content.cursor();
                     self.parent_state.popup_dismissed_at =
                         Some((cursor.position.line, cursor.position.column));
+                    self.parent_state.popup_session_ended = true;
 
                     // Refocus the editor.
                     if let (Some(on_instruction), Some(editor_id)) =
