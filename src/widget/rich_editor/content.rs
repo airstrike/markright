@@ -263,6 +263,15 @@ impl<R: rich_editor::Renderer> Content<R> {
         // Re-parse with the adapter.
         let result = computed.adapter.parse(&computed.source);
 
+        Self::apply_parse_result(internal, result);
+    }
+
+    /// Apply a computed-span parse result: rebuild the editor with the new
+    /// display text, reapply paragraph and span styles, replace stored
+    /// spans and paragraphs, and restore the cursor (snapping out of any
+    /// newly-formed chip).
+    #[cfg(feature = "computed_spans")]
+    fn apply_parse_result(internal: &mut Internal<R>, result: super::computed_spans::Result) {
         // Preserve cursor across the editor rebuild. Without this, typing
         // in a popup resets the editor cursor to (0,0), which moves it out
         // of the active span and dismisses the popup on next render.
@@ -305,7 +314,31 @@ impl<R: rich_editor::Renderer> Content<R> {
         internal.paragraphs = result.lines.iter().map(|l| l.paragraph.clone()).collect();
 
         // Update spans.
-        computed.spans = result.spans;
+        let new_spans = result.spans;
+
+        // Snap cursor out of any newly-formed chip. If the cursor landed
+        // strictly inside a span's display_range (e.g., typing `}` to close
+        // a `{=expr}` pattern collapsed 6 source chars into a shorter
+        // display value), move it to the end of that chip. Exact boundary
+        // positions stay put — those are valid plain-text positions.
+        let cursor = internal.editor.cursor();
+        if let Some(span) = new_spans.iter().find(|s| {
+            s.line == cursor.position.line
+                && cursor.position.column > s.display_range.start
+                && cursor.position.column < s.display_range.end
+        }) {
+            internal.editor.move_to(Cursor {
+                position: Position {
+                    line: span.line,
+                    column: span.display_range.end,
+                },
+                selection: None,
+            });
+        }
+
+        if let Some(computed) = internal.computed.as_mut() {
+            computed.spans = new_spans;
+        }
     }
 
     /// Returns the current source text, if this is a computed-source content.
@@ -664,6 +697,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 let op = operation::insert(&mut self.editor, c, style);
                 ops.push(op);
                 self.record_group(ops);
+                #[cfg(feature = "computed_spans")]
+                self.sync_computed_source();
             }
             Edit::Paste(ref text) => {
                 let style = self.resolve_style();
@@ -674,6 +709,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 ops.extend(paste_ops);
                 self.record_group(ops);
                 self.pending_style = None;
+                #[cfg(feature = "computed_spans")]
+                self.sync_computed_source();
             }
             Edit::Enter { inherit } => {
                 // Capture the style at the cursor so the new line inherits it.
@@ -687,18 +724,24 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 ops.push(op);
                 self.record_group(ops);
                 self.pending_style = Some(style);
+                #[cfg(feature = "computed_spans")]
+                self.sync_computed_source();
             }
             Edit::Backspace => {
                 let ops = self.backspace_list_aware();
                 self.sync_paragraphs(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
+                #[cfg(feature = "computed_spans")]
+                self.sync_computed_source();
             }
             Edit::Delete => {
                 let ops = operation::delete(&mut self.editor);
                 self.sync_paragraphs(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
+                #[cfg(feature = "computed_spans")]
+                self.sync_computed_source();
             }
             Edit::Format(ref fmt) => {
                 let ops = operation::format(&mut self.editor, fmt, &self.paragraphs, &self.theme);
@@ -718,6 +761,73 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 }
             }
         }
+    }
+
+    /// Reconstruct the computed source from the current display + spans and
+    /// re-run the adapter. Called after plain-text edits so typing a
+    /// pattern like `{=3*4}` in a plain region materializes a new chip.
+    ///
+    /// The reconstruction is: for each line, walk the chip spans in order
+    /// by `display_range.start` and interleave the plain-text display
+    /// between chips with each chip's `source_value`. Each chip's
+    /// `display_value` appears verbatim in the post-edit display (chips
+    /// are atomic at the binding layer), so its column range is still
+    /// valid — we just swap the chip's display text for its source text.
+    #[cfg(feature = "computed_spans")]
+    fn sync_computed_source(&mut self) {
+        if self.computed.is_none() {
+            return;
+        }
+
+        let line_count = self.editor.line_count();
+
+        // Collect chip spans grouped per line, sorted by display_range.start.
+        // Clone out so we're free of the `self.computed` borrow while we
+        // read editor lines below.
+        let spans: Vec<super::computed_spans::Span> =
+            self.computed.as_ref().expect("checked above").spans.clone();
+
+        let mut new_source = String::new();
+        for line_idx in 0..line_count {
+            let display_text: String = self
+                .editor
+                .line(line_idx)
+                .map(|l| l.text.into_owned())
+                .unwrap_or_default();
+
+            let mut line_spans: Vec<&super::computed_spans::Span> =
+                spans.iter().filter(|s| s.line == line_idx).collect();
+            line_spans.sort_by_key(|s| s.display_range.start);
+
+            let mut last_end = 0usize;
+            for span in line_spans {
+                if span.display_range.start > last_end {
+                    new_source.push_str(&display_text[last_end..span.display_range.start]);
+                }
+                new_source.push_str(&span.source_value);
+                last_end = span.display_range.end;
+            }
+            if last_end < display_text.len() {
+                new_source.push_str(&display_text[last_end..]);
+            }
+            if line_idx + 1 < line_count {
+                new_source.push('\n');
+            }
+        }
+
+        // Run the adapter on the reconstructed source, then update the
+        // stored source. The `computed` borrow is taken twice (once for
+        // the adapter call, once for the source update) but neither
+        // overlaps with the editor reads above.
+        let result = self
+            .computed
+            .as_ref()
+            .expect("checked above")
+            .adapter
+            .parse(&new_source);
+        self.computed.as_mut().expect("checked above").source = new_source;
+
+        Content::<R>::apply_parse_result(self, result);
     }
 
     /// Delete the current selection (if any) and return the ops.
@@ -1076,6 +1186,8 @@ impl<R: rich_editor::Renderer> Internal<R> {
 
         self.history.push_redo(redo_ops);
         self.pending_style = None;
+        #[cfg(feature = "computed_spans")]
+        self.sync_computed_source();
     }
 
     fn perform_redo(&mut self) {
@@ -1095,5 +1207,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
 
         self.history.push_undo(undo_ops);
         self.pending_style = None;
+        #[cfg(feature = "computed_spans")]
+        self.sync_computed_source();
     }
 }
