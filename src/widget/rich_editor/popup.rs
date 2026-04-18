@@ -1,7 +1,6 @@
 //! Popup overlay types for the rich editor.
 
 use std::ops::Range;
-use std::rc::Rc;
 
 use iced_widget::text_input;
 
@@ -68,42 +67,18 @@ pub enum Action {
 /// Widget ID for the popup's text input.
 pub const INPUT_ID: &str = "markright-popup-input";
 
-/// A cloneable, reference-counted `Fn(String) -> Message` callback.
+/// A `Fn(String) -> Message` callback used to wire popup input events
+/// from the widget to the application.
 ///
-/// Used to wire popup input events from the widget to the application.
-/// `OnInput` implements both the call operator (via [`OnInput::call`])
-/// and `Clone`, and can be passed directly to
-/// [`Input::on_input`](Input::on_input) or converted into a plain
-/// closure via [`OnInput::into_fn`].
-pub struct OnInput<'a, Message> {
-    inner: Rc<dyn Fn(String) -> Message + 'a>,
-}
+/// Mirrors the shape of `iced::widget::button::on_press`: a concrete
+/// type that's either constructed from a closure via [`OnInput::new`]
+/// (or `From<F>`) or carried directly to [`Input::on_input`].
+pub struct OnInput<'a, Message>(Box<dyn Fn(String) -> Message + 'a>);
 
 impl<'a, Message: 'a> OnInput<'a, Message> {
     /// Creates a new [`OnInput`] from a closure.
     pub fn new(f: impl Fn(String) -> Message + 'a) -> Self {
-        Self { inner: Rc::new(f) }
-    }
-
-    /// Invokes the callback.
-    pub fn call(&self, value: String) -> Message {
-        (self.inner)(value)
-    }
-
-    /// Converts the callback into a plain `Fn(String) -> Message + Clone + 'a`
-    /// closure suitable for `.on_input(...)` on arbitrary text inputs
-    /// (e.g. `iced::widget::text_input` directly).
-    pub fn into_fn(self) -> impl Fn(String) -> Message + Clone + 'a {
-        let inner = self.inner;
-        move |value: String| (inner)(value)
-    }
-}
-
-impl<'a, Message> Clone for OnInput<'a, Message> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
+        Self(Box::new(f))
     }
 }
 
@@ -194,7 +169,7 @@ where
     ///
     /// [`computed_popup`]: crate::widget::rich_editor::RichEditor::computed_popup
     pub fn on_input(mut self, on_input: impl Into<OnInput<'a, Message>>) -> Self {
-        self.inner = self.inner.on_input(on_input.into().into_fn());
+        self.inner = self.inner.on_input(on_input.into().0);
         self
     }
 
