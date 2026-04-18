@@ -1575,9 +1575,13 @@ where
                 }
             }
             Selection::Caret(caret) => {
-                // Only draw cursor caret when focused and visible
+                // Only draw cursor caret when focused and visible, and
+                // not while the popup is open — when the popup is showing,
+                // the popup's text input owns the active caret and the
+                // editor's blinking caret would compete visually.
                 if let Some(focus) = state.focus.as_ref()
                     && focus.is_cursor_visible()
+                    && state.popup_active_span.is_none()
                 {
                     let cursor = Rectangle::new(
                         caret.position() + translation,
