@@ -263,6 +263,11 @@ impl<R: rich_editor::Renderer> Content<R> {
         // Re-parse with the adapter.
         let result = computed.adapter.parse(&computed.source);
 
+        // Preserve cursor across the editor rebuild. Without this, typing
+        // in a popup resets the editor cursor to (0,0), which moves it out
+        // of the active span and dismisses the popup on next render.
+        let saved_cursor = internal.editor.cursor();
+
         // Rebuild the editor with new display content.
         let plain: String =
             result
@@ -277,6 +282,7 @@ impl<R: rich_editor::Renderer> Content<R> {
                     acc
                 });
         internal.editor = R::RichEditor::with_text(&plain);
+        internal.editor.move_to(saved_cursor);
 
         // Apply span styles from the new lines.
         let default_style = span::Style::default();
