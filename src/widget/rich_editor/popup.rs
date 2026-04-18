@@ -1,6 +1,7 @@
 //! Popup overlay types for the rich editor.
 
 use std::ops::Range;
+use std::rc::Rc;
 
 use iced_widget::text_input;
 
@@ -67,6 +68,54 @@ pub enum Action {
 /// Widget ID for the popup's text input.
 pub const INPUT_ID: &str = "markright-popup-input";
 
+/// A cloneable, reference-counted `Fn(String) -> Message` callback.
+///
+/// Used to wire popup input events from the widget to the application.
+/// `OnInput` implements both the call operator (via [`OnInput::call`])
+/// and `Clone`, and can be passed directly to
+/// [`Input::on_input`](Input::on_input) or converted into a plain
+/// closure via [`OnInput::into_fn`].
+pub struct OnInput<'a, Message> {
+    inner: Rc<dyn Fn(String) -> Message + 'a>,
+}
+
+impl<'a, Message: 'a> OnInput<'a, Message> {
+    /// Creates a new [`OnInput`] from a closure.
+    pub fn new(f: impl Fn(String) -> Message + 'a) -> Self {
+        Self { inner: Rc::new(f) }
+    }
+
+    /// Invokes the callback.
+    pub fn call(&self, value: String) -> Message {
+        (self.inner)(value)
+    }
+
+    /// Converts the callback into a plain `Fn(String) -> Message + Clone + 'a`
+    /// closure suitable for `.on_input(...)` on arbitrary text inputs
+    /// (e.g. `iced::widget::text_input` directly).
+    pub fn into_fn(self) -> impl Fn(String) -> Message + Clone + 'a {
+        let inner = self.inner;
+        move |value: String| (inner)(value)
+    }
+}
+
+impl<'a, Message> Clone for OnInput<'a, Message> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<'a, F, Message: 'a> From<F> for OnInput<'a, Message>
+where
+    F: Fn(String) -> Message + 'a,
+{
+    fn from(f: F) -> Self {
+        OnInput::new(f)
+    }
+}
+
 /// Creates a self-sizing text input for use inside a popup overlay.
 ///
 /// Unlike [`iced::widget::text_input`], the returned builder wraps the
@@ -83,8 +132,8 @@ pub const INPUT_ID: &str = "markright-popup-input";
 /// [`Paragraph::with_text`]: crate::core::text::Paragraph::with_text
 /// [`width`]: Input::width
 pub fn input<'a, Message, Theme, Renderer>(
-    placeholder: &'a str,
-    value: &'a str,
+    placeholder: &str,
+    value: &str,
 ) -> Input<'a, Message, Theme, Renderer>
 where
     Message: Clone,
@@ -95,7 +144,7 @@ where
 
     Input {
         inner,
-        value,
+        value: value.to_string(),
         text_size: None,
         font: None,
         padding: text_input::DEFAULT_PADDING,
@@ -116,7 +165,7 @@ where
     Renderer: text::Renderer,
 {
     inner: iced_widget::TextInput<'a, Message, Theme, Renderer>,
-    value: &'a str,
+    value: String,
     text_size: Option<Pixels>,
     font: Option<Renderer::Font>,
     padding: Padding,
@@ -126,7 +175,7 @@ where
 
 impl<'a, Message, Theme, Renderer> Input<'a, Message, Theme, Renderer>
 where
-    Message: Clone,
+    Message: Clone + 'a,
     Theme: text_input::Catalog,
     Renderer: text::Renderer,
 {
@@ -136,9 +185,16 @@ where
         self
     }
 
-    /// See [`iced::widget::text_input::TextInput::on_input`].
-    pub fn on_input(mut self, on_input: impl Fn(String) -> Message + 'a) -> Self {
-        self.inner = self.inner.on_input(on_input);
+    /// Sets the callback invoked when the input value changes.
+    ///
+    /// Accepts either an [`OnInput`] handle (as produced by
+    /// [`computed_popup`]) or any `Fn(String) -> Message + 'a` closure
+    /// (which gets wrapped into an [`OnInput`] automatically via
+    /// [`From`]).
+    ///
+    /// [`computed_popup`]: crate::widget::rich_editor::RichEditor::computed_popup
+    pub fn on_input(mut self, on_input: impl Into<OnInput<'a, Message>>) -> Self {
+        self.inner = self.inner.on_input(on_input.into().into_fn());
         self
     }
 
@@ -266,7 +322,7 @@ where
     Renderer: text::Renderer,
 {
     inner: Element<'a, Message, Theme, Renderer>,
-    value: &'a str,
+    value: String,
     text_size: Option<Pixels>,
     font: Option<Renderer::Font>,
     padding: Padding,
@@ -312,7 +368,7 @@ where
         let font = self.font.unwrap_or_else(|| renderer.default_font());
 
         let paragraph = <Renderer as text::Renderer>::Paragraph::with_text(Text {
-            content: self.value,
+            content: self.value.as_str(),
             bounds: Size::new(f32::INFINITY, f32::INFINITY),
             size: text_size,
             line_height: self.line_height,

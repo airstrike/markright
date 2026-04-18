@@ -443,7 +443,12 @@ where
     ///
     /// Reads spans from [`Content::computed_spans`], renders them as
     /// highlights, and shows a popup for the active span. The `build`
-    /// closure receives a pre-wired text input and the active span.
+    /// closure receives the active span and a pre-wired `on_input`
+    /// callback that emits [`computed_spans::Action::Input`]. It should
+    /// return any [`Element`] — typically built from
+    /// [`popup::input(..)`](popup::input) for auto-sized text-input
+    /// behavior, but a slider, custom widget, or any other element
+    /// works too.
     ///
     /// Requires [`Content::from_computed`].
     ///
@@ -456,11 +461,11 @@ where
         build: F,
     ) -> Self
     where
-        Message: Clone,
+        Message: Clone + 'a,
         Theme: iced_widget::text_input::Catalog,
         F: FnOnce(
-            iced_widget::TextInput<'a, Message, Theme, Renderer>,
             &computed_spans::Span,
+            popup::OnInput<'a, Message>,
         ) -> Element<'a, Message, Theme, Renderer>,
     {
         let spans = self.content.computed_spans();
@@ -490,19 +495,23 @@ where
             let active_id = active_span.id;
             let on_action = Rc::new(on_action);
 
-            let on_input = on_action.clone();
-            let input =
-                iced_widget::TextInput::new(&active_span.placeholder, &active_span.source_value)
-                    .on_input(move |t| {
-                        on_input(computed_spans::Action::Input {
-                            id: active_id,
-                            value: t,
-                        })
+            // Pre-wired on_input callback for the build closure.
+            let on_input_cb: popup::OnInput<'a, Message> = {
+                let on_action = on_action.clone();
+                popup::OnInput::new(move |value: String| {
+                    on_action(computed_spans::Action::Input {
+                        id: active_id,
+                        value,
                     })
-                    .id(popup::INPUT_ID);
+                })
+            };
 
-            self.popup_element = Some(build(input, active_span));
+            self.popup_element = Some(build(active_span, on_input_cb));
 
+            // Keep translating popup::Action → computed_spans::Action
+            // for Confirm/Dismiss/Delete, which are produced by the
+            // overlay's keyboard handling (Enter/Escape) and still need
+            // to be routed through `on_action`.
             let on_confirm = on_action.clone();
             let on_dismiss = on_action.clone();
             let on_delete = on_action.clone();
