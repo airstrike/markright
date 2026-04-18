@@ -1179,7 +1179,11 @@ where
                                     true
                                 }
                                 // Block insertion strictly inside.
-                                Binding::Insert(_) if col > span.range.start => true,
+                                Binding::Insert(_)
+                                    if col > span.range.start && col < span.range.end =>
+                                {
+                                    true
+                                }
                                 Binding::Enter { .. }
                                     if col > span.range.start && col < span.range.end =>
                                 {

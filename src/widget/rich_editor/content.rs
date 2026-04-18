@@ -718,16 +718,30 @@ impl<R: rich_editor::Renderer> Internal<R> {
         match edit {
             Edit::Insert(c) => {
                 let style = self.resolve_style();
+                #[cfg(feature = "computed_spans")]
+                let had_selection = self.editor.cursor().selection.is_some();
+                #[cfg(feature = "computed_spans")]
+                let cursor_before = self.editor.cursor();
                 let mut ops = self.drain_selection();
                 self.sync_paragraphs(&ops);
                 let op = operation::insert(&mut self.editor, c, style);
                 ops.push(op);
                 self.record_group(ops);
                 #[cfg(feature = "computed_spans")]
-                self.sync_computed_source();
+                if !had_selection {
+                    self.sync_computed_source(Some((
+                        cursor_before.position.line,
+                        cursor_before.position.column,
+                        c.len_utf8() as isize,
+                    )));
+                }
             }
             Edit::Paste(ref text) => {
                 let style = self.resolve_style();
+                #[cfg(feature = "computed_spans")]
+                let had_selection = self.editor.cursor().selection.is_some();
+                #[cfg(feature = "computed_spans")]
+                let cursor_before = self.editor.cursor();
                 let mut ops = self.drain_selection();
                 self.sync_paragraphs(&ops);
                 let paste_ops = operation::paste(&mut self.editor, text.clone(), style);
@@ -736,7 +750,13 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 self.record_group(ops);
                 self.pending_style = None;
                 #[cfg(feature = "computed_spans")]
-                self.sync_computed_source();
+                if !had_selection && !text.contains('\n') {
+                    self.sync_computed_source(Some((
+                        cursor_before.position.line,
+                        cursor_before.position.column,
+                        text.len() as isize,
+                    )));
+                }
             }
             Edit::Enter { inherit } => {
                 // Capture the style at the cursor so the new line inherits it.
@@ -750,24 +770,47 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 ops.push(op);
                 self.record_group(ops);
                 self.pending_style = Some(style);
-                #[cfg(feature = "computed_spans")]
-                self.sync_computed_source();
+                // Enter splits a line — multi-line shift is non-trivial.
+                // Skip sync for now; chips remain at pre-Enter positions
+                // until the next sync-friendly edit.
             }
             Edit::Backspace => {
+                #[cfg(feature = "computed_spans")]
+                let had_selection = self.editor.cursor().selection.is_some();
+                #[cfg(feature = "computed_spans")]
+                let cursor_before = self.editor.cursor();
                 let ops = self.backspace_list_aware();
                 self.sync_paragraphs(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
                 #[cfg(feature = "computed_spans")]
-                self.sync_computed_source();
+                if !had_selection && cursor_before.position.column > 0 {
+                    self.sync_computed_source(Some((
+                        cursor_before.position.line,
+                        cursor_before.position.column,
+                        -1,
+                    )));
+                }
             }
             Edit::Delete => {
+                #[cfg(feature = "computed_spans")]
+                let had_selection = self.editor.cursor().selection.is_some();
+                #[cfg(feature = "computed_spans")]
+                let cursor_before = self.editor.cursor();
                 let ops = operation::delete(&mut self.editor);
                 self.sync_paragraphs(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
                 #[cfg(feature = "computed_spans")]
-                self.sync_computed_source();
+                if !had_selection {
+                    // Delete removes the char AT cursor; content from
+                    // (cursor + 1) onward shifts left by 1.
+                    self.sync_computed_source(Some((
+                        cursor_before.position.line,
+                        cursor_before.position.column + 1,
+                        -1,
+                    )));
+                }
             }
             Edit::Format(ref fmt) => {
                 let ops = operation::format(&mut self.editor, fmt, &self.paragraphs, &self.theme);
@@ -800,9 +843,27 @@ impl<R: rich_editor::Renderer> Internal<R> {
     /// are atomic at the binding layer), so its column range is still
     /// valid — we just swap the chip's display text for its source text.
     #[cfg(feature = "computed_spans")]
-    fn sync_computed_source(&mut self) {
+    fn sync_computed_source(&mut self, shift: Option<(usize, usize, isize)>) {
         if self.computed.is_none() {
             return;
+        }
+
+        // Apply per-edit shift to existing spans BEFORE walking the new
+        // display: the post-edit display has chips at shifted positions,
+        // and the recorded display_ranges are still in pre-edit coords.
+        // Without this, walking the new display with stale ranges
+        // mis-aligns chip boundaries — the reconstruction swallows newly
+        // inserted plain-text characters or duplicates chip-display chars.
+        if let Some((line, threshold, delta)) = shift
+            && let Some(computed) = self.computed.as_mut()
+        {
+            for span in &mut computed.spans {
+                if span.line == line && span.display_range.start >= threshold {
+                    let start = (span.display_range.start as isize + delta).max(0) as usize;
+                    let end = (span.display_range.end as isize + delta).max(0) as usize;
+                    span.display_range = start..end;
+                }
+            }
         }
 
         let line_count = self.editor.line_count();
@@ -1212,8 +1273,11 @@ impl<R: rich_editor::Renderer> Internal<R> {
 
         self.history.push_redo(redo_ops);
         self.pending_style = None;
-        #[cfg(feature = "computed_spans")]
-        self.sync_computed_source();
+        // Undo/redo can apply arbitrary ops including SplitLine/MergeLine.
+        // Without per-op shift info we can't reconstruct correctly with
+        // stale spans; skip sync. Spans rebuild on the next sync-friendly
+        // edit, and chip styling for the restored state is unchanged
+        // (the editor text itself is correct via op replay).
     }
 
     fn perform_redo(&mut self) {
@@ -1233,7 +1297,10 @@ impl<R: rich_editor::Renderer> Internal<R> {
 
         self.history.push_undo(undo_ops);
         self.pending_style = None;
-        #[cfg(feature = "computed_spans")]
-        self.sync_computed_source();
+        // Undo/redo can apply arbitrary ops including SplitLine/MergeLine.
+        // Without per-op shift info we can't reconstruct correctly with
+        // stale spans; skip sync. Spans rebuild on the next sync-friendly
+        // edit, and chip styling for the restored state is unchanged
+        // (the editor text itself is correct via op replay).
     }
 }
