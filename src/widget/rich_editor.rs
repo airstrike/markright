@@ -1610,6 +1610,14 @@ where
         // Detect transitions: capture original on entering a new span,
         // clear when leaving.
         if parent_state.popup_active_span != active_ref {
+            // When the popup opens from the closed state, reset the popup
+            // tree so focus / cursor state from a prior popup session
+            // doesn't carry over (e.g. a stuck is_focused=Some on the
+            // inner text_input after the user previously clicked it).
+            let opening = parent_state.popup_active_span.is_none() && active_ref.is_some();
+            if opening && let Some(popup) = &self.popup_element {
+                children[0] = widget::Tree::new(popup);
+            }
             if let Some(span) = active {
                 parent_state.popup_original = span.value.to_string();
             } else {
