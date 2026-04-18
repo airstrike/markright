@@ -204,21 +204,67 @@ impl<R: rich_editor::Renderer> Content<R> {
         use super::computed_spans::Action;
 
         let mut internal = self.0.borrow_mut();
-        let Some(computed) = &mut internal.computed else {
+        if internal.computed.is_none() {
             return;
-        };
+        }
 
         match action {
             Action::Input { id, value } => {
-                if let Some(span) = computed.spans.iter_mut().find(|s| s.id == id) {
-                    span.source_value = value;
+                // Remember which boundary of the edited chip the main
+                // editor cursor is pinned to, so we can re-pin after the
+                // rebuild. Without this, popup edits that shrink the
+                // chip's display (e.g. `{=1+3}` → `{=1}` shortening 3
+                // chars back to 1) can leave the cursor past the new
+                // chip.end — outside any span — which makes
+                // `computed_popup()` fail to build the popup element
+                // and dismisses the popup mid-edit.
+                let anchor = {
+                    let cursor = internal.editor.cursor();
+                    let computed = internal.computed.as_ref().expect("checked above");
+                    computed.spans.iter().find(|s| s.id == id).and_then(|span| {
+                        if cursor.position.line != span.line {
+                            None
+                        } else if cursor.position.column == span.display_range.start {
+                            Some(ChipAnchor::Start)
+                        } else if cursor.position.column == span.display_range.end {
+                            Some(ChipAnchor::End)
+                        } else {
+                            None
+                        }
+                    })
+                };
+
+                {
+                    let computed = internal.computed.as_mut().expect("checked above");
+                    if let Some(span) = computed.spans.iter_mut().find(|s| s.id == id) {
+                        span.source_value = value;
+                    }
                 }
                 Self::rebuild_from_computed(&mut internal);
+
+                if let Some(anchor) = anchor {
+                    let column_opt = internal
+                        .computed
+                        .as_ref()
+                        .and_then(|c| c.spans.iter().find(|s| s.id == id))
+                        .map(|span| match anchor {
+                            ChipAnchor::Start => (span.line, span.display_range.start),
+                            ChipAnchor::End => (span.line, span.display_range.end),
+                        });
+                    if let Some((line, column)) = column_opt {
+                        use crate::core::text::rich_editor::Editor as _;
+                        internal.editor.move_to(Cursor {
+                            position: Position { line, column },
+                            selection: None,
+                        });
+                    }
+                }
             }
             Action::Confirm { .. } => {
                 // Already applied via Input; nothing to do.
             }
             Action::Dismiss { id, original } => {
+                let computed = internal.computed.as_mut().expect("checked above");
                 if let Some(span) = computed.spans.iter_mut().find(|s| s.id == id) {
                     span.source_value = original;
                 }
@@ -685,6 +731,14 @@ where
     }
 }
 
+/// Which side of the edited chip the cursor was pinned to before a
+/// popup edit, so we can re-pin to the same side after the rebuild.
+#[cfg(feature = "computed_spans")]
+enum ChipAnchor {
+    Start,
+    End,
+}
+
 #[cfg(feature = "computed_spans")]
 pub(crate) struct Computed {
     source: String,
@@ -888,11 +942,27 @@ impl<R: rich_editor::Renderer> Internal<R> {
 
             let mut last_end = 0usize;
             for span in line_spans {
-                if span.display_range.start > last_end {
-                    new_source.push_str(&display_text[last_end..span.display_range.start]);
+                // The stored display_range may be stale (e.g. edits
+                // deleted the chip's display characters) or shifted
+                // past the post-edit display length. Clamp to actual
+                // bounds and to char boundaries; skip spans whose
+                // content has been deleted.
+                let mut start = span.display_range.start.min(display_text.len());
+                let mut end = span.display_range.end.min(display_text.len());
+                while start > 0 && !display_text.is_char_boundary(start) {
+                    start -= 1;
+                }
+                while end > start && !display_text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                if start < last_end || start >= display_text.len() {
+                    continue;
+                }
+                if start > last_end {
+                    new_source.push_str(&display_text[last_end..start]);
                 }
                 new_source.push_str(&span.source_value);
-                last_end = span.display_range.end;
+                last_end = end;
             }
             if last_end < display_text.len() {
                 new_source.push_str(&display_text[last_end..]);
