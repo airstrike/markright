@@ -274,7 +274,8 @@ where
 
     /// Sets the mouse cursor shown when hovering over a read-only editor.
     ///
-    /// By default, a read-only editor (no `on_action`) shows [`NotAllowed`](mouse::Interaction::NotAllowed).
+    /// By default, a read-only editor (no `on_action`) shows the regular
+    /// pointer cursor — same as non-interactive content.
     pub fn interaction(mut self, interaction: mouse::Interaction) -> Self {
         self.interaction = Some(interaction);
         self
@@ -1681,7 +1682,7 @@ where
 
         if cursor.is_over(layout.bounds()) {
             if is_disabled {
-                self.interaction.unwrap_or(mouse::Interaction::NotAllowed)
+                self.interaction.unwrap_or_default()
             } else {
                 mouse::Interaction::Text
             }
