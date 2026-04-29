@@ -1,0 +1,11 @@
+[package]
+name = "inlinecode"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+markright = { path = "../.." }
+markright_core.workspace = true
+iced.workspace = true
+fount = { git = "https://github.com/airstrike/fount" }
