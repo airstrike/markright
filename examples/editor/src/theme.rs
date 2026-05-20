@@ -248,8 +248,59 @@ pub mod combo_box {
                 radius: 4.0.into(),
             },
             text_color: palette.background.base.text,
-            selected_text_color: palette.primary.base.text,
-            selected_background: Background::Color(palette.primary.base.color),
+            selected_text_color: palette.background.base.text,
+            selected_background: Background::Color(palette.background.stronger.color),
+            shadow: Shadow::default(),
+        }
+    }
+}
+
+pub mod pick_list {
+    use iced::widget::{overlay::menu, pick_list};
+    use iced::{Background, Border, Color, Shadow, Theme};
+
+    /// Toolbar pick_list — transparent background, no border at rest, subtle hover.
+    pub fn toolbar(theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+        let palette = theme.palette();
+        let (background, border) = match status {
+            pick_list::Status::Hovered | pick_list::Status::Opened { .. } => (
+                Background::Color(palette.background.base.text.scale_alpha(0.04)),
+                Border {
+                    color: palette.background.strong.color.scale_alpha(0.3),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+            ),
+            _ => (
+                Background::Color(Color::TRANSPARENT),
+                Border {
+                    radius: 4.0.into(),
+                    ..Border::default()
+                },
+            ),
+        };
+        pick_list::Style {
+            text_color: palette.background.base.text,
+            placeholder_color: palette.background.base.text.scale_alpha(0.5),
+            handle_color: palette.background.base.text,
+            background,
+            border,
+        }
+    }
+
+    /// Toolbar pick_list dropdown menu — borderless, rounded, matches toolbar palette.
+    pub fn toolbar_menu(theme: &Theme) -> menu::Style {
+        let palette = theme.palette();
+        menu::Style {
+            background: Background::Color(palette.background.weak.color),
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 4.0.into(),
+            },
+            text_color: palette.background.base.text,
+            selected_text_color: palette.background.base.text,
+            selected_background: Background::Color(palette.background.stronger.color),
             shadow: Shadow::default(),
         }
     }

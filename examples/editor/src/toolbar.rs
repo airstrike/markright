@@ -460,7 +460,9 @@ pub fn view<'a>(
         .on_select(|n: ParaName| Message::Format(Format::SetName(n.0)))
         .width(110)
         .text_size(12)
-        .padding([2, 6]);
+        .padding([6, 8])
+        .style(theme::pick_list::toolbar)
+        .menu_style(theme::pick_list::toolbar_menu);
     let para_group = group(para_picker);
 
     let current_font = font_name(ctx.character.font);
