@@ -1,8 +1,7 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 8614967daa3cb4481d348f2864a2052bd4835fde5712c16291e5c2a32d14cfe0
-use iced::Font;
-use iced::widget::{Text, text};
+// b40caf9630c0357a679ee232fcbf39ec6ccc123e6bdf48711d79b386dd5f3fb8
+use iced::widget::text::{self, Text};
 
 pub const FONT: &[u8] = include_bytes!("../fonts/lucide.ttf");
 
@@ -10,6 +9,8 @@ pub const FONT: &[u8] = include_bytes!("../fonts/lucide.ttf");
 /// Use this to populate an icon-picker widget.
 #[allow(dead_code)]
 pub const ALL_ICONS: &[(&str, &str)] = &[
+    ("a_arrow_down", "\u{E585}"),
+    ("a_arrow_up", "\u{E586}"),
     ("bold", "\u{E05D}"),
     ("clipboard_copy", "\u{E225}"),
     ("folder_open", "\u{E247}"),
@@ -32,83 +33,157 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("whole_word", "\u{E3DF}"),
 ];
 
-pub fn bold<'a>() -> Text<'a> {
+pub fn a_arrow_down<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
+    icon("\u{E585}")
+}
+
+pub fn a_arrow_up<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
+    icon("\u{E586}")
+}
+
+pub fn bold<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E05D}")
 }
 
-pub fn clipboard_copy<'a>() -> Text<'a> {
+pub fn clipboard_copy<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E225}")
 }
 
-pub fn folder_open<'a>() -> Text<'a> {
+pub fn folder_open<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E247}")
 }
 
-pub fn indent_decrease<'a>() -> Text<'a> {
+pub fn indent_decrease<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E107}")
 }
 
-pub fn indent_increase<'a>() -> Text<'a> {
+pub fn indent_increase<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E108}")
 }
 
-pub fn italic<'a>() -> Text<'a> {
+pub fn italic<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E0FB}")
 }
 
-pub fn list<'a>() -> Text<'a> {
+pub fn list<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E106}")
 }
 
-pub fn list_chevrons_up_down<'a>() -> Text<'a> {
+pub fn list_chevrons_up_down<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E696}")
 }
 
-pub fn list_ordered<'a>() -> Text<'a> {
+pub fn list_ordered<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E1D1}")
 }
 
-pub fn moon<'a>() -> Text<'a> {
+pub fn moon<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E11E}")
 }
 
-pub fn redo<'a>() -> Text<'a> {
+pub fn redo<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E143}")
 }
 
-pub fn save<'a>() -> Text<'a> {
+pub fn save<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E14D}")
 }
 
-pub fn sun<'a>() -> Text<'a> {
+pub fn sun<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E178}")
 }
 
-pub fn text_align_center<'a>() -> Text<'a> {
+pub fn text_align_center<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E182}")
 }
 
-pub fn text_align_end<'a>() -> Text<'a> {
+pub fn text_align_end<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E183}")
 }
 
-pub fn text_align_justify<'a>() -> Text<'a> {
+pub fn text_align_justify<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E184}")
 }
 
-pub fn text_align_start<'a>() -> Text<'a> {
+pub fn text_align_start<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E185}")
 }
 
-pub fn underline<'a>() -> Text<'a> {
+pub fn underline<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E19A}")
 }
 
-pub fn undo<'a>() -> Text<'a> {
+pub fn undo<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E19B}")
 }
 
-pub fn whole_word<'a>() -> Text<'a> {
+pub fn whole_word<'a, Theme>() -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     icon("\u{E3DF}")
 }
 
@@ -119,10 +194,16 @@ pub fn whole_word<'a>() -> Text<'a> {
 ///     button(render(cp)).on_press(Msg::Pick(name.to_string()))
 /// }
 /// ```
-pub fn render(codepoint: &str) -> Text<'_> {
-    text(codepoint).font(Font::with_family("lucide"))
+pub fn render<'a, Theme>(codepoint: &'a str) -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
+    Text::new(codepoint).font("lucide")
 }
 
-fn icon(codepoint: &str) -> Text<'_> {
+fn icon<'a, Theme>(codepoint: &'a str) -> Text<'a, Theme>
+where
+    Theme: text::Catalog + 'a,
+{
     render(codepoint)
 }

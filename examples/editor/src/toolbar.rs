@@ -49,6 +49,30 @@ impl std::fmt::Display for ParaName {
     }
 }
 
+/// Typographic font-size ladder shared by the size combo box and the step
+/// buttons. Values follow the conventional point-size progression used by
+/// most word processors.
+const SIZE_LADDER: &[u32] = &[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72];
+
+/// Next ladder value strictly greater than `current`, or `current` if already at the top.
+fn step_size_up(current: f32) -> f32 {
+    SIZE_LADDER
+        .iter()
+        .find(|&&s| (s as f32) > current)
+        .map(|&s| s as f32)
+        .unwrap_or(current)
+}
+
+/// Next ladder value strictly less than `current`, or `current` if already at the bottom.
+fn step_size_down(current: f32) -> f32 {
+    SIZE_LADDER
+        .iter()
+        .rev()
+        .find(|&&s| (s as f32) < current)
+        .map(|&s| s as f32)
+        .unwrap_or(current)
+}
+
 const COLOR_SWATCHES: &[Option<Color>] = &[
     None,
     Some(Color::BLACK),
@@ -73,12 +97,7 @@ pub struct State {
 
 impl Default for State {
     fn default() -> Self {
-        let size_list = combo_box::State::new(
-            [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72]
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-        );
+        let size_list = combo_box::State::new(SIZE_LADDER.iter().map(|s| s.to_string()).collect());
         Self {
             font_list: combo_box::State::new(vec!["IBM Plex Sans".to_string()]),
             size_list,
@@ -490,8 +509,18 @@ pub fn view<'a>(
     .input_style(theme::combo_box::toolbar)
     .menu_style(theme::combo_box::toolbar_menu);
 
+    let size_down_btn = button(icon::a_arrow_down().size(16))
+        .padding([4, 8])
+        .style(theme::button::icon)
+        .on_press(Message::Format(Format::SetFontSize(step_size_down(size))));
+
+    let size_up_btn = button(icon::a_arrow_up().size(16))
+        .padding([4, 8])
+        .style(theme::button::icon)
+        .on_press(Message::Format(Format::SetFontSize(step_size_up(size))));
+
     let font_group = group(
-        row![font_selector, size_selector]
+        row![font_selector, size_selector, size_down_btn, size_up_btn]
             .spacing(GROUP_SPACING)
             .align_y(iced::Alignment::Center),
     );
