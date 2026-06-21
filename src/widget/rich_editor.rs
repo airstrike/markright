@@ -1392,79 +1392,102 @@ where
                     height: bottom - top,
                 };
 
+                let fallback_fill = match para.name {
+                    markright_core::Name::CODE_BLOCK => style.code_background,
+                    markright_core::Name::RULE => style.rule_color,
+                    _ => style.value,
+                };
+                let fallback_border = match para.name {
+                    markright_core::Name::BLOCK_QUOTE => style.quote_border,
+                    _ => style.value,
+                };
+
                 // Draw fill
                 if let Some(fill) = &para.style.fill {
+                    let padded = Rectangle {
+                        x: para_rect.x - fill.padding.left,
+                        y: para_rect.y - fill.padding.top,
+                        width: para_rect.width + fill.padding.left + fill.padding.right,
+                        height: para_rect.height + fill.padding.top + fill.padding.bottom,
+                    };
                     let fill_rect = match fill.height {
-                        None => para_rect,
+                        None => padded,
                         Some(h) => {
-                            let y = para_rect.y + (para_rect.height - h) / 2.0;
+                            let y = padded.y + (padded.height - h) / 2.0;
                             Rectangle {
                                 y,
                                 height: h,
-                                ..para_rect
+                                ..padded
                             }
                         }
                     };
                     renderer.fill_quad(
                         renderer::Quad {
                             bounds: fill_rect,
+                            border: crate::core::Border {
+                                radius: fill.radius.into(),
+                                ..Default::default()
+                            },
                             ..renderer::Quad::default()
                         },
-                        fill.color,
+                        fill.color.unwrap_or(fallback_fill),
                     );
                 }
 
                 // Draw borders
                 if let Some(borders) = &para.style.borders {
-                    if let Some(b) = &borders.top {
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: Rectangle {
+                    for (b, rect) in [
+                        (
+                            borders.top.as_ref(),
+                            Rectangle {
+                                height: 0.0,
+                                ..para_rect
+                            },
+                        ),
+                        (
+                            borders.bottom.as_ref(),
+                            Rectangle {
+                                y: para_rect.y + para_rect.height,
+                                height: 0.0,
+                                ..para_rect
+                            },
+                        ),
+                        (
+                            borders.left.as_ref(),
+                            Rectangle {
+                                width: 0.0,
+                                ..para_rect
+                            },
+                        ),
+                        (
+                            borders.right.as_ref(),
+                            Rectangle {
+                                x: para_rect.x + para_rect.width,
+                                width: 0.0,
+                                ..para_rect
+                            },
+                        ),
+                    ] {
+                        if let Some(b) = b {
+                            let rect = if rect.height == 0.0 {
+                                Rectangle {
                                     height: b.width,
-                                    ..para_rect
-                                },
-                                ..renderer::Quad::default()
-                            },
-                            b.color,
-                        );
-                    }
-                    if let Some(b) = &borders.bottom {
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: Rectangle {
-                                    y: para_rect.y + para_rect.height - b.width,
-                                    height: b.width,
-                                    ..para_rect
-                                },
-                                ..renderer::Quad::default()
-                            },
-                            b.color,
-                        );
-                    }
-                    if let Some(b) = &borders.left {
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: Rectangle {
+                                    ..rect
+                                }
+                            } else {
+                                Rectangle {
                                     width: b.width,
-                                    ..para_rect
+                                    ..rect
+                                }
+                            };
+                            renderer.fill_quad(
+                                renderer::Quad {
+                                    bounds: rect,
+                                    ..renderer::Quad::default()
                                 },
-                                ..renderer::Quad::default()
-                            },
-                            b.color,
-                        );
-                    }
-                    if let Some(b) = &borders.right {
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: Rectangle {
-                                    x: para_rect.x + para_rect.width - b.width,
-                                    width: b.width,
-                                    ..para_rect
-                                },
-                                ..renderer::Quad::default()
-                            },
-                            b.color,
-                        );
+                                b.color.unwrap_or(fallback_border),
+                            );
+                        }
                     }
                 }
             }

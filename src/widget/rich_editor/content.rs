@@ -91,9 +91,14 @@ impl<R: rich_editor::Renderer> Content<R> {
     }
 
     /// Set the theme used for paragraph name → style mapping.
-    pub fn with_theme(self, theme: Theme) -> Self {
-        self.0.borrow_mut().theme = theme;
+    pub fn with_theme(self, theme: impl Into<Theme>) -> Self {
+        self.0.borrow_mut().theme = theme.into();
         self
+    }
+
+    /// Replace the theme on an existing content.
+    pub fn set_theme(&self, theme: impl Into<Theme>) {
+        self.0.borrow_mut().theme = theme.into();
     }
 
     /// Create a [`Content`] from styled lines.

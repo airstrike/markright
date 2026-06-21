@@ -184,11 +184,12 @@ fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
         props.push(format!("list={s}"));
     }
 
-    // Fill — only emit if different from theme default
+    // Fill — only emit if it has an explicit color and differs from theme default
     if let Some(fill) = &ps.fill
         && ps.fill != base.style.fill
+        && let Some(color) = fill.color
     {
-        let hex = format_color(fill.color);
+        let hex = format_color(color);
         if let Some(h) = fill.height {
             props.push(format!("fill={hex}:{}", format_float(h)));
         } else {
@@ -196,37 +197,25 @@ fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
         }
     }
 
-    // Borders — only emit if different from theme default
+    // Borders — only emit sides with explicit colors that differ from theme default
     if let Some(borders) = &ps.borders
         && ps.borders != base.style.borders
     {
-        if let Some(b) = &borders.top {
-            props.push(format!(
-                "border-top={}:{}",
-                format_float(b.width),
-                format_color(b.color)
-            ));
-        }
-        if let Some(b) = &borders.right {
-            props.push(format!(
-                "border-right={}:{}",
-                format_float(b.width),
-                format_color(b.color)
-            ));
-        }
-        if let Some(b) = &borders.bottom {
-            props.push(format!(
-                "border-bottom={}:{}",
-                format_float(b.width),
-                format_color(b.color)
-            ));
-        }
-        if let Some(b) = &borders.left {
-            props.push(format!(
-                "border-left={}:{}",
-                format_float(b.width),
-                format_color(b.color)
-            ));
+        for (side, b) in [
+            ("top", borders.top.as_ref()),
+            ("right", borders.right.as_ref()),
+            ("bottom", borders.bottom.as_ref()),
+            ("left", borders.left.as_ref()),
+        ] {
+            if let Some(b) = b
+                && let Some(color) = b.color
+            {
+                props.push(format!(
+                    "border-{side}={}:{}",
+                    format_float(b.width),
+                    format_color(color)
+                ));
+            }
         }
     }
 
@@ -585,14 +574,15 @@ fn parse_fill(val: &str) -> Result<paragraph::Fill, ParseError> {
         let color = parse_color(hex)?;
         let height = parse_f32(height_str)?;
         Ok(paragraph::Fill {
-            color,
+            color: Some(color),
             height: Some(height),
+            ..Default::default()
         })
     } else {
         let color = parse_color(val)?;
         Ok(paragraph::Fill {
-            color,
-            height: None,
+            color: Some(color),
+            ..Default::default()
         })
     }
 }
@@ -604,7 +594,10 @@ fn parse_border(val: &str) -> Result<paragraph::Border, ParseError> {
     })?;
     let width = parse_f32(width_str)?;
     let color = parse_color(hex)?;
-    Ok(paragraph::Border { color, width })
+    Ok(paragraph::Border {
+        color: Some(color),
+        width,
+    })
 }
 
 fn parse_f32(val: &str) -> Result<f32, ParseError> {

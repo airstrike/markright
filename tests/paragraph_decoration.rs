@@ -25,8 +25,7 @@ fn code_block_fill_round_trips() {
         "code-block fill should be full background"
     );
 
-    // Color should be #eeeeee
-    let c = fill.color;
+    let c = fill.color.expect("explicit fill color from .mr format");
     assert!(
         (c.r - 0xee as f32 / 255.0).abs() < 0.01
             && (c.g - 0xee as f32 / 255.0).abs() < 0.01

@@ -17,6 +17,12 @@ pub struct Style {
     pub value: Color,
     /// The selection color.
     pub selection: Color,
+    /// Fallback fill color for code-block paragraphs.
+    pub code_background: Color,
+    /// Fallback border color for block-quote paragraphs.
+    pub quote_border: Color,
+    /// Fallback fill color for horizontal rules.
+    pub rule_color: Color,
 }
 
 /// The theme catalog for a [`RichEditor`].
@@ -60,6 +66,9 @@ pub fn default(theme: &Theme, status: Status) -> Style {
         placeholder: palette.secondary.base.color,
         value: palette.background.base.text,
         selection: palette.primary.weak.color,
+        code_background: palette.background.strong.color,
+        quote_border: palette.background.strongest.color,
+        rule_color: palette.background.strongest.color,
     };
 
     match status {

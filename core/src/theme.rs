@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use iced_core::Color;
 use iced_core::text::rich_editor::span;
 
 use crate::paragraph::{self, Border, Borders, Fill, Name, OverrideSet, Paragraph};
@@ -10,6 +9,7 @@ use crate::paragraph::{self, Border, Borders, Fill, Name, OverrideSet, Paragraph
 /// When a user changes a paragraph's name via `SetName`, `Theme::apply`
 /// copies theme defaults for the new name while preserving any fields
 /// the user has explicitly overridden (tracked by `OverrideSet`).
+#[derive(Clone)]
 pub struct Theme {
     entries: HashMap<Name, Paragraph>,
     fallback: Paragraph,
@@ -133,7 +133,7 @@ impl Default for Theme {
         entries.insert(Name::HEADING_5, heading(Name::HEADING_5, 18.0, 10.0, 4.0));
         entries.insert(Name::HEADING_6, heading(Name::HEADING_6, 16.0, 8.0, 4.0));
 
-        // CODE_BLOCK: sb=12 sa=12, size=14, monospace, bg #eee
+        // CODE_BLOCK: sb=12 sa=12, size=14, monospace, fill (color from widget style)
         entries.insert(
             Name::CODE_BLOCK,
             Paragraph::new(
@@ -147,19 +147,21 @@ impl Default for Theme {
                     space_before: Some(12.0),
                     spacing_after: Some(12.0),
                     fill: Some(Fill {
-                        color: Color::from_rgb(
-                            0xee as f32 / 255.0,
-                            0xee as f32 / 255.0,
-                            0xee as f32 / 255.0,
-                        ),
+                        color: None,
                         height: None,
+                        radius: 4.0,
+                        padding: iced_core::Padding::new(8.0),
                     }),
+                    indent: paragraph::Indent {
+                        left: 8.0,
+                        ..paragraph::Indent::default()
+                    },
                     ..paragraph::Style::default()
                 },
             ),
         );
 
-        // BLOCK_QUOTE: sb=8 sa=8, left border 3px #ccc
+        // BLOCK_QUOTE: sb=8 sa=8, left border 3px (color from widget style)
         entries.insert(
             Name::BLOCK_QUOTE,
             Paragraph::new(
@@ -173,11 +175,7 @@ impl Default for Theme {
                     },
                     borders: Some(Box::new(Borders {
                         left: Some(Border {
-                            color: Color::from_rgb(
-                                0xcc as f32 / 255.0,
-                                0xcc as f32 / 255.0,
-                                0xcc as f32 / 255.0,
-                            ),
+                            color: None,
                             width: 3.0,
                         }),
                         ..Borders::default()
@@ -187,7 +185,7 @@ impl Default for Theme {
             ),
         );
 
-        // RULE: sb=12 sa=12, hairline 1px #ccc
+        // RULE: sb=12 sa=12, hairline 1px (color from widget style)
         entries.insert(
             Name::RULE,
             Paragraph::new(
@@ -196,12 +194,10 @@ impl Default for Theme {
                     space_before: Some(12.0),
                     spacing_after: Some(12.0),
                     fill: Some(Fill {
-                        color: Color::from_rgb(
-                            0xcc as f32 / 255.0,
-                            0xcc as f32 / 255.0,
-                            0xcc as f32 / 255.0,
-                        ),
+                        color: None,
                         height: Some(1.0),
+                        radius: 0.0,
+                        padding: iced_core::Padding::ZERO,
                     }),
                     ..paragraph::Style::default()
                 },
