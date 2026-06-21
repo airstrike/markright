@@ -1445,6 +1445,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "iced_core",
  "iced_debug",
@@ -1459,6 +1460,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "bitflags 2.13.0",
  "bytes",
@@ -1476,6 +1478,7 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -1485,6 +1488,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "futures",
  "iced_core",
@@ -1498,6 +1502,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "bitflags 2.13.0",
  "bytemuck",
@@ -1527,6 +1532,7 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -1535,6 +1541,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -1546,6 +1553,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "bytes",
  "iced_core",
@@ -1556,6 +1564,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -1571,6 +1580,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "bitflags 2.13.0",
  "bytemuck",
@@ -1587,6 +1597,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "iced_renderer",
  "iced_runtime",
@@ -1600,6 +1611,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.15.0-dev"
+source = "git+https://github.com/airstrike/iced?branch=dev#e5c85a8316bbd1ce3793c40052d92ac028f89fad"
 dependencies = [
  "arboard",
  "iced_debug",
