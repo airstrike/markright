@@ -570,17 +570,20 @@ fn select_all_font_persists_to_empty_paragraph() {
     c.perform(Edit::Insert('d'));
     c.perform(Edit::Insert('o'));
 
-    // Every span on every line should be Palatino
+    // Every line should resolve to Palatino. Under sparse semantics,
+    // the font lives on the paragraph defaults; per-span runs are
+    // None for fields that match defaults.
+    let palatino = Some(Font::new("Palatino"));
     for line_idx in 0..c.line_count() {
         let styled = c.styled_line(line_idx).expect("line should exist");
+        let para_font = styled.paragraph.style.style.font;
         for run in &styled.runs {
+            let effective = run.style.font.or(para_font);
             assert_eq!(
-                run.style.font,
-                Some(Font::new("Palatino")),
-                "line {} run {:?} should have Palatino, got {:?}",
-                line_idx,
-                run.range,
-                run.style.font,
+                effective, palatino,
+                "line {} run {:?} should resolve to Palatino, got {:?} \
+                 (span: {:?}, paragraph: {:?})",
+                line_idx, run.range, effective, run.style.font, para_font,
             );
         }
     }

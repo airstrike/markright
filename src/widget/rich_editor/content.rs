@@ -428,7 +428,9 @@ impl<R: rich_editor::Renderer> Content<R> {
                 let line = internal.editor.line(i);
                 let len = line.as_ref().map(|l| l.text.len()).unwrap_or(0);
                 let mut styled = markright_core::read_styled_line(&internal.editor, i, 0..len);
-                styled.paragraph = internal.paragraph(i).clone();
+                let mut para = internal.paragraph(i).clone();
+                para.style.style = internal.editor.paragraph_style_at(i).style;
+                styled.paragraph = para;
                 styled
             })
             .collect()
@@ -515,9 +517,10 @@ impl<R: rich_editor::Renderer> Content<R> {
             let col = editor_cursor.position.column;
             internal.editor.span_style_at(line, col.saturating_sub(1))
         };
+        let line = editor_cursor.position.line;
+        internal.fill_from_paragraph_defaults(&mut char_style, line);
         internal.fill_from_defaults(&mut char_style);
 
-        let line = editor_cursor.position.line;
         let para = internal.paragraph(line).clone();
 
         cursor::Context {
@@ -550,7 +553,9 @@ impl<R: rich_editor::Renderer> Content<R> {
         let line = internal.editor.line(index)?;
         let len = line.text.len();
         let mut styled = markright_core::read_styled_line(&internal.editor, index, 0..len);
-        styled.paragraph = internal.paragraph(index).clone();
+        let mut para = internal.paragraph(index).clone();
+        para.style.style = internal.editor.paragraph_style_at(index).style;
+        styled.paragraph = para;
         Some(styled)
     }
 
@@ -665,12 +670,13 @@ impl<R: rich_editor::Renderer> Content<R> {
     {
         use crate::core::text::rich_editor::Editor as _;
         use crate::core::text::{LineHeight, Wrapping};
-        use crate::core::{Em, Pixels};
+        use crate::core::{Em, Padding, Pixels};
 
         let mut internal = self.0.borrow_mut();
         let default_style = internal.default_style.clone();
         internal.editor.update(
             bounds,
+            Padding::ZERO,
             Default::default(),
             Pixels(16.0),
             LineHeight::default(),
@@ -1000,43 +1006,52 @@ impl<R: rich_editor::Renderer> Internal<R> {
     }
 
     fn resolve_style(&self) -> span::Style {
+        let cursor = self.editor.cursor();
         let mut style = self.pending_style.clone().unwrap_or_else(|| {
-            let cursor = self.editor.cursor();
             self.editor.span_style_at(
                 cursor.position.line,
                 cursor.position.column.saturating_sub(1),
             )
         });
+        self.fill_from_paragraph_defaults(&mut style, cursor.position.line);
         self.fill_from_defaults(&mut style);
         style
     }
 
     /// Fill any `None` fields in `style` from `self.default_style`.
+    fn fill_from_paragraph_defaults(&self, style: &mut span::Style, line: usize) {
+        let para_defaults = self.editor.paragraph_style_at(line).style;
+        Self::fill_in_place(style, &para_defaults);
+    }
+
     fn fill_from_defaults(&self, style: &mut span::Style) {
-        let d = &self.default_style;
+        Self::fill_in_place(style, &self.default_style);
+    }
+
+    fn fill_in_place(style: &mut span::Style, from: &span::Style) {
         if style.bold.is_none() {
-            style.bold = d.bold;
+            style.bold = from.bold;
         }
         if style.italic.is_none() {
-            style.italic = d.italic;
+            style.italic = from.italic;
         }
         if style.underline.is_none() {
-            style.underline = d.underline;
+            style.underline = from.underline;
         }
         if style.strikethrough.is_none() {
-            style.strikethrough = d.strikethrough;
+            style.strikethrough = from.strikethrough;
         }
         if style.font.is_none() {
-            style.font = d.font;
+            style.font = from.font;
         }
         if style.size.is_none() {
-            style.size = d.size;
+            style.size = from.size;
         }
         if style.color.is_none() {
-            style.color = d.color;
+            style.color = from.color;
         }
         if style.letter_spacing.is_none() {
-            style.letter_spacing = d.letter_spacing;
+            style.letter_spacing = from.letter_spacing;
         }
     }
 

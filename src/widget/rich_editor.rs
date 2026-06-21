@@ -888,24 +888,13 @@ where
         })
     }
 
-    fn children(&self) -> Vec<widget::Tree> {
-        vec![
-            self.popup_element
-                .as_ref()
-                .map(widget::Tree::new)
-                .unwrap_or_else(widget::Tree::empty),
-        ]
-    }
-
-    fn diff(&self, tree: &mut widget::Tree) {
+    fn diff(&mut self, tree: &mut widget::Tree) {
         if tree.children.is_empty() {
             tree.children.push(widget::Tree::empty());
         }
-        if let Some(popup) = &self.popup_element {
+        if let Some(popup) = &mut self.popup_element {
             tree.children[0].diff(popup);
         }
-        // When popup_element is None, leave tree.children[0] in place
-        // so any text_input state survives temporary popup disappearance.
     }
 
     fn size(&self) -> Size<Length> {
@@ -929,20 +918,23 @@ where
             .font
             .unwrap_or_else(|| renderer.default_font());
 
-        let limits = limits
-            .width(self.width)
-            .height(self.height)
-            .min_height(self.min_height)
-            .max_height(self.max_height);
+        let limits = limits.width(self.width).height(self.height);
 
         internal.default_style = self.default_style.clone();
+
+        let h_padding = Padding {
+            top: 0.0,
+            bottom: 0.0,
+            ..self.padding
+        };
         {
             use crate::core::text::rich_editor::Editor as _;
             internal.editor.set_scrollable(self.scrollable);
         }
 
         internal.editor.update(
-            limits.shrink(self.padding).max(),
+            limits.shrink(h_padding).max(),
+            self.padding,
             font,
             self.text_size.unwrap_or_else(|| renderer.default_size()),
             self.line_height,
@@ -963,7 +955,7 @@ where
             &limits,
             self.width,
             self.height,
-            self.padding,
+            h_padding,
             |limits| layout::Node::new(limits.resolve(self.width, self.height, min_bounds)),
             |content, space| {
                 content.align(

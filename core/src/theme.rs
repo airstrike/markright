@@ -167,6 +167,10 @@ impl Default for Theme {
                 paragraph::Style {
                     space_before: Some(8.0),
                     spacing_after: Some(8.0),
+                    indent: paragraph::Indent {
+                        left: 12.0,
+                        ..paragraph::Indent::default()
+                    },
                     borders: Some(Box::new(Borders {
                         left: Some(Border {
                             color: Color::from_rgb(

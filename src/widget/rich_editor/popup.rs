@@ -345,10 +345,6 @@ where
         Size::new(Length::Shrink, Length::Shrink)
     }
 
-    fn size_hint(&self) -> Size<Length> {
-        Size::new(Length::Shrink, Length::Shrink)
-    }
-
     fn tag(&self) -> widget::tree::Tag {
         self.inner.as_widget().tag()
     }
@@ -357,12 +353,8 @@ where
         self.inner.as_widget().state()
     }
 
-    fn children(&self) -> Vec<widget::Tree> {
-        self.inner.as_widget().children()
-    }
-
-    fn diff(&self, tree: &mut widget::Tree) {
-        self.inner.as_widget().diff(tree);
+    fn diff(&mut self, tree: &mut widget::Tree) {
+        self.inner.as_widget_mut().diff(tree);
     }
 
     fn layout(
