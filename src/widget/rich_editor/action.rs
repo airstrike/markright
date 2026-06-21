@@ -27,10 +27,10 @@ pub enum Action {
     Click(Point),
     /// Drag the mouse to the given [`Point`].
     Drag(Point),
-    /// Scroll the editor by a number of lines.
+    /// Scroll the editor by a pixel offset.
     Scroll {
-        /// The number of lines to scroll.
-        lines: i32,
+        /// The number of pixels to scroll (positive = down).
+        pixels: f32,
     },
     /// Collapse the selection to the cursor position (no-op if no selection).
     Deselect,
@@ -132,8 +132,7 @@ pub(crate) fn to_iced_action(action: &Action) -> Option<crate::core::text::edito
         Action::SelectAll => Some(editor::Action::SelectAll),
         Action::Click(p) => Some(editor::Action::Click(*p)),
         Action::Drag(p) => Some(editor::Action::Drag(*p)),
-        Action::Scroll { lines } => Some(editor::Action::Scroll { lines: *lines }),
-        Action::Deselect | Action::Undo | Action::Redo => None,
+        Action::Scroll { .. } | Action::Deselect | Action::Undo | Action::Redo => None,
     }
 }
 

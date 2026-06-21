@@ -763,6 +763,9 @@ impl<R: rich_editor::Renderer> Internal<R> {
                     ));
                 }
             }
+            Action::Scroll { pixels } => {
+                self.editor.scroll_by(pixels);
+            }
             Action::Undo => self.perform_undo(),
             Action::Redo => self.perform_redo(),
             ref other => {

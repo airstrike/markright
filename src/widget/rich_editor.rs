@@ -755,7 +755,6 @@ pub struct State {
     preedit: Option<input_method::Preedit>,
     last_click: Option<mouse::Click>,
     drag_click: Option<mouse::click::Kind>,
-    partial_scroll: f32,
     /// One-shot flag that makes the next `Focusable::unfocus` a no-op.
     /// Set when intercepting Tab to transfer focus into the popup input:
     /// iced's focus operation is exclusive and would otherwise clear our
@@ -881,7 +880,6 @@ where
             preedit: None,
             last_click: None,
             drag_click: None,
-            partial_scroll: 0.0,
             retain_focus_once: false,
             popup: PopupState::Idle,
             last_cursor_pos: None,
@@ -1081,18 +1079,12 @@ where
                 Update::Release => {
                     state.drag_click = None;
                 }
-                Update::Scroll(lines) => {
-                    let bounds = self.content.0.borrow().editor.bounds();
-                    if bounds.height >= i32::MAX as f32 {
-                        return;
-                    }
-
-                    let lines = lines + state.partial_scroll;
-                    state.partial_scroll = lines.fract();
-
-                    shell.publish(on_action(Action::Scroll {
-                        lines: lines as i32,
-                    }));
+                Update::Scroll(delta) => {
+                    let pixels = match delta {
+                        mouse::ScrollDelta::Lines { y, .. } => -y * 36.0,
+                        mouse::ScrollDelta::Pixels { y, .. } => -y,
+                    };
+                    shell.publish(on_action(Action::Scroll { pixels }));
                     shell.capture_event();
                 }
                 Update::InputMethod(update) => match update {
@@ -1992,7 +1984,7 @@ enum Update<Message> {
     Click(mouse::Click),
     Drag(Point),
     Release,
-    Scroll(f32),
+    Scroll(mouse::ScrollDelta),
     InputMethod(Ime),
     Binding(Binding<Message>),
 }
@@ -2034,16 +2026,7 @@ impl<Message> Update<Message> {
                     _ => None,
                 },
                 mouse::Event::WheelScrolled { delta } if cursor.is_over(bounds) => {
-                    Some(Self::Scroll(match delta {
-                        mouse::ScrollDelta::Lines { y, .. } => {
-                            if y.abs() > 0.0 {
-                                y.signum() * -(y.abs() * 4.0).max(1.0)
-                            } else {
-                                0.0
-                            }
-                        }
-                        mouse::ScrollDelta::Pixels { y, .. } => -y / 4.0,
-                    }))
+                    Some(Self::Scroll(*delta))
                 }
                 _ => None,
             },
