@@ -1828,6 +1828,10 @@ where
             caret.y + caret.height + text_bounds.y + translation.y + 4.0,
         );
 
+        // `Tree::new` no longer recurses (the slimmed `Widget` trait dropped
+        // `children`), so plant the popup's child trees before it is laid out.
+        children[0].diff(popup.as_widget_mut());
+
         Some(overlay::Element::new(Box::new(PopupOverlay {
             content: popup,
             tree: &mut children[0],
