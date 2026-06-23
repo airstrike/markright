@@ -233,7 +233,7 @@ impl App {
 
         container(column![editor, source_debug].spacing(16))
             .padding(32)
-            .max_width(640)
+            .width(Length::Fit.max(640))
             .into()
     }
 }

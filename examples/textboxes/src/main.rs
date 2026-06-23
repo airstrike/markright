@@ -379,6 +379,9 @@ mod theme {
                 placeholder: palette.background.strong.color,
                 value: palette.background.base.text,
                 selection,
+                code_background: palette.background.strong.color,
+                quote_border: palette.background.strongest.color,
+                rule_color: palette.background.strongest.color,
             }
         }
     }

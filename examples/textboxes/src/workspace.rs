@@ -320,21 +320,14 @@ where
         tree::State::new(WidgetState::default())
     }
 
-    fn children(&self) -> Vec<Tree> {
-        self.elements
-            .iter()
-            .map(Tree::new)
-            .chain(self.extra.iter().map(|(_, e)| Tree::new(e)))
-            .collect()
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        let all: Vec<&Element<'_, _, _, _>> = self
+    fn diff(&mut self, tree: &mut Tree) {
+        let mut all: Vec<_> = self
             .elements
-            .iter()
-            .chain(self.extra.iter().map(|(_, e)| e))
+            .iter_mut()
+            .map(|e| e.as_widget_mut())
+            .chain(self.extra.iter_mut().map(|(_, e)| e.as_widget_mut()))
             .collect();
-        tree.diff_children(&all);
+        tree.diff_children(&mut all);
     }
 
     fn size(&self) -> Size<Length> {
