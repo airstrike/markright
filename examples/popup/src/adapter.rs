@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use markright::rich_editor::computed_spans;
 
 use crate::parser::{self, Segment, Segments};
@@ -31,8 +33,31 @@ impl computed_spans::Source for Adapter {
                         source_value: raw.to_string(),
                         display_value: value,
                         placeholder: "{=expr}".to_string(),
-                        style: std::rc::Rc::new(theme::chip),
+                        style: Rc::new(theme::chip),
                         atomic: true,
+                        popup: true,
+                        text_style: None,
+                    });
+
+                    source_offset += raw.len();
+                }
+                Segment::Code { content, raw } => {
+                    let display_start = display.len();
+                    display.push_str(content);
+                    let display_end = display.len();
+
+                    spans.push(computed_spans::Span {
+                        id: source_offset as u64,
+                        line: 0,
+                        display_range: display_start..display_end,
+                        source_range: source_offset..source_offset + raw.len(),
+                        source_value: raw.to_string(),
+                        display_value: content.to_string(),
+                        placeholder: String::new(),
+                        style: Rc::new(theme::code_chip),
+                        atomic: false,
+                        popup: false,
+                        text_style: Some(theme::code_style()),
                     });
 
                     source_offset += raw.len();

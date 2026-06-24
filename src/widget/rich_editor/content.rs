@@ -174,6 +174,13 @@ impl<R: rich_editor::Renderer> Content<R> {
         let content = Self::from_styled_lines(&result.lines);
         {
             let mut internal = content.0.borrow_mut();
+            for span in &result.spans {
+                if let Some(style) = &span.text_style {
+                    internal
+                        .editor
+                        .set_span_style(span.line, span.display_range.clone(), style);
+                }
+            }
             internal.computed = Some(Computed {
                 source: source.to_string(),
                 adapter: Box::new(adapter),
@@ -387,20 +394,33 @@ impl<R: rich_editor::Renderer> Content<R> {
             }
         }
 
+        // Apply text_style from computed spans — this is the single source
+        // of truth for BOTH font styling and chip visuals, ensuring they
+        // always cover identical ranges.
+        for span in &result.spans {
+            if let Some(style) = &span.text_style {
+                internal
+                    .editor
+                    .set_span_style(span.line, span.display_range.clone(), style);
+            }
+        }
+
         // Update paragraphs.
         internal.paragraphs = result.lines.iter().map(|l| l.paragraph.clone()).collect();
 
         // Update spans.
         let new_spans = result.spans;
 
-        // Snap cursor out of any newly-formed chip. If the cursor landed
-        // strictly inside a span's display_range (e.g., typing `}` to close
-        // a `{=expr}` pattern collapsed 6 source chars into a shorter
-        // display value), move it to the end of that chip. Exact boundary
-        // positions stay put — those are valid plain-text positions.
+        // Snap cursor out of any newly-formed popup/atomic chip. If the
+        // cursor landed strictly inside a span's display_range (e.g.,
+        // typing `}` to close a `{=expr}` pattern collapsed 6 source
+        // chars into a shorter display value), move it to the end of that
+        // chip. Non-popup spans allow normal editing inside, so the
+        // cursor stays put.
         let cursor = internal.editor.cursor();
         if let Some(span) = new_spans.iter().find(|s| {
-            s.line == cursor.position.line
+            (s.popup || s.atomic)
+                && s.line == cursor.position.line
                 && cursor.position.column > s.display_range.start
                 && cursor.position.column < s.display_range.end
         }) {
@@ -926,10 +946,36 @@ impl<R: rich_editor::Renderer> Internal<R> {
             && let Some(computed) = self.computed.as_mut()
         {
             for span in &mut computed.spans {
-                if span.line == line && span.display_range.start >= threshold {
+                if span.line != line {
+                    continue;
+                }
+                if span.display_range.start >= threshold {
                     let start = (span.display_range.start as isize + delta).max(0) as usize;
                     let end = (span.display_range.end as isize + delta).max(0) as usize;
                     span.display_range = start..end;
+                } else if !span.popup
+                    && threshold > span.display_range.start
+                    && threshold <= span.display_range.end
+                {
+                    let offset = threshold - span.display_range.start;
+                    let end = (span.display_range.end as isize + delta).max(0) as usize;
+                    span.display_range = span.display_range.start..end;
+
+                    if let Some(dv_pos) = span.source_value.find(&span.display_value) {
+                        let _sv_offset = dv_pos + offset;
+                        let actual_display = self
+                            .editor
+                            .line(line)
+                            .map(|l| {
+                                let text = l.text;
+                                text[span.display_range.start..end.min(text.len())].to_string()
+                            })
+                            .unwrap_or_default();
+                        let prefix = &span.source_value[..dv_pos];
+                        let suffix = &span.source_value[dv_pos + span.display_value.len()..];
+                        span.source_value = format!("{prefix}{actual_display}{suffix}");
+                        span.display_value = actual_display;
+                    }
                 }
             }
         }

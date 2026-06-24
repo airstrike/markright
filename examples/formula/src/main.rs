@@ -261,6 +261,7 @@ fn parse(tokens: &[Token], token_map: &TokenMap) -> Vec<popup::Span> {
                     },
                 }),
                 atomic: true,
+                popup: true,
             })
         })
         .collect()

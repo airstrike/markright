@@ -48,6 +48,11 @@ pub struct Span<Theme = crate::core::Theme> {
     /// span and treats Backspace/Delete at the span boundary as
     /// whole-span deletion (emitting [`Action::Delete`]).
     pub atomic: bool,
+    /// When `true`, entering this span with the cursor opens a popup
+    /// overlay. When `false`, the span still renders its chip
+    /// background/border but behaves like normal text (no popup, no
+    /// cursor hiding).
+    pub popup: bool,
 }
 
 impl<Theme> std::fmt::Debug for Span<Theme> {
@@ -59,6 +64,7 @@ impl<Theme> std::fmt::Debug for Span<Theme> {
             .field("placeholder", &self.placeholder)
             .field("style", &"<fn>")
             .field("atomic", &self.atomic)
+            .field("popup", &self.popup)
             .finish()
     }
 }

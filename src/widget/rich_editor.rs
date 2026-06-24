@@ -389,6 +389,7 @@ where
                 placeholder: cs.placeholder.clone(),
                 style: cs.style.clone(),
                 atomic: cs.atomic,
+                popup: cs.popup,
             })
             .collect();
         self.popup_spans = PopupSpans::Owned(popup_spans);
@@ -396,7 +397,8 @@ where
         // Compute the active span based on the current cursor.
         let cursor = self.content.cursor();
         let active = spans.iter().find(|s| {
-            s.line == cursor.position.line
+            s.popup
+                && s.line == cursor.position.line
                 && cursor.position.column >= s.display_range.start
                 && cursor.position.column <= s.display_range.end
         });
@@ -666,13 +668,15 @@ where
                 placeholder: cs.placeholder.clone(),
                 style: cs.style.clone(),
                 atomic: cs.atomic,
+                popup: cs.popup,
             })
             .collect();
         self.popup_spans = PopupSpans::Owned(popup_spans);
 
         let cursor = self.content.cursor();
         let active = spans.iter().find(|s| {
-            s.line == cursor.position.line
+            s.popup
+                && s.line == cursor.position.line
                 && cursor.position.column >= s.display_range.start
                 && cursor.position.column <= s.display_range.end
         });
@@ -1730,9 +1734,10 @@ where
         let cursor = self.content.cursor();
         let cursor_pos = (cursor.position.line, cursor.position.column);
 
-        // Find the active span for the current cursor.
+        // Find the active popup span for the current cursor.
         let active = self.popup_spans.as_slice().iter().find(|s| {
-            s.line == cursor.position.line
+            s.popup
+                && s.line == cursor.position.line
                 && cursor.position.column >= s.range.start
                 && cursor.position.column <= s.range.end
         });

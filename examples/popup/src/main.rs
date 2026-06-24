@@ -35,7 +35,8 @@ enum Message {
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let source = "Tim had {=1+3} apples, then picked up {=2*6} more at the store.";
+        let source =
+            "Tim had {=1+3} apples and `metric` data, then picked up {=2*6} `items` at the store.";
         let content = Content::from_computed(source, adapter::Adapter);
 
         (Self { content }, focus("popup-editor"))
@@ -89,6 +90,7 @@ impl App {
 }
 
 pub mod theme {
+    use iced::advanced::text::rich_editor::span;
     use iced::widget::{container, text_input};
     use markright::rich_editor::popup;
 
@@ -102,6 +104,28 @@ pub mod theme {
                 width: 1.0,
                 radius: 3.0.into(),
             },
+        }
+    }
+
+    pub fn code_chip(theme: &iced::Theme) -> popup::SpanStyle {
+        let palette = theme.palette();
+
+        popup::SpanStyle {
+            background: Some(palette.background.weak.color.into()),
+            border: iced::Border {
+                color: palette.background.strong.color,
+                width: 1.0,
+                radius: 3.0.into(),
+            },
+        }
+    }
+
+    pub fn code_style() -> span::Style {
+        span::Style {
+            font: Some(iced::Font::MONOSPACE),
+            size: Some(14.0),
+            padding: Some(iced::Padding::new(1.0).left(4).right(4)),
+            ..Default::default()
         }
     }
 
