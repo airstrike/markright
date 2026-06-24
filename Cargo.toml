@@ -33,9 +33,9 @@ reqwest.workspace = true
 
 
 [patch.crates-io]
-iced = { git = "https://github.com/airstrike/iced", branch = "dev" }
-iced_core = { git = "https://github.com/airstrike/iced", branch = "dev" }
-iced_graphics = { git = "https://github.com/airstrike/iced", branch = "dev" }
-iced_widget = { git = "https://github.com/airstrike/iced", branch = "dev" }
-iced_futures = { git = "https://github.com/airstrike/iced", branch = "dev" }
-cosmic-text = { git = "https://github.com/airstrike/cosmic-text", branch = "dev" }
+iced = { path = "../iced" }
+iced_core = { path = "../iced/core" }
+iced_graphics = { path = "../iced/graphics" }
+iced_widget = { path = "../iced/widget" }
+iced_futures = { path = "../iced/futures" }
+cosmic-text = { path = "../cosmic-text" }

@@ -87,6 +87,7 @@ fn parse(src: &str) -> (StyledLine, Vec<Range<usize>>) {
         font: Some(CODE),
         size: Some(14.0),
         color: Some(color!(0x4B5563)),
+        padding: Some(iced::Padding::new(1.0).left(4.0).right(4.0)),
         ..Default::default()
     };
 
@@ -102,16 +103,9 @@ fn parse(src: &str) -> (StyledLine, Vec<Range<usize>>) {
             text.push('`');
             rest = stripped;
         } else if let Some(close) = rest.find('`') {
-            // Two thin spaces per side: one inside the chip (chip font, in
-            // run + highlight → background padding) and one outside (body
-            // font, plain → breathing room between chip and neighbor).
-            text.push('\u{2009}');
             let start = text.len();
-            text.push('\u{2009}');
             text.push_str(&rest[..close]);
-            text.push('\u{2009}');
             let end = text.len();
-            text.push('\u{2009}');
             let range = start..end;
             runs.push(StyleRun {
                 range: range.clone(),

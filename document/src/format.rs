@@ -835,6 +835,7 @@ fn merge_styles(parent: &span::Style, child: &span::Style) -> span::Style {
         color: child.color.or(parent.color),
         letter_spacing: child.letter_spacing.or(parent.letter_spacing),
         optical_size: child.optical_size.or(parent.optical_size),
+        padding: child.padding.or(parent.padding),
     }
 }
 
