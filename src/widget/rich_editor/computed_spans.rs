@@ -75,11 +75,6 @@ pub struct Span<Theme = crate::core::Theme> {
     /// overlay. When `false`, the chip renders but the cursor and text
     /// editing behave normally.
     pub popup: bool,
-    /// Text style applied to the span's display range. When set, the
-    /// font/color/padding styling and the chip visual (background/border)
-    /// are derived from the same [`Span`], making it structurally
-    /// impossible for them to cover different ranges.
-    pub text_style: Option<super::span::Style>,
 }
 
 impl<Theme> std::fmt::Debug for Span<Theme> {

@@ -174,13 +174,6 @@ impl<R: rich_editor::Renderer> Content<R> {
         let content = Self::from_styled_lines(&result.lines);
         {
             let mut internal = content.0.borrow_mut();
-            for span in &result.spans {
-                if let Some(style) = &span.text_style {
-                    internal
-                        .editor
-                        .set_span_style(span.line, span.display_range.clone(), style);
-                }
-            }
             internal.computed = Some(Computed {
                 source: source.to_string(),
                 adapter: Box::new(adapter),
@@ -391,17 +384,6 @@ impl<R: rich_editor::Renderer> Content<R> {
                         .editor
                         .set_span_style(i, run.range.clone(), &run.style);
                 }
-            }
-        }
-
-        // Apply text_style from computed spans — this is the single source
-        // of truth for BOTH font styling and chip visuals, ensuring they
-        // always cover identical ranges.
-        for span in &result.spans {
-            if let Some(style) = &span.text_style {
-                internal
-                    .editor
-                    .set_span_style(span.line, span.display_range.clone(), style);
             }
         }
 

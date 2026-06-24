@@ -24,6 +24,7 @@ impl computed_spans::Source for CodeAdapter {
     fn parse(&self, source: &str) -> computed_spans::Result {
         let mut display = String::new();
         let mut spans = Vec::new();
+        let mut runs = Vec::new();
         let mut source_offset = 0;
         let mut rest = source;
 
@@ -37,6 +38,11 @@ impl computed_spans::Source for CodeAdapter {
                 let display_start = display.len();
                 display.push_str(content);
                 let display_end = display.len();
+
+                runs.push(markright::StyleRun {
+                    range: display_start..display_end,
+                    style: code_style(),
+                });
 
                 spans.push(computed_spans::Span {
                     id: source_offset as u64,
@@ -52,7 +58,6 @@ impl computed_spans::Source for CodeAdapter {
                     }),
                     atomic: false,
                     popup: false,
-                    text_style: Some(code_style()),
                 });
 
                 source_offset += raw.len();
@@ -68,7 +73,7 @@ impl computed_spans::Source for CodeAdapter {
         computed_spans::Result {
             lines: vec![markright::StyledLine {
                 text: display,
-                runs: vec![],
+                runs,
                 paragraph: markright::Paragraph::default(),
             }],
             spans,
