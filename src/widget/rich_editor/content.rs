@@ -794,6 +794,10 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 let had_selection = self.editor.cursor().selection.is_some();
                 #[cfg(feature = "computed_spans")]
                 let cursor_before = self.editor.cursor();
+                #[cfg(feature = "computed_spans")]
+                if !had_selection && self.is_in_protected_span(&cursor_before, false) {
+                    return;
+                }
                 let mut ops = self.drain_selection();
                 self.sync_paragraphs(&ops);
                 let op = operation::insert(&mut self.editor, c, style);
@@ -852,7 +856,10 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 #[cfg(feature = "computed_spans")]
                 let cursor_before = self.editor.cursor();
                 #[cfg(feature = "computed_spans")]
-                if !had_selection && self.try_dissolve_span_boundary(&cursor_before, true) {
+                if !had_selection
+                    && (self.try_dissolve_span_boundary(&cursor_before, true)
+                        || self.is_in_protected_span(&cursor_before, true))
+                {
                     return;
                 }
                 let ops = self.backspace_list_aware();
@@ -918,6 +925,25 @@ impl<R: rich_editor::Renderer> Internal<R> {
     /// `display_value` appears verbatim in the post-edit display (chips
     /// are atomic at the binding layer), so its column range is still
     /// valid — we just swap the chip's display text for its source text.
+    /// Returns `true` if the cursor is strictly inside a popup or atomic
+    /// span (not at a boundary). Boundary edits are handled by the
+    /// widget's atomic interception or by `try_dissolve_span_boundary`.
+    #[cfg(feature = "computed_spans")]
+    fn is_in_protected_span(&self, cursor: &Cursor, _is_backspace: bool) -> bool {
+        let computed = match &self.computed {
+            Some(c) => c,
+            None => return false,
+        };
+        let col = cursor.position.column;
+        let line = cursor.position.line;
+        computed.spans.iter().any(|s| {
+            (s.popup || s.atomic)
+                && s.line == line
+                && col > s.display_range.start
+                && col < s.display_range.end
+        })
+    }
+
     /// When backspace/delete lands exactly at a non-popup span boundary,
     /// strip the adjacent delimiter from `source_value` instead of
     /// performing a regular character delete. Returns `true` if handled.

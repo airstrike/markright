@@ -23,6 +23,65 @@ fn code_style() -> span::Style {
 const CODE_OPEN: char = '\u{E000}';
 const CODE_CLOSE: char = '\u{E001}';
 
+struct FormulaAdapter;
+
+impl computed_spans::Source for FormulaAdapter {
+    fn parse(&self, source: &str) -> computed_spans::Result {
+        let mut display = String::new();
+        let mut spans = Vec::new();
+        let mut source_offset = 0;
+        let mut rest = source;
+
+        while let Some(pos) = rest.find("{=") {
+            display.push_str(&rest[..pos]);
+            source_offset += pos;
+            rest = &rest[pos..];
+
+            if let Some(end) = rest[2..].find('}') {
+                let raw = &rest[..end + 3];
+                let expr = &rest[2..end + 2];
+                let value = expr.to_string();
+                let display_start = display.len();
+                display.push_str(&value);
+                let display_end = display.len();
+
+                spans.push(computed_spans::Span {
+                    id: source_offset as u64,
+                    line: 0,
+                    display_range: display_start..display_end,
+                    source_range: source_offset..source_offset + raw.len(),
+                    source_value: raw.to_string(),
+                    display_value: value,
+                    placeholder: "{=expr}".to_string(),
+                    style: Rc::new(|_: &iced::Theme| popup::SpanStyle {
+                        background: None,
+                        border: iced::Border::default(),
+                    }),
+                    atomic: true,
+                    popup: true,
+                });
+
+                source_offset += raw.len();
+                rest = &rest[raw.len()..];
+            } else {
+                display.push_str("{=");
+                source_offset += 2;
+                rest = &rest[2..];
+            }
+        }
+        display.push_str(rest);
+
+        computed_spans::Result {
+            lines: vec![markright::StyledLine {
+                text: display,
+                runs: vec![],
+                paragraph: markright::Paragraph::default(),
+            }],
+            spans,
+        }
+    }
+}
+
 impl computed_spans::Source for CodeAdapter {
     fn parse(&self, source: &str) -> computed_spans::Result {
         let mut display = String::new();
@@ -370,6 +429,26 @@ fn type_full_sequence_two_spans_and_period() {
     c.perform(Edit::Insert('.'));
     assert_eq!(c.text(), "abc d ef.");
     assert_eq!(cursor_col(&c), 9, "cursor after period");
+}
+
+#[test]
+fn insert_inside_atomic_span_is_blocked() {
+    // Formula {=123} displays as "123" (atomic, popup).
+    // Insert strictly inside must be blocked.
+    let c = C::from_computed("x{=123}y", FormulaAdapter);
+    assert_eq!(c.text(), "x123y");
+    let spans = c.computed_spans();
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0].display_range, 1..4);
+    assert!(spans[0].atomic);
+
+    // Cursor strictly inside the span (col 2)
+    c.move_to(0, 2);
+    c.perform(Edit::Insert('Z'));
+
+    // Nothing should change — the span is atomic.
+    assert_eq!(c.text(), "x123y");
+    assert_eq!(cursor_col(&c), 2);
 }
 
 #[test]
