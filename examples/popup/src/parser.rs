@@ -106,6 +106,14 @@ impl<'a> Iterator for Segments<'a> {
                 self.remaining = &self.remaining[open_len..];
                 return Some(Segment::Text(delim));
             }
+
+            // Special character found at pos 0 but not recognized as any
+            // delimiter (e.g. unmatched `{=` with no `}`). Advance one
+            // char so we don't loop forever.
+            let ch_len = self.remaining.chars().next().map_or(1, |c| c.len_utf8());
+            let text = &self.remaining[..ch_len];
+            self.remaining = &self.remaining[ch_len..];
+            return Some(Segment::Text(text));
         }
 
         let text = self.remaining;

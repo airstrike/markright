@@ -1238,8 +1238,14 @@ where
                                 {
                                     true
                                 }
-                                // Backspace/Delete: emit Delete action.
-                                Binding::Backspace if col > span.range.start => {
+                                // Backspace/Delete strictly inside: emit Delete.
+                                // At the boundary (col == end for backspace,
+                                // col == start for delete), let it through —
+                                // Content's try_dissolve_span_boundary handles
+                                // stripping the delimiter to degenerate the span.
+                                Binding::Backspace
+                                    if col > span.range.start && col < span.range.end =>
+                                {
                                     if let Some(on_popup) = on_popup {
                                         shell.publish(on_popup(popup::Action::Delete {
                                             span: span_ref,
@@ -1247,7 +1253,9 @@ where
                                     }
                                     true
                                 }
-                                Binding::Delete if col < span.range.end => {
+                                Binding::Delete
+                                    if col > span.range.start && col < span.range.end =>
+                                {
                                     if let Some(on_popup) = on_popup {
                                         shell.publish(on_popup(popup::Action::Delete {
                                             span: span_ref,

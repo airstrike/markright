@@ -944,9 +944,9 @@ impl<R: rich_editor::Renderer> Internal<R> {
         })
     }
 
-    /// When backspace/delete lands exactly at a non-popup span boundary,
-    /// strip the adjacent delimiter from `source_value` instead of
-    /// performing a regular character delete. Returns `true` if handled.
+    /// When backspace/delete lands exactly at a span boundary, strip
+    /// the adjacent delimiter from `source_value` so the span degenerates
+    /// into plain text. Returns `true` if handled.
     ///
     /// `trailing`: `true` for backspace at `span.end` (strip closing
     /// delimiter), `false` for delete at `span.start` (strip opening).
@@ -963,12 +963,12 @@ impl<R: rich_editor::Renderer> Internal<R> {
             computed
                 .spans
                 .iter_mut()
-                .find(|s| !s.popup && s.line == line && col == s.display_range.end)
+                .find(|s| s.line == line && col == s.display_range.end)
         } else {
             computed
                 .spans
                 .iter_mut()
-                .find(|s| !s.popup && s.line == line && col == s.display_range.start)
+                .find(|s| s.line == line && col == s.display_range.start)
         };
 
         let span = match span {
@@ -976,31 +976,23 @@ impl<R: rich_editor::Renderer> Internal<R> {
             None => return false,
         };
 
-        let has_trailing_delim =
-            span.source_value.ends_with('`') || span.source_value.ends_with('\u{E001}');
-        let has_leading_delim =
-            span.source_value.starts_with('`') || span.source_value.starts_with('\u{E000}');
+        let has_delimiter_overhead = span.source_value.len() > span.display_value.len();
 
-        if trailing && has_trailing_delim {
-            let prefix_len = if let Some(dv_pos) = span.source_value.find(&*span.display_value) {
-                // Count display chars in the prefix (sentinels render
-                // as backticks, which are 1 display char each).
-                span.source_value[..dv_pos].chars().count()
-            } else {
-                1
-            };
+        if trailing && has_delimiter_overhead {
+            let span_start = span.display_range.start;
             span.source_value.pop();
+            let dissolved_len = span.source_value.chars().count();
+            let target_col = span_start + dissolved_len;
             Content::<R>::rebuild_from_computed(self);
-            let cursor = self.editor.cursor();
             self.editor.move_to(Cursor {
                 position: Position {
-                    line: cursor.position.line,
-                    column: cursor.position.column + prefix_len,
+                    line,
+                    column: target_col,
                 },
                 selection: None,
             });
             true
-        } else if !trailing && has_leading_delim {
+        } else if !trailing && has_delimiter_overhead {
             let first_len = span.source_value.chars().next().map_or(1, |c| c.len_utf8());
             span.source_value = span.source_value[first_len..].to_string();
             Content::<R>::rebuild_from_computed(self);

@@ -82,6 +82,220 @@ impl computed_spans::Source for FormulaAdapter {
     }
 }
 
+struct EvalFormulaAdapter;
+
+impl computed_spans::Source for EvalFormulaAdapter {
+    fn parse(&self, source: &str) -> computed_spans::Result {
+        let mut display = String::new();
+        let mut spans = Vec::new();
+        let mut source_offset = 0;
+        let mut rest = source;
+
+        while let Some(pos) = rest.find("{=") {
+            display.push_str(&rest[..pos]);
+            source_offset += pos;
+            rest = &rest[pos..];
+
+            if let Some(end) = rest[2..].find('}') {
+                let raw = &rest[..end + 3];
+                let expr = &rest[2..end + 2];
+                let value = simple_eval(expr);
+                let display_start = display.len();
+                display.push_str(&value);
+                let display_end = display.len();
+
+                spans.push(computed_spans::Span {
+                    id: source_offset as u64,
+                    line: 0,
+                    display_range: display_start..display_end,
+                    source_range: source_offset..source_offset + raw.len(),
+                    source_value: raw.to_string(),
+                    display_value: value,
+                    placeholder: "{=expr}".to_string(),
+                    style: Rc::new(|_: &iced::Theme| popup::SpanStyle {
+                        background: None,
+                        border: iced::Border::default(),
+                    }),
+                    atomic: true,
+                    popup: true,
+                });
+
+                source_offset += raw.len();
+                rest = &rest[raw.len()..];
+            } else {
+                display.push('{');
+                source_offset += 1;
+                rest = &rest[1..];
+            }
+        }
+        display.push_str(rest);
+
+        computed_spans::Result {
+            lines: vec![markright::StyledLine {
+                text: display,
+                runs: vec![],
+                paragraph: markright::Paragraph::default(),
+            }],
+            spans,
+        }
+    }
+}
+
+fn simple_eval(expr: &str) -> String {
+    if let Some((a, b)) = expr.split_once('+') {
+        if let (Ok(a), Ok(b)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
+            return format!("{}", a + b);
+        }
+    }
+    if let Some((a, b)) = expr.split_once('*') {
+        if let (Ok(a), Ok(b)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
+            return format!("{}", a * b);
+        }
+    }
+    if let Ok(n) = expr.parse::<f64>() {
+        return format!("{n}");
+    }
+    format!("?{expr}")
+}
+
+struct MixedAdapter;
+
+impl computed_spans::Source for MixedAdapter {
+    fn parse(&self, source: &str) -> computed_spans::Result {
+        let mut display = String::new();
+        let mut spans = Vec::new();
+        let mut runs = Vec::new();
+        let mut source_offset = 0;
+        let mut rest = source;
+
+        while !rest.is_empty() {
+            let formula_pos = rest.find("{=");
+            let backtick_pos = rest.find('`');
+            let fence_pos = rest.find(CODE_OPEN);
+
+            let next = [formula_pos, backtick_pos, fence_pos]
+                .into_iter()
+                .flatten()
+                .min();
+
+            let Some(pos) = next else {
+                display.push_str(&rest.replace(CODE_OPEN, "`").replace(CODE_CLOSE, "`"));
+                break;
+            };
+
+            if pos > 0 {
+                display.push_str(&rest[..pos].replace(CODE_OPEN, "`").replace(CODE_CLOSE, "`"));
+                source_offset += pos;
+                rest = &rest[pos..];
+                continue;
+            }
+
+            if rest.starts_with("{=") {
+                if let Some(end) = rest[2..].find('}') {
+                    let raw = &rest[..end + 3];
+                    let expr = &rest[2..end + 2];
+                    let value = expr.to_string();
+                    let display_start = display.len();
+                    display.push_str(&value);
+                    let display_end = display.len();
+
+                    runs.push(markright::StyleRun {
+                        range: display_start..display_end,
+                        style: code_style(),
+                    });
+
+                    spans.push(computed_spans::Span {
+                        id: source_offset as u64,
+                        line: 0,
+                        display_range: display_start..display_end,
+                        source_range: source_offset..source_offset + raw.len(),
+                        source_value: raw.to_string(),
+                        display_value: value,
+                        placeholder: "{=expr}".to_string(),
+                        style: Rc::new(|_: &iced::Theme| popup::SpanStyle {
+                            background: None,
+                            border: iced::Border::default(),
+                        }),
+                        atomic: true,
+                        popup: true,
+                    });
+
+                    source_offset += raw.len();
+                    rest = &rest[raw.len()..];
+                    continue;
+                }
+                display.push('{');
+                source_offset += 1;
+                rest = &rest[1..];
+                continue;
+            }
+
+            let open_ch = rest.chars().next().unwrap();
+            let open_len = open_ch.len_utf8();
+            let close_ch = if open_ch == '`' { '`' } else { CODE_CLOSE };
+
+            let inner = &rest[open_len..];
+            let close = if open_ch == close_ch {
+                inner.find(close_ch)
+            } else {
+                let closer = inner.find(close_ch);
+                let nested = inner.find(open_ch);
+                match (closer, nested) {
+                    (Some(c), Some(n)) if n < c => None,
+                    (c, _) => c,
+                }
+            };
+            if let Some(close) = close {
+                let content = &inner[..close];
+                let raw_len = open_len + close + close_ch.len_utf8();
+                let raw = &rest[..raw_len];
+                let display_start = display.len();
+                display.push_str(content);
+                let display_end = display.len();
+
+                runs.push(markright::StyleRun {
+                    range: display_start..display_end,
+                    style: code_style(),
+                });
+
+                let sentinel_value = format!("{CODE_OPEN}{content}{CODE_CLOSE}");
+
+                spans.push(computed_spans::Span {
+                    id: source_offset as u64,
+                    line: 0,
+                    display_range: display_start..display_end,
+                    source_range: source_offset..source_offset + raw.len(),
+                    source_value: sentinel_value,
+                    display_value: content.to_string(),
+                    placeholder: String::new(),
+                    style: Rc::new(|_: &iced::Theme| popup::SpanStyle {
+                        background: None,
+                        border: iced::Border::default(),
+                    }),
+                    atomic: false,
+                    popup: false,
+                });
+
+                source_offset += raw_len;
+                rest = &rest[raw_len..];
+            } else {
+                display.push('`');
+                source_offset += open_len;
+                rest = &rest[open_len..];
+            }
+        }
+
+        computed_spans::Result {
+            lines: vec![markright::StyledLine {
+                text: display,
+                runs,
+                paragraph: markright::Paragraph::default(),
+            }],
+            spans,
+        }
+    }
+}
+
 impl computed_spans::Source for CodeAdapter {
     fn parse(&self, source: &str) -> computed_spans::Result {
         let mut display = String::new();
@@ -449,6 +663,105 @@ fn insert_inside_atomic_span_is_blocked() {
     // Nothing should change — the span is atomic.
     assert_eq!(c.text(), "x123y");
     assert_eq!(cursor_col(&c), 2);
+}
+
+#[test]
+fn backspace_at_formula_boundary_dissolves_to_text() {
+    // "{=10+10} projects" → display "10+10 projects"
+    // Cursor at span.end → backspace strips closing `}`
+    // → source "{=10+10 projects" → display "{=10+10 projects" (plain text)
+    let c = C::from_computed("{=10+10} projects", FormulaAdapter);
+    assert_eq!(c.text(), "10+10 projects");
+    let spans = c.computed_spans();
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0].display_range, 0..5);
+
+    // Cursor at span.end (col 5)
+    c.move_to(0, 5);
+    c.perform(Edit::Backspace);
+
+    // Formula dissolved — closing } stripped, source becomes plain text.
+    // Display shows the raw source with {= visible.
+    assert_eq!(c.text(), "{=10+10 projects");
+    assert!(
+        c.computed_spans().is_empty(),
+        "no spans after dissolving formula"
+    );
+    // Cursor after "{=10+10" = position 7 (the { and = are now visible)
+    assert_eq!(cursor_col(&c), 7);
+}
+
+#[test]
+fn backspace_after_typing_formula() {
+    // Simulate typing "This input supports {=1+2}" character by character
+    let c = C::from_computed("", FormulaAdapter);
+
+    for ch in "This input supports {=1+2}".chars() {
+        c.perform(Edit::Insert(ch));
+    }
+
+    // After typing "}", the formula span is created.
+    // Display should show the evaluated result.
+    let text = c.text();
+    let col = cursor_col(&c);
+
+    // Now backspace — should dissolve the formula, not panic.
+    c.perform(Edit::Backspace);
+
+    // Formula should be dissolved — raw source visible.
+    let after = c.text();
+    assert!(
+        after.contains("{=1+2"),
+        "dissolved formula should show raw source, got: {after:?}"
+    );
+}
+
+#[test]
+fn dissolved_formula_cursor_position() {
+    // "{=1+2} projects" → display "3 projects", formula at 0..1
+    // (the EvalFormulaAdapter evaluates 1+2 → "3")
+    // Backspace at span.end → "{=1+2 projects", cursor at 5 (after "2")
+    let c = C::from_computed("{=1+2} projects", EvalFormulaAdapter);
+    assert_eq!(c.text(), "3 projects");
+    let spans = c.computed_spans();
+    assert_eq!(spans[0].display_range, 0..1);
+    assert_eq!(spans[0].display_value, "3");
+
+    c.move_to(0, 1);
+    c.perform(Edit::Backspace);
+
+    assert_eq!(c.text(), "{=1+2 projects");
+    // Cursor should be at 5: "{=1+2| projects"
+    assert_eq!(
+        cursor_col(&c),
+        5,
+        "cursor right after the dissolved content"
+    );
+}
+
+#[test]
+fn backspace_at_formula_in_mixed_source() {
+    // Use a source with both formulas and code spans (like the popup example).
+    // The adapter handles both {=expr} and `code`.
+    let c = C::from_computed("The `users` table has {=1+3} columns.", MixedAdapter);
+
+    let text = c.text();
+    // Display: "The users table has 4 columns."
+    // Code "users" at some range, formula "4" at some range.
+    let spans = c.computed_spans();
+    let formula = spans
+        .iter()
+        .find(|s| s.atomic)
+        .expect("should have formula");
+    let formula_end = formula.display_range.end;
+
+    // Move to formula end and backspace
+    c.move_to(0, formula_end);
+    c.perform(Edit::Backspace);
+
+    // Should not panic, formula should dissolve
+    let after = c.text();
+    assert!(after.contains("{=1+3"), "dissolved formula, got: {after:?}");
 }
 
 #[test]
