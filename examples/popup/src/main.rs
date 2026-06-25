@@ -35,8 +35,8 @@ enum Message {
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let source =
-            "Tim had {=1+3} apples and `metric` data, then picked up {=2*6} `items` at the store.";
+        let source = "The `users` table has {=1+3} columns. \
+                      Query `SELECT *` returns {=2*6} rows.";
         let content = Content::from_computed(source, adapter::Adapter);
 
         (Self { content }, focus("popup-editor"))
@@ -59,6 +59,8 @@ impl App {
     fn view(&self) -> Element<'_, Message> {
         let editor = rich_editor::rich_editor(&self.content)
             .id("popup-editor")
+            .size(16)
+            .line_height(1.6)
             .on_action(Message::Editor)
             .on_instruction(Message::Instruction)
             .computed_popup(Message::Span, |span, on_input| {
@@ -83,6 +85,7 @@ impl App {
                 .style(theme::popup)
                 .into()
             })
+            .padding(5)
             .width(300);
 
         center(editor).padding(32).into()
@@ -94,16 +97,24 @@ pub mod theme {
     use iced::widget::{container, text_input};
     use markright::rich_editor::popup;
 
-    pub fn chip(theme: &iced::Theme) -> popup::SpanStyle {
+    pub fn formula_chip(theme: &iced::Theme) -> popup::SpanStyle {
         let palette = theme.palette();
 
         popup::SpanStyle {
-            background: Some(palette.background.weak.color.into()),
+            background: Some(palette.primary.weak.color.into()),
             border: iced::Border {
-                color: palette.background.strong.color,
+                color: palette.primary.base.color,
                 width: 1.0,
                 radius: 3.0.into(),
             },
+        }
+    }
+
+    pub fn formula_style() -> span::Style {
+        span::Style {
+            bold: Some(true),
+            padding: Some(iced::Padding::new(4.0).left(3).right(3)),
+            ..Default::default()
         }
     }
 
@@ -124,7 +135,7 @@ pub mod theme {
         span::Style {
             font: Some(iced::Font::MONOSPACE),
             size: Some(14.0),
-            padding: Some(iced::Padding::new(1.0).left(4).right(4)),
+            padding: Some(iced::Padding::new(1.0).left(6).right(6)),
             ..Default::default()
         }
     }

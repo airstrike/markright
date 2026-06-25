@@ -393,12 +393,7 @@ impl<R: rich_editor::Renderer> Content<R> {
         // Update spans.
         let new_spans = result.spans;
 
-        // Snap cursor out of any newly-formed popup/atomic chip. If the
-        // cursor landed strictly inside a span's display_range (e.g.,
-        // typing `}` to close a `{=expr}` pattern collapsed 6 source
-        // chars into a shorter display value), move it to the end of that
-        // chip. Non-popup spans allow normal editing inside, so the
-        // cursor stays put.
+        // Snap cursor out of any newly-formed popup/atomic chip.
         let cursor = internal.editor.cursor();
         if let Some(span) = new_spans.iter().find(|s| {
             (s.popup || s.atomic)
@@ -421,9 +416,16 @@ impl<R: rich_editor::Renderer> Content<R> {
     }
 
     /// Returns the current source text, if this is a computed-source content.
+    ///
+    /// Internal sentinel delimiters (used to prevent re-pairing on
+    /// dissolution) are translated back to backticks in the output.
     #[cfg(feature = "computed_spans")]
     pub fn source(&self) -> Option<String> {
-        self.0.borrow().computed.as_ref().map(|c| c.source.clone())
+        self.0
+            .borrow()
+            .computed
+            .as_ref()
+            .map(|c| c.source.replace('\u{E000}', "`").replace('\u{E001}', "`"))
     }
 
     /// Export all lines as styled lines for serialization.
@@ -849,6 +851,10 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 let had_selection = self.editor.cursor().selection.is_some();
                 #[cfg(feature = "computed_spans")]
                 let cursor_before = self.editor.cursor();
+                #[cfg(feature = "computed_spans")]
+                if !had_selection && self.try_dissolve_span_boundary(&cursor_before, true) {
+                    return;
+                }
                 let ops = self.backspace_list_aware();
                 self.sync_paragraphs(&ops);
                 self.record_group(ops);
@@ -912,6 +918,72 @@ impl<R: rich_editor::Renderer> Internal<R> {
     /// `display_value` appears verbatim in the post-edit display (chips
     /// are atomic at the binding layer), so its column range is still
     /// valid — we just swap the chip's display text for its source text.
+    /// When backspace/delete lands exactly at a non-popup span boundary,
+    /// strip the adjacent delimiter from `source_value` instead of
+    /// performing a regular character delete. Returns `true` if handled.
+    ///
+    /// `trailing`: `true` for backspace at `span.end` (strip closing
+    /// delimiter), `false` for delete at `span.start` (strip opening).
+    #[cfg(feature = "computed_spans")]
+    fn try_dissolve_span_boundary(&mut self, cursor: &Cursor, trailing: bool) -> bool {
+        let computed = match &mut self.computed {
+            Some(c) => c,
+            None => return false,
+        };
+        let col = cursor.position.column;
+        let line = cursor.position.line;
+
+        let span = if trailing {
+            computed
+                .spans
+                .iter_mut()
+                .find(|s| !s.popup && s.line == line && col == s.display_range.end)
+        } else {
+            computed
+                .spans
+                .iter_mut()
+                .find(|s| !s.popup && s.line == line && col == s.display_range.start)
+        };
+
+        let span = match span {
+            Some(s) => s,
+            None => return false,
+        };
+
+        let has_trailing_delim =
+            span.source_value.ends_with('`') || span.source_value.ends_with('\u{E001}');
+        let has_leading_delim =
+            span.source_value.starts_with('`') || span.source_value.starts_with('\u{E000}');
+
+        if trailing && has_trailing_delim {
+            let prefix_len = if let Some(dv_pos) = span.source_value.find(&*span.display_value) {
+                // Count display chars in the prefix (sentinels render
+                // as backticks, which are 1 display char each).
+                span.source_value[..dv_pos].chars().count()
+            } else {
+                1
+            };
+            span.source_value.pop();
+            Content::<R>::rebuild_from_computed(self);
+            let cursor = self.editor.cursor();
+            self.editor.move_to(Cursor {
+                position: Position {
+                    line: cursor.position.line,
+                    column: cursor.position.column + prefix_len,
+                },
+                selection: None,
+            });
+            true
+        } else if !trailing && has_leading_delim {
+            let first_len = span.source_value.chars().next().map_or(1, |c| c.len_utf8());
+            span.source_value = span.source_value[first_len..].to_string();
+            Content::<R>::rebuild_from_computed(self);
+            true
+        } else {
+            false
+        }
+    }
+
     #[cfg(feature = "computed_spans")]
     fn sync_computed_source(&mut self, shift: Option<(usize, usize, isize)>) {
         if self.computed.is_none() {
@@ -935,29 +1007,62 @@ impl<R: rich_editor::Renderer> Internal<R> {
                     let start = (span.display_range.start as isize + delta).max(0) as usize;
                     let end = (span.display_range.end as isize + delta).max(0) as usize;
                     span.display_range = start..end;
-                } else if !span.popup
-                    && threshold > span.display_range.start
-                    && threshold <= span.display_range.end
-                {
-                    let offset = threshold - span.display_range.start;
+                } else if !span.popup && {
+                    // For insert (delta > 0) the new char lands at
+                    // `threshold`; for backspace (delta < 0) the deleted
+                    // char was at `threshold - 1`. Check if THAT
+                    // position falls inside [start, end).
+                    let affected = if delta > 0 {
+                        threshold
+                    } else {
+                        threshold.saturating_sub(1)
+                    };
+                    affected >= span.display_range.start && affected < span.display_range.end
+                } {
+                    let _offset = threshold - span.display_range.start;
                     let end = (span.display_range.end as isize + delta).max(0) as usize;
                     span.display_range = span.display_range.start..end;
 
-                    if let Some(dv_pos) = span.source_value.find(&span.display_value) {
-                        let _sv_offset = dv_pos + offset;
-                        let actual_display = self
-                            .editor
-                            .line(line)
-                            .map(|l| {
-                                let text = l.text;
-                                text[span.display_range.start..end.min(text.len())].to_string()
-                            })
-                            .unwrap_or_default();
+                    let actual_display = self
+                        .editor
+                        .line(line)
+                        .map(|l| {
+                            let text = l.text;
+                            text[span.display_range.start..end.min(text.len())].to_string()
+                        })
+                        .unwrap_or_default();
+
+                    // Reconstruct source_value by replacing the display
+                    // portion while preserving delimiters. Escape backticks
+                    // in the display text so they don't break the span.
+                    // Only escape backticks when the delimiter IS a
+                    // backtick. Sentinel-delimited spans don't need
+                    // escaping — backticks inside them are just characters.
+                    let backtick_delimited = span.source_value.starts_with('`');
+                    if let Some(dv_pos) = span.source_value.find(&*span.display_value) {
                         let prefix = &span.source_value[..dv_pos];
                         let suffix = &span.source_value[dv_pos + span.display_value.len()..];
-                        span.source_value = format!("{prefix}{actual_display}{suffix}");
-                        span.display_value = actual_display;
+                        let content = if backtick_delimited {
+                            actual_display.replace('`', "``")
+                        } else {
+                            actual_display.clone()
+                        };
+                        span.source_value = format!("{prefix}{content}{suffix}");
+                    } else if (span.source_value.starts_with('`')
+                        || span.source_value.starts_with('\u{E000}'))
+                        && (span.source_value.ends_with('`')
+                            || span.source_value.ends_with('\u{E001}'))
+                    {
+                        let open = span.source_value.chars().next().unwrap_or('\u{E000}');
+                        let close = span.source_value.chars().next_back().unwrap_or('\u{E000}');
+                        let content = if backtick_delimited {
+                            actual_display.replace('`', "``")
+                        } else {
+                            actual_display.clone()
+                        };
+                        span.source_value = format!("{open}{content}{close}");
                     }
+                    span.display_value = actual_display;
                 }
             }
         }
@@ -1018,6 +1123,13 @@ impl<R: rich_editor::Renderer> Internal<R> {
         // stored source. The `computed` borrow is taken twice (once for
         // the adapter call, once for the source update) but neither
         // overlaps with the editor reads above.
+        // Save span ids before rebuild to detect newly-created spans.
+        let old_span_ids: Vec<u64> = self
+            .computed
+            .as_ref()
+            .map(|c| c.spans.iter().map(|s| s.id).collect())
+            .unwrap_or_default();
+
         let result = self
             .computed
             .as_ref()
@@ -1027,6 +1139,26 @@ impl<R: rich_editor::Renderer> Internal<R> {
         self.computed.as_mut().expect("checked above").source = new_source;
 
         Content::<R>::apply_parse_result(self, result);
+
+        // When a NEW span was created (closing delimiter typed), the
+        // cursor overshoots because delimiter chars were consumed.
+        // Snap to the new span's end.
+        if let Some(computed) = self.computed.as_ref() {
+            let cursor = self.editor.cursor();
+            let col = cursor.position.column;
+            let line = cursor.position.line;
+            if let Some(span) = computed.spans.iter().find(|s| {
+                s.line == line && !old_span_ids.contains(&s.id) && col > s.display_range.end
+            }) {
+                self.editor.move_to(Cursor {
+                    position: Position {
+                        line: span.line,
+                        column: span.display_range.end,
+                    },
+                    selection: None,
+                });
+            }
+        }
     }
 
     /// Delete the current selection (if any) and return the ops.
