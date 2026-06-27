@@ -1,11 +1,15 @@
 use std::rc::Rc;
 
+use iced::advanced::text::rich_editor::span;
 use markright::rich_editor::computed_spans;
 
 use crate::parser::{self, CODE_CLOSE, CODE_OPEN, Segment, Segments};
 use crate::theme;
 
-pub struct Adapter;
+pub struct Adapter {
+    pub code_style: span::Style,
+    pub formula_style: span::Style,
+}
 
 impl computed_spans::Source for Adapter {
     fn parse(&self, source: &str) -> computed_spans::Result {
@@ -28,7 +32,7 @@ impl computed_spans::Source for Adapter {
 
                     runs.push(markright::StyleRun {
                         range: display_start..display_end,
-                        style: theme::formula_style(),
+                        style: self.formula_style.clone(),
                     });
 
                     spans.push(computed_spans::Span {
@@ -53,11 +57,9 @@ impl computed_spans::Source for Adapter {
 
                     runs.push(markright::StyleRun {
                         range: display_start..display_end,
-                        style: theme::code_style(),
+                        style: self.code_style.clone(),
                     });
 
-                    // Store source_value with sentinel delimiters so
-                    // matched pairs can't re-pair if one is dissolved.
                     let sentinel_value =
                         format!("{CODE_OPEN}{}{CODE_CLOSE}", content.replace('`', "``"));
 

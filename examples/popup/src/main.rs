@@ -6,15 +6,17 @@
 /// edit interception, cursor management, popup lifecycle — is internal
 /// to the widget.
 use iced::widget::operation::focus;
-use iced::widget::{center, column, container, text};
-use iced::{Element, Shrink, Task};
+use iced::widget::{center, column, container, row, slider, text};
+use iced::{Center, Element, Fill, Shrink, Task};
 
-use markright::rich_editor::computed_spans;
-use markright::rich_editor::popup;
-use markright::rich_editor::{self, Content, Instruction};
+use markright::rich_editor;
+use markright::rich_editor::{Content, Instruction, computed_spans, popup};
 
 mod adapter;
 mod parser;
+
+const SOURCE: &str = "The `users` table has {=1+3} columns. \
+                      Query `SELECT *` returns {=2*6} rows.";
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
@@ -24,6 +26,10 @@ fn main() -> iced::Result {
 
 struct App {
     content: Content<iced::Renderer>,
+    code_v: f32,
+    code_h: f32,
+    formula_v: f32,
+    formula_h: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -31,33 +37,81 @@ enum Message {
     Editor(rich_editor::Action),
     Span(computed_spans::Action),
     Instruction(Instruction),
+    CodeV(f32),
+    CodeH(f32),
+    FormulaV(f32),
+    FormulaH(f32),
 }
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let source = "The `users` table has {=1+3} columns. \
-                      Query `SELECT *` returns {=2*6} rows.";
-        let content = Content::from_computed(source, adapter::Adapter);
+        let code_v = 1.0;
+        let code_h = 6.0;
+        let formula_v = 4.0;
+        let formula_h = 3.0;
+        let content = Content::from_computed(
+            SOURCE,
+            adapter::Adapter {
+                code_style: theme::code_style(code_v, code_h),
+                formula_style: theme::formula_style(formula_v, formula_h),
+            },
+        );
 
-        (Self { content }, focus("popup-editor"))
+        (
+            Self {
+                content,
+                code_v,
+                code_h,
+                formula_v,
+                formula_h,
+            },
+            focus("popup-editor"),
+        )
+    }
+
+    fn rebuild(&mut self) {
+        let source = self.content.source().unwrap_or_else(|| SOURCE.to_string());
+        self.content = Content::from_computed(
+            &source,
+            adapter::Adapter {
+                code_style: theme::code_style(self.code_v, self.code_h),
+                formula_style: theme::formula_style(self.formula_v, self.formula_h),
+            },
+        );
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Editor(action) => {
                 self.content.perform(action);
-                Task::none()
             }
             Message::Span(action) => {
                 self.content.span_perform(action);
-                Task::none()
             }
-            Message::Instruction(Instruction::Focus(id)) => focus(id),
+            Message::Instruction(Instruction::Focus(id)) => return focus(id),
+
+            Message::CodeV(v) => {
+                self.code_v = v;
+                self.rebuild();
+            }
+            Message::CodeH(v) => {
+                self.code_h = v;
+                self.rebuild();
+            }
+            Message::FormulaV(v) => {
+                self.formula_v = v;
+                self.rebuild();
+            }
+            Message::FormulaH(v) => {
+                self.formula_h = v;
+                self.rebuild();
+            }
         }
+        Task::none()
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let editor = rich_editor::rich_editor(&self.content)
+        let editor = rich_editor(&self.content)
             .id("popup-editor")
             .size(16)
             .line_height(1.6)
@@ -88,8 +142,41 @@ impl App {
             .padding(5)
             .width(300);
 
-        center(editor).padding(32).into()
+        let code_controls = column![
+            text("Code spans").size(12),
+            labeled_slider("V", self.code_v, Message::CodeV),
+            labeled_slider("H", self.code_h, Message::CodeH),
+        ]
+        .spacing(4);
+
+        let formula_controls = column![
+            text("Formula spans").size(12),
+            labeled_slider("V", self.formula_v, Message::FormulaV),
+            labeled_slider("H", self.formula_h, Message::FormulaH),
+        ]
+        .spacing(4);
+
+        let controls = row![code_controls, formula_controls].spacing(24).padding(8);
+
+        center(column![editor, controls].spacing(16).width(300))
+            .padding(32)
+            .into()
     }
+}
+
+fn labeled_slider<'a>(
+    label: &'a str,
+    value: f32,
+    on_change: impl Fn(f32) -> Message + 'a,
+) -> Element<'a, Message> {
+    row![
+        text!("{label}").size(11).width(16),
+        slider(0.0..=12.0, value, on_change).step(0.5).width(Fill),
+        text!("{value:.1}").size(11).width(30),
+    ]
+    .spacing(6)
+    .align_y(Center)
+    .into()
 }
 
 pub mod theme {
@@ -110,10 +197,10 @@ pub mod theme {
         }
     }
 
-    pub fn formula_style() -> span::Style {
+    pub fn formula_style(v: f32, h: f32) -> span::Style {
         span::Style {
             bold: Some(true),
-            padding: Some(iced::Padding::new(4.0).left(3).right(3)),
+            padding: Some(iced::Padding::new(v).left(h).right(h)),
             ..Default::default()
         }
     }
@@ -131,11 +218,11 @@ pub mod theme {
         }
     }
 
-    pub fn code_style() -> span::Style {
+    pub fn code_style(v: f32, h: f32) -> span::Style {
         span::Style {
             font: Some(iced::Font::MONOSPACE),
             size: Some(14.0),
-            padding: Some(iced::Padding::new(1.0).left(6).right(6)),
+            padding: Some(iced::Padding::new(v).left(h).right(h)),
             ..Default::default()
         }
     }

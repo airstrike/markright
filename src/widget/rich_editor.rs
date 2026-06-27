@@ -1540,13 +1540,16 @@ where
                 }
             }
 
-            // ── Popup span highlights ──
-            // Only render chip backgrounds/borders while the editor is
-            // focused. Unfocused: the underlying text still renders with
-            // its own style runs (bold, color, etc.), but the chip
-            // decoration is hidden so the content reads as flowing text.
-            if state.focus.is_some() {
+            // ── Span chip highlights ──
+            // Non-popup spans (inline code) always show their chip.
+            // Popup spans (formulas) only show chips while focused so
+            // unfocused content reads as flowing text.
+            {
+                let focused = state.focus.is_some();
                 for h in self.popup_spans.as_slice() {
+                    if h.popup && !focused {
+                        continue;
+                    }
                     let span_style = (h.style)(theme);
                     if span_style.background.is_none() && span_style.border.width <= 0.0 {
                         continue;
