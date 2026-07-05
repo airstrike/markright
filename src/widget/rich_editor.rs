@@ -934,6 +934,8 @@ where
             internal.editor.set_scrollable(self.scrollable);
         }
 
+        internal.sync_vertical_margins();
+
         internal.editor.update(
             limits.shrink(h_padding).max(),
             self.padding,
@@ -1385,10 +1387,14 @@ where
                     continue;
                 };
 
-                // Compute paragraph rect: full width, from line_top to next
-                // paragraph's line_top (or line_top + line_height for last).
+                // Compute paragraph rect: full width, from line_top down. Within
+                // a merged block (code fences, multi-line quotes) the rect runs
+                // to the next line's line_top so the fills overlap and read as
+                // one continuous block. At a block boundary it stops at this
+                // line's own box so the fill doesn't bleed through the trailing
+                // margin into the following paragraph.
                 let top = geom.line_top;
-                let bottom = if line_idx + 1 < line_count {
+                let bottom = if line_idx + 1 < line_count && internal.grouped_with_next(line_idx) {
                     internal
                         .editor
                         .line_geometry(line_idx + 1)

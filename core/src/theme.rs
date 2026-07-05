@@ -40,6 +40,9 @@ impl Theme {
         if !p.overrides().contains(OverrideSet::SPACING_AFTER) {
             p.style.spacing_after = base.style.spacing_after;
         }
+        if !p.overrides().contains(OverrideSet::CONTIGUOUS) {
+            p.style.contiguous = base.style.contiguous;
+        }
         if !p.overrides().contains(OverrideSet::LINE_HEIGHT) {
             p.style.line_height = base.style.line_height;
         }
@@ -146,6 +149,7 @@ impl Default for Theme {
                     },
                     space_before: Some(12.0),
                     spacing_after: Some(12.0),
+                    contiguous: true,
                     fill: Some(Fill {
                         color: None,
                         height: None,
@@ -169,6 +173,7 @@ impl Default for Theme {
                 paragraph::Style {
                     space_before: Some(8.0),
                     spacing_after: Some(8.0),
+                    contiguous: true,
                     indent: paragraph::Indent {
                         left: 12.0,
                         ..paragraph::Indent::default()

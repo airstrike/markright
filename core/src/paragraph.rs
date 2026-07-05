@@ -122,6 +122,7 @@ impl OverrideSet {
     pub const SIZE: Self = Self(1 << 15);
     pub const COLOR: Self = Self(1 << 16);
     pub const LETTER_SPACING: Self = Self(1 << 17);
+    pub const CONTIGUOUS: Self = Self(1 << 18);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

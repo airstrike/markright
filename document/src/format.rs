@@ -161,6 +161,11 @@ fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
         props.push(format!("sa={}", format_float(sa)));
     }
 
+    // Contiguous — only emit if different from theme default
+    if ps.contiguous != base.style.contiguous {
+        props.push(format!("contiguous={}", ps.contiguous));
+    }
+
     // Level — only emit if different from theme default
     if ps.level > 0 && ps.level != base.style.level {
         props.push(format!("level={}", ps.level));
@@ -451,6 +456,11 @@ fn parse_paragraph_header(header: &str) -> Result<Paragraph, ParseError> {
             paragraph.style.space_before = Some(parse_f32(val)?);
         } else if let Some(val) = token.strip_prefix("sa=") {
             paragraph.style.spacing_after = Some(parse_f32(val)?);
+        } else if let Some(val) = token.strip_prefix("contiguous=") {
+            paragraph.style.contiguous = val.parse::<bool>().map_err(|_| ParseError {
+                message: format!("invalid contiguous (expected true/false): {val}"),
+                offset: 0,
+            })?;
         } else if let Some(val) = token.strip_prefix("level=") {
             paragraph.style.level = val.parse::<u8>().map_err(|_| ParseError {
                 message: format!("invalid level: {val}"),

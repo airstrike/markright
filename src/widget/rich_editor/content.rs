@@ -128,12 +128,8 @@ impl<R: rich_editor::Renderer> Content<R> {
                         .editor
                         .set_paragraph_style(i, &line.paragraph.style);
                 }
-                // Wire spacing to cosmic-text margins
-                let sb = line.paragraph.style.space_before.unwrap_or(0.0);
-                let sa = line.paragraph.style.spacing_after.unwrap_or(0.0);
-                if sb != 0.0 || sa != 0.0 {
-                    internal.editor.set_paragraph_spacing(i, sb, sa);
-                }
+                // Vertical margins are wired block-aware in sync_vertical_margins
+                // (called from update_layout / widget layout) before shaping.
                 // Then apply span overrides — skip default-styled runs so they
                 // inherit paragraph character defaults instead of overriding them
                 for run in &line.runs {
@@ -425,7 +421,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             .borrow()
             .computed
             .as_ref()
-            .map(|c| c.source.replace('\u{E000}', "`").replace('\u{E001}', "`"))
+            .map(|c| c.source.replace(['\u{E000}', '\u{E001}'], "`"))
     }
 
     /// Export all lines as styled lines for serialization.
@@ -682,6 +678,7 @@ impl<R: rich_editor::Renderer> Content<R> {
         use crate::core::{Em, Padding, Pixels};
 
         let mut internal = self.0.borrow_mut();
+        internal.sync_vertical_margins();
         let default_style = internal.default_style.clone();
         internal.editor.update(
             bounds,
@@ -762,6 +759,56 @@ pub(crate) struct Computed {
 }
 
 impl<R: rich_editor::Renderer> Internal<R> {
+    /// Whether the paragraph at `line` visually merges with the one below it.
+    ///
+    /// A paragraph whose style is marked [`contiguous`] forms a single visual
+    /// block with consecutive lines that share its name: interior boundaries
+    /// collapse their vertical spacing, and any fill/border is drawn
+    /// continuously across the run rather than bleeding into the following
+    /// paragraph's margin. Code fences and multi-line quotes opt in via the
+    /// theme; everything else stays independent.
+    ///
+    /// [`contiguous`]: paragraph::Style::contiguous
+    pub(crate) fn grouped_with_next(&self, line: usize) -> bool {
+        let Some(cur) = self.paragraphs.get(line) else {
+            return false;
+        };
+        let Some(next) = self.paragraphs.get(line + 1) else {
+            return false;
+        };
+        cur.style.contiguous && cur.name == next.name
+    }
+
+    /// Push block-aware vertical margins into the editor before shaping.
+    ///
+    /// Each line's `space_before`/`spacing_after` become cosmic-text margins,
+    /// except at interior boundaries of a merged block ([`grouped_with_next`]),
+    /// where the margin collapses to zero so the block's lines pack tightly.
+    ///
+    /// [`grouped_with_next`]: Self::grouped_with_next
+    pub(crate) fn sync_vertical_margins(&mut self) {
+        let n = self.paragraphs.len();
+        let spacings: Vec<(f32, f32)> = (0..n)
+            .map(|i| {
+                let p = &self.paragraphs[i];
+                let sb = if i > 0 && self.grouped_with_next(i - 1) {
+                    0.0
+                } else {
+                    p.style.space_before.unwrap_or(0.0)
+                };
+                let sa = if self.grouped_with_next(i) {
+                    0.0
+                } else {
+                    p.style.spacing_after.unwrap_or(0.0)
+                };
+                (sb, sa)
+            })
+            .collect();
+        for (i, (sb, sa)) in spacings.into_iter().enumerate() {
+            self.editor.set_paragraph_spacing(i, sb, sa);
+        }
+    }
+
     fn perform(&mut self, action: Action) {
         match action {
             Action::Edit(edit) => self.perform_edit(edit),
@@ -1399,11 +1446,6 @@ impl<R: rich_editor::Renderer> Internal<R> {
         }
         let margin = list::compute_margin(&paragraph.style, self.list_indent);
         self.editor.set_paragraph_style(line, &paragraph.style);
-        self.editor.set_paragraph_spacing(
-            line,
-            paragraph.style.space_before.unwrap_or(0.0),
-            paragraph.style.spacing_after.unwrap_or(0.0),
-        );
         self.paragraphs[line] = paragraph;
         self.editor.set_margin_left(line, margin);
     }
@@ -1444,11 +1486,6 @@ impl<R: rich_editor::Renderer> Internal<R> {
         self.paragraphs.insert(line + 1, new_para.clone());
         self.editor.set_margin_left(line + 1, margin);
         self.editor.set_paragraph_style(line + 1, &new_para.style);
-        self.editor.set_paragraph_spacing(
-            line + 1,
-            new_para.style.space_before.unwrap_or(0.0),
-            new_para.style.spacing_after.unwrap_or(0.0),
-        );
     }
 
     /// Sync paragraphs after a MergeLine: remove the paragraph at `line + 1`
@@ -1457,10 +1494,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
         if line + 1 < self.paragraphs.len() {
             self.paragraphs.remove(line + 1);
         }
-        let sb = self.paragraph(line).style.space_before.unwrap_or(0.0);
-        let sa = self.paragraph(line).style.spacing_after.unwrap_or(0.0);
         let margin = list::compute_margin(&self.paragraph(line).style, self.list_indent);
-        self.editor.set_paragraph_spacing(line, sb, sa);
         self.editor.set_margin_left(line, margin);
     }
 
