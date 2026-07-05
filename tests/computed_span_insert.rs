@@ -142,15 +142,15 @@ impl computed_spans::Source for EvalFormulaAdapter {
 }
 
 fn simple_eval(expr: &str) -> String {
-    if let Some((a, b)) = expr.split_once('+') {
-        if let (Ok(a), Ok(b)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
-            return format!("{}", a + b);
-        }
+    if let Some((a, b)) = expr.split_once('+')
+        && let (Ok(a), Ok(b)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>())
+    {
+        return format!("{}", a + b);
     }
-    if let Some((a, b)) = expr.split_once('*') {
-        if let (Ok(a), Ok(b)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
-            return format!("{}", a * b);
-        }
+    if let Some((a, b)) = expr.split_once('*')
+        && let (Ok(a), Ok(b)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>())
+    {
+        return format!("{}", a * b);
     }
     if let Ok(n) = expr.parse::<f64>() {
         return format!("{n}");
@@ -179,12 +179,12 @@ impl computed_spans::Source for MixedAdapter {
                 .min();
 
             let Some(pos) = next else {
-                display.push_str(&rest.replace(CODE_OPEN, "`").replace(CODE_CLOSE, "`"));
+                display.push_str(&rest.replace([CODE_OPEN, CODE_CLOSE], "`"));
                 break;
             };
 
             if pos > 0 {
-                display.push_str(&rest[..pos].replace(CODE_OPEN, "`").replace(CODE_CLOSE, "`"));
+                display.push_str(&rest[..pos].replace([CODE_OPEN, CODE_CLOSE], "`"));
                 source_offset += pos;
                 rest = &rest[pos..];
                 continue;
@@ -304,17 +304,13 @@ impl computed_spans::Source for CodeAdapter {
         let mut source_offset = 0;
         let mut rest = source;
 
-        while let Some(open) = rest.find(|c: char| c == '`' || c == CODE_OPEN) {
+        while let Some(open) = rest.find(['`', CODE_OPEN]) {
             let open_ch = rest[open..].chars().next().unwrap();
             let open_len = open_ch.len_utf8();
             let close_ch = if open_ch == '`' { '`' } else { CODE_CLOSE };
 
             // Orphaned sentinels render as backtick
-            display.push_str(
-                &rest[..open]
-                    .replace(CODE_OPEN, "`")
-                    .replace(CODE_CLOSE, "`"),
-            );
+            display.push_str(&rest[..open].replace([CODE_OPEN, CODE_CLOSE], "`"));
             source_offset += open;
 
             let inner = &rest[open + open_len..];
@@ -368,7 +364,7 @@ impl computed_spans::Source for CodeAdapter {
                 rest = &rest[open + open_len..];
             }
         }
-        display.push_str(&rest.replace(CODE_OPEN, "`").replace(CODE_CLOSE, "`"));
+        display.push_str(&rest.replace([CODE_OPEN, CODE_CLOSE], "`"));
 
         computed_spans::Result {
             lines: vec![markright::StyledLine {
@@ -701,10 +697,6 @@ fn backspace_after_typing_formula() {
     }
 
     // After typing "}", the formula span is created.
-    // Display should show the evaluated result.
-    let text = c.text();
-    let col = cursor_col(&c);
-
     // Now backspace — should dissolve the formula, not panic.
     c.perform(Edit::Backspace);
 
@@ -745,7 +737,6 @@ fn backspace_at_formula_in_mixed_source() {
     // The adapter handles both {=expr} and `code`.
     let c = C::from_computed("The `users` table has {=1+3} columns.", MixedAdapter);
 
-    let text = c.text();
     // Display: "The users table has 4 columns."
     // Code "users" at some range, formula "4" at some range.
     let spans = c.computed_spans();
