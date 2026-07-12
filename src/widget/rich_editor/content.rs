@@ -791,7 +791,12 @@ impl<R: rich_editor::Renderer> Internal<R> {
         let spacings: Vec<(f32, f32)> = (0..n)
             .map(|i| {
                 let p = &self.paragraphs[i];
-                let sb = if i > 0 && self.grouped_with_next(i - 1) {
+                let sb = if i == 0 {
+                    // The document's first paragraph sits flush at the
+                    // top; leading space_before is inter-paragraph
+                    // rhythm, not a document margin.
+                    0.0
+                } else if self.grouped_with_next(i - 1) {
                     0.0
                 } else {
                     p.style.space_before.unwrap_or(0.0)
