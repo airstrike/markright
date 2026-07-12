@@ -115,14 +115,27 @@ impl Block {
 
     /// Append text with the current inline styling, extending the last
     /// run if the style matches.
-    fn push_text(&mut self, text: &str, inline: Inline, code: &span::Style) {
+    fn push_text(
+        &mut self,
+        text: &str,
+        inline: Inline,
+        code: &span::Style,
+        code_scale: Option<f32>,
+    ) {
         if text.is_empty() {
             return;
         }
         let start = self.text.len();
         self.text.push_str(text);
         let end = self.text.len();
-        let style = inline.to_span_style(code);
+        let mut style = inline.to_span_style(code);
+        // Inline code scales with paragraphs that declare a size
+        // (headings); body-level code keeps the absolute entry size.
+        if inline.code {
+            if let (Some(scale), Some(base)) = (code_scale, self.paragraph.style.style.size) {
+                style.size = Some(base * scale);
+            }
+        }
 
         if let Some(last) = self.runs.last_mut()
             && last.range.end == start
@@ -171,6 +184,7 @@ fn parse_markdown(input: &str, theme: &Theme) -> Vec<StyledLine> {
     // Inline code spans inherit the CODE_BLOCK entry's character
     // style, so one stylesheet entry retargets fenced blocks and
     // backticked spans together.
+    let code_scale = theme.code_scale();
     let code_style = {
         let code = &theme.get(Name::CODE_BLOCK).style.style;
         span::Style {
@@ -276,13 +290,13 @@ fn parse_markdown(input: &str, theme: &Theme) -> Vec<StyledLine> {
                         first = false;
                         let blk = block
                             .get_or_insert_with(|| Block::new(theme.get(Name::CODE_BLOCK).clone()));
-                        blk.push_text(line, inline, &code_style);
+                        blk.push_text(line, inline, &code_style, code_scale);
                     }
                 } else {
                     let blk = block.get_or_insert_with(|| {
                         Block::new(paragraph_for(&theme, &list_stack, quote_depth, None))
                     });
-                    blk.push_text(&text, inline, &code_style);
+                    blk.push_text(&text, inline, &code_style, code_scale);
                 }
             }
             Event::Code(code) => {
@@ -293,11 +307,11 @@ fn parse_markdown(input: &str, theme: &Theme) -> Vec<StyledLine> {
                 let blk = block.get_or_insert_with(|| {
                     Block::new(paragraph_for(&theme, &list_stack, quote_depth, None))
                 });
-                blk.push_text(&code, inline_code, &code_style);
+                blk.push_text(&code, inline_code, &code_style, code_scale);
             }
             Event::SoftBreak => {
                 if let Some(blk) = block.as_mut() {
-                    blk.push_text(" ", inline, &code_style);
+                    blk.push_text(" ", inline, &code_style, code_scale);
                 }
             }
             Event::HardBreak => {
@@ -618,6 +632,35 @@ mod tests {
         for line in &lines {
             assert!(matches!(line.paragraph.style.list, Some(List::Ordered(_))));
         }
+    }
+
+    #[test]
+    fn inline_code_in_a_heading_scales_with_the_container() {
+        let theme = Theme::default().with_code_scale(0.5);
+        let heading_size = theme
+            .get(Name::heading(1))
+            .style
+            .style
+            .size
+            .expect("H1 has an explicit size");
+
+        let lines = parse_with("# Big `code` here", &theme);
+        let code_run = lines[0]
+            .runs
+            .iter()
+            .find(|r| r.style.font.is_some())
+            .expect("code run");
+        assert_eq!(code_run.style.size, Some(heading_size * 0.5));
+
+        // Body paragraphs have no explicit size: absolute entry size wins.
+        let lines = parse_with("plain `code` here", &theme);
+        let code_run = lines[0]
+            .runs
+            .iter()
+            .find(|r| r.style.font.is_some())
+            .expect("code run");
+        let entry_size = theme.get(Name::CODE_BLOCK).style.style.size;
+        assert_eq!(code_run.style.size, entry_size);
     }
 
     #[test]

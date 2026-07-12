@@ -13,9 +13,24 @@ use crate::paragraph::{self, Border, Borders, Fill, Name, OverrideSet, Paragraph
 pub struct Theme {
     entries: HashMap<Name, Paragraph>,
     fallback: Paragraph,
+    /// Inline code size as a fraction of the containing paragraph's
+    /// explicit size (e.g. `0.85`). Paragraphs without an explicit
+    /// size (typically body text) keep the CODE_BLOCK entry's
+    /// absolute size instead.
+    code_scale: Option<f32>,
 }
 
 impl Theme {
+    /// Scale inline code relative to its containing paragraph's size.
+    pub fn with_code_scale(mut self, scale: f32) -> Self {
+        self.code_scale = Some(scale);
+        self
+    }
+
+    pub fn code_scale(&self) -> Option<f32> {
+        self.code_scale
+    }
+
     pub fn get(&self, name: Name) -> &Paragraph {
         self.entries.get(&name).unwrap_or(&self.fallback)
     }
@@ -212,6 +227,7 @@ impl Default for Theme {
         Self {
             entries,
             fallback: Paragraph::default(),
+            code_scale: None,
         }
     }
 }
