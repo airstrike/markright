@@ -529,7 +529,7 @@ mod tests {
     use super::*;
 
     fn parse(input: &str) -> Vec<StyledLine> {
-        parse_markdown(input)
+        parse_markdown(input, &Theme::default())
     }
 
     #[test]
