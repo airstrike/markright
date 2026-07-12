@@ -79,12 +79,14 @@ struct Inline {
 
 impl Inline {
     /// Produce a `span::Style` reflecting the current inline flags.
-    fn to_span_style(self, code_font: Font) -> span::Style {
+    fn to_span_style(self, code: &span::Style) -> span::Style {
         span::Style {
             bold: self.bold.then_some(true),
             italic: self.italic.then_some(true),
             strikethrough: self.strikethrough.then_some(true),
-            font: self.code.then_some(code_font),
+            font: if self.code { code.font } else { None },
+            size: if self.code { code.size } else { None },
+            color: if self.code { code.color } else { None },
             ..Default::default()
         }
     }
@@ -112,14 +114,14 @@ impl Block {
 
     /// Append text with the current inline styling, extending the last
     /// run if the style matches.
-    fn push_text(&mut self, text: &str, inline: Inline, code_font: Font) {
+    fn push_text(&mut self, text: &str, inline: Inline, code: &span::Style) {
         if text.is_empty() {
             return;
         }
         let start = self.text.len();
         self.text.push_str(text);
         let end = self.text.len();
-        let style = inline.to_span_style(code_font);
+        let style = inline.to_span_style(code);
 
         if let Some(last) = self.runs.last_mut()
             && last.range.end == start
@@ -165,12 +167,18 @@ fn parse_markdown(input: &str, theme: &Theme) -> Vec<StyledLine> {
         Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS,
     );
 
-    let code_font = theme
-        .get(Name::CODE_BLOCK)
-        .style
-        .style
-        .font
-        .unwrap_or_else(monospace_font);
+    // Inline code spans inherit the CODE_BLOCK entry's character
+    // style, so one stylesheet entry retargets fenced blocks and
+    // backticked spans together.
+    let code_style = {
+        let code = &theme.get(Name::CODE_BLOCK).style.style;
+        span::Style {
+            font: code.font.or_else(|| Some(monospace_font())),
+            size: code.size,
+            color: code.color,
+            ..span::Style::default()
+        }
+    };
     let mut out: Vec<StyledLine> = Vec::new();
     let mut block: Option<Block> = None;
     let mut inline = Inline::default();
@@ -266,13 +274,13 @@ fn parse_markdown(input: &str, theme: &Theme) -> Vec<StyledLine> {
                         first = false;
                         let blk = block
                             .get_or_insert_with(|| Block::new(theme.get(Name::CODE_BLOCK).clone()));
-                        blk.push_text(line, inline, code_font);
+                        blk.push_text(line, inline, &code_style);
                     }
                 } else {
                     let blk = block.get_or_insert_with(|| {
                         Block::new(paragraph_for(&theme, &list_stack, quote_depth, None))
                     });
-                    blk.push_text(&text, inline, code_font);
+                    blk.push_text(&text, inline, &code_style);
                 }
             }
             Event::Code(code) => {
@@ -283,11 +291,11 @@ fn parse_markdown(input: &str, theme: &Theme) -> Vec<StyledLine> {
                 let blk = block.get_or_insert_with(|| {
                     Block::new(paragraph_for(&theme, &list_stack, quote_depth, None))
                 });
-                blk.push_text(&code, inline_code, code_font);
+                blk.push_text(&code, inline_code, &code_style);
             }
             Event::SoftBreak => {
                 if let Some(blk) = block.as_mut() {
-                    blk.push_text(" ", inline, code_font);
+                    blk.push_text(" ", inline, &code_style);
                 }
             }
             Event::HardBreak => {
