@@ -1420,13 +1420,35 @@ where
                     _ => style.value,
                 };
 
-                // Draw fill
-                if let Some(fill) = &para.style.fill {
+                // Draw fill — one quad per contiguous group, drawn at the
+                // group's first line. Per-line quads that overlap by the
+                // fill padding would double-composite translucent colors
+                // into visible bands; a single quad keeps the alpha uniform
+                // and rounds only the group's outer corners.
+                let group_start = line_idx == 0 || !internal.grouped_with_next(line_idx - 1);
+                if let Some(fill) = &para.style.fill
+                    && group_start
+                {
+                    let mut last = line_idx;
+                    while last + 1 < line_count && internal.grouped_with_next(last) {
+                        last += 1;
+                    }
+                    let group_bottom = internal
+                        .editor
+                        .line_geometry(last)
+                        .map(|g| g.line_top + g.line_height)
+                        .unwrap_or(bottom);
+                    let group_rect = Rectangle {
+                        x: text_bounds.x,
+                        y: text_bounds.y + top,
+                        width: text_bounds.width,
+                        height: group_bottom - top,
+                    };
                     let padded = Rectangle {
-                        x: para_rect.x - fill.padding.left,
-                        y: para_rect.y - fill.padding.top,
-                        width: para_rect.width + fill.padding.left + fill.padding.right,
-                        height: para_rect.height + fill.padding.top + fill.padding.bottom,
+                        x: group_rect.x - fill.padding.left,
+                        y: group_rect.y - fill.padding.top,
+                        width: group_rect.width + fill.padding.left + fill.padding.right,
+                        height: group_rect.height + fill.padding.top + fill.padding.bottom,
                     };
                     let fill_rect = match fill.height {
                         None => padded,
