@@ -87,6 +87,7 @@ impl Inline {
             font: if self.code { code.font } else { None },
             size: if self.code { code.size } else { None },
             color: if self.code { code.color } else { None },
+            padding: if self.code { code.padding } else { None },
             ..Default::default()
         }
     }
@@ -176,6 +177,7 @@ fn parse_markdown(input: &str, theme: &Theme) -> Vec<StyledLine> {
             font: code.font.or_else(|| Some(monospace_font())),
             size: code.size,
             color: code.color,
+            padding: code.padding,
             ..span::Style::default()
         }
     };
