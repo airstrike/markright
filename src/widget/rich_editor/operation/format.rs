@@ -196,11 +196,16 @@ fn set_attr_range<E: Editor>(
     let mut ops = Vec::new();
 
     for line in start.line..=end.line {
-        let col_start = if line == start.line { start.column } else { 0 };
-        let col_end = if line == end.line {
-            end.column
+        let line_len = editor.line(line).map(|l| l.text.len()).unwrap_or(0);
+        let col_start = if line == start.line {
+            start.column.min(line_len)
         } else {
-            editor.line(line).map(|l| l.text.len()).unwrap_or(0)
+            0
+        };
+        let col_end = if line == end.line {
+            end.column.min(line_len)
+        } else {
+            line_len
         };
 
         ops.push(set_attr_on_line(editor, line, col_start..col_end, attr));
@@ -237,14 +242,19 @@ fn set_attr_on_line<E: Editor>(
         }
     }
 
-    // Apply: read-modify-write each run.
+    // Apply: read-modify-write each run. Skip runs where the attribute
+    // doesn't change — writing them would create explicit cosmic-text
+    // spans that shadow future default style changes (mirrors the replay
+    // logic in `apply_op`).
     if runs.is_empty() {
         let style = attr.apply_to(&Default::default());
         editor.set_span_style(line, range.clone(), &style);
     } else {
         for run in &runs {
             let merged = attr.apply_to(&run.style);
-            editor.set_span_style(line, run.range.clone(), &merged);
+            if merged != run.style {
+                editor.set_span_style(line, run.range.clone(), &merged);
+            }
         }
     }
 
