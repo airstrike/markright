@@ -79,17 +79,25 @@ struct Inline {
 
 impl Inline {
     /// Produce a `span::Style` reflecting the current inline flags.
+    ///
+    /// Code spans inherit the full `CODE_BLOCK` character style;
+    /// markdown emphasis flags layer on top of it.
     fn to_span_style(self, code: &span::Style) -> span::Style {
-        span::Style {
-            bold: self.bold.then_some(true),
-            italic: self.italic.then_some(true),
-            strikethrough: self.strikethrough.then_some(true),
-            font: if self.code { code.font } else { None },
-            size: if self.code { code.size } else { None },
-            color: if self.code { code.color } else { None },
-            padding: if self.code { code.padding } else { None },
-            ..Default::default()
+        let mut style = if self.code {
+            code.clone()
+        } else {
+            span::Style::default()
+        };
+        if self.bold {
+            style.bold = Some(true);
         }
+        if self.italic {
+            style.italic = Some(true);
+        }
+        if self.strikethrough {
+            style.strikethrough = Some(true);
+        }
+        style
     }
 }
 
@@ -189,10 +197,7 @@ fn parse_markdown(input: &str, theme: &Theme) -> Vec<StyledLine> {
         let code = &theme.get(Name::CODE_BLOCK).style.style;
         span::Style {
             font: code.font.or_else(|| Some(monospace_font())),
-            size: code.size,
-            color: code.color,
-            padding: code.padding,
-            ..span::Style::default()
+            ..code.clone()
         }
     };
     let mut out: Vec<StyledLine> = Vec::new();
@@ -661,6 +666,32 @@ mod tests {
             .expect("code run");
         let entry_size = theme.get(Name::CODE_BLOCK).style.style.size;
         assert_eq!(code_run.style.size, entry_size);
+    }
+
+    #[test]
+    fn inline_code_inherits_full_character_style() {
+        let mut entry = Theme::default().get(Name::CODE_BLOCK).clone();
+        entry.style.style.letter_spacing = Some(0.5);
+        entry.style.style.italic = Some(true);
+        let theme = Theme::default().with_entry(entry);
+
+        let lines = parse_with("use `foo` here", &theme);
+        let code_run = lines[0]
+            .runs
+            .iter()
+            .find(|r| r.style.font.is_some())
+            .expect("code run");
+        assert_eq!(&lines[0].text[code_run.range.clone()], "foo");
+        assert_eq!(code_run.style.letter_spacing, Some(0.5));
+        assert_eq!(code_run.style.italic, Some(true));
+
+        // Non-code runs stay unaffected by the code entry's style.
+        let plain_run = lines[0]
+            .runs
+            .iter()
+            .find(|r| r.style.font.is_none())
+            .expect("plain run");
+        assert_eq!(plain_run.style.letter_spacing, None);
     }
 
     #[test]
