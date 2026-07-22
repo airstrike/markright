@@ -643,11 +643,10 @@ fn parse_color(hex: &str) -> Result<Color, ParseError> {
     }
 }
 
-/// Create a `Font` from a name (underscores → spaces), leaking the string for `'static`.
+/// Create a `Font` from a name (underscores → spaces).
 fn make_font(name: &str) -> Font {
-    let family_name: &'static str = Box::leak(name.replace('_', " ").into_boxed_str());
     Font {
-        family: font::Family::Name(family_name),
+        family: font::Family::name(&name.replace('_', " ")),
         ..Font::DEFAULT
     }
 }
