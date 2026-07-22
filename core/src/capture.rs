@@ -6,7 +6,7 @@ use std::ops::Range;
 use iced_core::text::rich_editor::Editor;
 
 use super::op::{StyleRun, StyledLine, StyledText};
-use crate::paragraph::{Name, Paragraph};
+use crate::paragraph::Paragraph;
 
 /// Read character-style runs from the editor over a column range on one line.
 ///
@@ -38,28 +38,46 @@ pub fn read_style_runs<E: Editor>(editor: &E, line: usize, range: Range<usize>) 
     runs
 }
 
-/// Read a line's content with 0-based style runs and paragraph style.
+/// Read a line's content with 0-based style runs and paragraph formatting.
 ///
 /// Unlike [`read_style_runs`] which returns absolute column positions,
 /// the runs here are normalized to start at 0 relative to the captured text.
-pub fn read_styled_line<E: Editor>(editor: &E, line: usize, col_range: Range<usize>) -> StyledLine {
+///
+/// `paragraph` is the authoritative paragraph for the line — the editor
+/// only holds visual style, not names or override flags. Its character
+/// defaults are refreshed from the editor so line-default edits (e.g. a
+/// color set on an empty line) are captured too. `col_range` is clamped
+/// to the line length.
+pub fn read_styled_line<E: Editor>(
+    editor: &E,
+    line: usize,
+    col_range: Range<usize>,
+    paragraph: &Paragraph,
+) -> StyledLine {
+    let len = editor.line(line).map(|l| l.text.len()).unwrap_or(0);
+    let start = col_range.start.min(len);
+    let end = col_range.end.min(len);
+
     let text = editor
         .line(line)
-        .map(|l| l.text[col_range.start..col_range.end.min(l.text.len())].to_string())
+        .map(|l| l.text[start..end].to_string())
         .unwrap_or_default();
-    let abs_runs = read_style_runs(editor, line, col_range.clone());
-    let offset = col_range.start;
+    let abs_runs = read_style_runs(editor, line, start..end);
     let runs = abs_runs
         .into_iter()
         .map(|r| StyleRun {
-            range: (r.range.start - offset)..(r.range.end - offset),
+            range: (r.range.start - start)..(r.range.end - start),
             style: r.style,
         })
         .collect();
+
+    let mut paragraph = paragraph.clone();
+    paragraph.style.style = editor.paragraph_style_at(line).style;
+
     StyledLine {
         text,
         runs,
-        paragraph: Paragraph::new(Name::BODY, editor.paragraph_style_at(line)),
+        paragraph,
     }
 }
 

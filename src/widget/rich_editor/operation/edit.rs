@@ -2,7 +2,7 @@
 
 use crate::core::text::editor;
 use crate::core::text::rich_editor::{self, Editor};
-use markright_core::{self as document, Op, StyleRun, StyledText};
+use markright_core::{Op, Paragraph, StyleRun, StyledText};
 use std::sync::Arc;
 
 use super::{Position, iced_edit, ordered_positions};
@@ -60,14 +60,17 @@ pub fn enter<E: Editor>(editor: &mut E) -> Op {
 }
 
 /// Backspace — handles selection delete, character delete, or line merge.
-pub fn backspace<E: Editor>(editor: &mut E) -> Vec<Op> {
+///
+/// `paragraphs` provides the authoritative per-line paragraph data for
+/// multi-line delete capture.
+pub fn backspace<E: Editor>(editor: &mut E, paragraphs: &[Paragraph]) -> Vec<Op> {
     let cursor = editor.cursor();
     let line = cursor.position.line;
     let col = cursor.position.column;
 
     if let Some(ref sel) = cursor.selection {
         let (start, end) = ordered_positions(&cursor.position, sel);
-        delete_selection(editor, start, end)
+        delete_selection(editor, start, end, paragraphs)
     } else if col > 0 {
         vec![delete_char_before(editor, line, col)]
     } else if line > 0 {
@@ -78,14 +81,17 @@ pub fn backspace<E: Editor>(editor: &mut E) -> Vec<Op> {
 }
 
 /// Delete key — handles selection delete, character delete, or line merge.
-pub fn delete<E: Editor>(editor: &mut E) -> Vec<Op> {
+///
+/// `paragraphs` provides the authoritative per-line paragraph data for
+/// multi-line delete capture.
+pub fn delete<E: Editor>(editor: &mut E, paragraphs: &[Paragraph]) -> Vec<Op> {
     let cursor = editor.cursor();
     let line = cursor.position.line;
     let col = cursor.position.column;
 
     if let Some(ref sel) = cursor.selection {
         let (start, end) = ordered_positions(&cursor.position, sel);
-        delete_selection(editor, start, end)
+        delete_selection(editor, start, end, paragraphs)
     } else {
         let line_text = editor.line(line).map(|l| l.text.to_string());
         match line_text {
@@ -140,7 +146,7 @@ fn delete_char_before<E: Editor>(editor: &mut E, line: usize, col: usize) -> Op 
         .unwrap_or(0);
 
     let deleted_text = &line_text[char_start..col];
-    let styled = document::read_styled_text(editor, line, char_start..col, deleted_text);
+    let styled = markright_core::read_styled_text(editor, line, char_start..col, deleted_text);
 
     editor.perform(iced_edit(editor::Edit::Backspace));
 
@@ -165,7 +171,7 @@ fn delete_char_at<E: Editor>(editor: &mut E, line: usize, col: usize) -> Op {
         .unwrap_or(line_text.len());
 
     let deleted_text = &line_text[col..char_end];
-    let styled = document::read_styled_text(editor, line, col..char_end, deleted_text);
+    let styled = markright_core::read_styled_text(editor, line, col..char_end, deleted_text);
 
     editor.perform(iced_edit(editor::Edit::Delete));
 
@@ -198,7 +204,12 @@ fn merge_line_forward<E: Editor>(editor: &mut E, line: usize, col: usize) -> Op 
 ///
 /// Captures all text, styles, and paragraph formatting into a single
 /// `DeleteRange` op, then applies one atomic delete to the editor.
-fn delete_selection<E: Editor>(editor: &mut E, start: &Position, end: &Position) -> Vec<Op> {
+fn delete_selection<E: Editor>(
+    editor: &mut E,
+    start: &Position,
+    end: &Position,
+    paragraphs: &[Paragraph],
+) -> Vec<Op> {
     let mut lines = Vec::new();
 
     for line_idx in start.line..=end.line {
@@ -214,10 +225,12 @@ fn delete_selection<E: Editor>(editor: &mut E, start: &Position, end: &Position)
             line_len
         };
 
-        lines.push(document::read_styled_line(
+        let paragraph = paragraphs.get(line_idx).cloned().unwrap_or_default();
+        lines.push(markright_core::read_styled_line(
             editor,
             line_idx,
             col_start..col_end,
+            &paragraph,
         ));
     }
 

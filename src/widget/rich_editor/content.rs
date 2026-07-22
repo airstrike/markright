@@ -432,11 +432,7 @@ impl<R: rich_editor::Renderer> Content<R> {
             .map(|i| {
                 let line = internal.editor.line(i);
                 let len = line.as_ref().map(|l| l.text.len()).unwrap_or(0);
-                let mut styled = markright_core::read_styled_line(&internal.editor, i, 0..len);
-                let mut para = internal.paragraph(i).clone();
-                para.style.style = internal.editor.paragraph_style_at(i).style;
-                styled.paragraph = para;
-                styled
+                markright_core::read_styled_line(&internal.editor, i, 0..len, internal.paragraph(i))
             })
             .collect()
     }
@@ -557,11 +553,12 @@ impl<R: rich_editor::Renderer> Content<R> {
         let internal = self.0.borrow();
         let line = internal.editor.line(index)?;
         let len = line.text.len();
-        let mut styled = markright_core::read_styled_line(&internal.editor, index, 0..len);
-        let mut para = internal.paragraph(index).clone();
-        para.style.style = internal.editor.paragraph_style_at(index).style;
-        styled.paragraph = para;
-        Some(styled)
+        Some(markright_core::read_styled_line(
+            &internal.editor,
+            index,
+            0..len,
+            internal.paragraph(index),
+        ))
     }
 
     /// Returns whether the content is empty.
@@ -932,7 +929,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 let had_selection = self.editor.cursor().selection.is_some();
                 #[cfg(feature = "computed_spans")]
                 let cursor_before = self.editor.cursor();
-                let ops = operation::delete(&mut self.editor);
+                let ops = operation::delete(&mut self.editor, &self.paragraphs);
                 self.sync_paragraphs(&ops);
                 self.record_group(ops);
                 self.pending_style = None;
@@ -1237,7 +1234,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
     /// with no selection — ready for an insert or enter.
     fn drain_selection(&mut self) -> Vec<Op> {
         if self.editor.cursor().selection.is_some() {
-            operation::backspace(&mut self.editor)
+            operation::backspace(&mut self.editor, &self.paragraphs)
         } else {
             Vec::new()
         }
@@ -1431,7 +1428,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 } => self.sync_paragraph_delete(*start_line, *end_line),
                 Op::InsertRange {
                     start_line, lines, ..
-                } => self.sync_paragraph_insert(*start_line, lines.len()),
+                } => self.sync_paragraph_insert(*start_line, lines),
                 Op::SetParagraph {
                     line, paragraph, ..
                 } => {
@@ -1514,12 +1511,25 @@ impl<R: rich_editor::Renderer> Internal<R> {
         }
     }
 
-    /// Sync paragraphs after an InsertRange: insert default paragraphs for new lines.
-    fn sync_paragraph_insert(&mut self, start_line: usize, line_count: usize) {
-        if line_count > 1 {
+    /// Sync paragraphs after an InsertRange: restore the captured paragraphs
+    /// for re-inserted lines and sync their margins and editor styles.
+    ///
+    /// The first captured line merges into the existing line at `start_line`,
+    /// whose paragraph survived the original delete; only subsequent lines
+    /// need their paragraphs re-inserted.
+    fn sync_paragraph_insert(&mut self, start_line: usize, lines: &[DocStyledLine]) {
+        if lines.len() > 1 {
             let insert_at = (start_line + 1).min(self.paragraphs.len());
-            let new_paras = vec![Paragraph::default(); line_count - 1];
-            self.paragraphs.splice(insert_at..insert_at, new_paras);
+            let restored = lines[1..].iter().map(|l| l.paragraph.clone());
+            self.paragraphs.splice(insert_at..insert_at, restored);
+
+            for (i, styled) in lines.iter().enumerate().skip(1) {
+                let line = start_line + i;
+                let margin = list::compute_margin(&styled.paragraph.style, self.list_indent);
+                self.editor
+                    .set_paragraph_style(line, &styled.paragraph.style);
+                self.editor.set_margin_left(line, margin);
+            }
         }
     }
 
@@ -1563,7 +1573,7 @@ impl<R: rich_editor::Renderer> Internal<R> {
                 }];
             }
         }
-        operation::backspace(&mut self.editor)
+        operation::backspace(&mut self.editor, &self.paragraphs)
     }
 
     fn perform_undo(&mut self) {
