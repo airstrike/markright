@@ -358,7 +358,6 @@ where
         let total = self.child_count();
         let layouts: Vec<_> = layout.children().collect();
 
-        // Phase 1: Forward events to children in reverse z-order.
         let mut cursor_for_child = cursor;
         for i in (0..total).rev() {
             if shell.is_event_captured() {
@@ -394,7 +393,6 @@ where
             }
         }
 
-        // Phase 2: Workspace-level interactions (only if event not captured).
         if shell.is_event_captured() {
             return;
         }
