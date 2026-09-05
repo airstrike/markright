@@ -11,6 +11,5 @@ pub mod format;
 #[cfg(feature = "markdown")]
 pub mod markdown;
 
-// Re-export the full core API so existing consumers keep working.
 pub use markright_core::*;
 pub use markright_core::{capture, history, op};

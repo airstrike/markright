@@ -3,8 +3,6 @@ pub use iced_core::text::rich_editor::paragraph::{
     Border, Borders, Bullet, Fill, Geometry, Indent, List, Number, Spacing, Style,
 };
 
-// --- markright's semantic layer ---
-
 /// An opaque, interned paragraph name.
 ///
 /// Ten well-known constants cover the common paragraph types. Unknown
@@ -93,8 +91,6 @@ impl std::fmt::Display for Name {
     }
 }
 
-// --- OverrideSet ---
-
 /// Bitflags tracking which paragraph fields the user has explicitly set.
 ///
 /// When changing a paragraph's name, `Theme::apply` preserves fields
@@ -140,8 +136,6 @@ impl OverrideSet {
         self.0 == 0
     }
 }
-
-// --- Paragraph ---
 
 /// A paragraph with a semantic name, visual style, and override tracking.
 ///

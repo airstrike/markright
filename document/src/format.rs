@@ -95,10 +95,6 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-// ---------------------------------------------------------------------------
-// Serializer internals
-// ---------------------------------------------------------------------------
-
 fn serialize_paragraph_header(out: &mut String, line: &StyledLine) {
     let ps = &line.paragraph.style;
     let name = line.paragraph.name;
@@ -400,10 +396,6 @@ fn format_float(v: f32) -> String {
         s
     }
 }
-
-// ---------------------------------------------------------------------------
-// Parser internals
-// ---------------------------------------------------------------------------
 
 fn parse_paragraph_header(header: &str) -> Result<Paragraph, ParseError> {
     // Strip trailing `|`
@@ -880,10 +872,6 @@ fn fill_gaps(mut runs: Vec<StyleRun>, len: usize) -> Vec<StyleRun> {
 
     filled
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

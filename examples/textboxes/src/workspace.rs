@@ -13,26 +13,15 @@ use iced::{alignment, overlay};
 
 use indexmap::{IndexMap, IndexSet};
 
-// ---------------------------------------------------------------------------
-// Id
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Id(u64);
-
-// ---------------------------------------------------------------------------
-// Entry (private)
-// ---------------------------------------------------------------------------
 
 struct Entry {
     bounds: Cell<Rectangle>,
     v_align: Cell<alignment::Vertical>,
 }
 
-// ---------------------------------------------------------------------------
-// Interaction (private) — all variants are Copy (no heap allocations)
-// ---------------------------------------------------------------------------
-
+/// Kept `Copy` so the current interaction can live in a `Cell`.
 #[derive(Debug, Clone, Copy, Default)]
 enum Interaction {
     #[default]
@@ -53,10 +42,7 @@ enum Interaction {
     },
 }
 
-// ---------------------------------------------------------------------------
-// State (public, app-owned)
-// ---------------------------------------------------------------------------
-
+/// Workspace state owned by the application and borrowed by the widget.
 pub struct State {
     boxes: IndexMap<Id, Entry>,
     interaction: Cell<Interaction>,
@@ -152,10 +138,7 @@ impl State {
     }
 }
 
-// ---------------------------------------------------------------------------
-// View (public, read-only view passed to the closure)
-// ---------------------------------------------------------------------------
-
+/// Read-only view of one box, handed to the `view` closure.
 #[allow(dead_code)]
 pub struct View<'a> {
     entry: &'a Entry,
@@ -182,10 +165,7 @@ impl View<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// WidgetState (private, stored in the widget tree)
-// ---------------------------------------------------------------------------
-
+/// Interaction state stored in the widget tree.
 #[derive(Debug, Default, Clone)]
 struct WidgetState {
     last_click: Option<mouse::Click>,
@@ -195,10 +175,6 @@ struct WidgetState {
     drag_current: Option<Point>,
     modifiers: keyboard::Modifiers,
 }
-
-// ---------------------------------------------------------------------------
-// Constructor
-// ---------------------------------------------------------------------------
 
 pub fn workspace<'a, Message, Theme, Renderer>(
     state: &'a State,
@@ -228,10 +204,6 @@ pub fn workspace<'a, Message, Theme, Renderer>(
         on_move: None,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Workspace
-// ---------------------------------------------------------------------------
 
 pub struct Workspace<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer> {
     state: &'a State,
@@ -272,10 +244,6 @@ impl<'a, Message, Theme, Renderer> Workspace<'a, Message, Theme, Renderer> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn selection_rect(a: Point, b: Point) -> Rectangle {
     Rectangle::new(
         Point::new(a.x.min(b.x), a.y.min(b.y)),
@@ -300,10 +268,6 @@ const SELECTION_BORDER: Color = Color {
     b: 1.0,
     a: 0.5,
 };
-
-// ---------------------------------------------------------------------------
-// Widget impl
-// ---------------------------------------------------------------------------
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
     for Workspace<'a, Message, Theme, Renderer>
@@ -918,10 +882,6 @@ where
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// From
-// ---------------------------------------------------------------------------
 
 impl<'a, Message, Theme, Renderer> From<Workspace<'a, Message, Theme, Renderer>>
     for Element<'a, Message, Theme, Renderer>

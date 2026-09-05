@@ -64,10 +64,6 @@ impl Format for Markdown {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Parsing
-// ---------------------------------------------------------------------------
-
 /// Inline styling flags tracked as we walk the event stream.
 #[derive(Default, Clone, Copy)]
 struct Inline {
@@ -394,10 +390,6 @@ fn paragraph_for(
     para
 }
 
-// ---------------------------------------------------------------------------
-// Serialization
-// ---------------------------------------------------------------------------
-
 fn serialize_markdown(lines: &[StyledLine]) -> String {
     let mut out = String::new();
     let mut prev_was_list = false;
@@ -548,10 +540,6 @@ fn write_styled(
         out.push_str("~~");
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

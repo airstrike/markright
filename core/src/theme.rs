@@ -143,7 +143,6 @@ impl Default for Theme {
             ),
         );
 
-        // Headings per MAP_PLAN table
         entries.insert(Name::HEADING_1, heading(Name::HEADING_1, 32.0, 24.0, 12.0));
         entries.insert(Name::HEADING_2, heading(Name::HEADING_2, 28.0, 20.0, 10.0));
         entries.insert(Name::HEADING_3, heading(Name::HEADING_3, 24.0, 16.0, 8.0));
