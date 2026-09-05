@@ -1,0 +1,9 @@
+[advisories]
+# quick-xml < 0.41 DoS advisories. quick-xml is pinned ^0.39 by
+# wayland-scanner, a build-time proc-macro (Linux Wayland protocol
+# codegen) that parses trusted protocol XML; not reachable at runtime.
+# Remove once wayland-scanner releases against quick-xml >= 0.41.
+ignore = [
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]
